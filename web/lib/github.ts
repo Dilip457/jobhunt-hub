@@ -14,6 +14,10 @@ export function isConfigured(): boolean {
   return Boolean(REPO && TOKEN);
 }
 
+export function hasRepo(): boolean {
+  return Boolean(REPO);
+}
+
 function headers(): Record<string, string> {
   const result: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -53,20 +57,30 @@ export async function readJsonFromDataBranch<T>(
   file: string,
   options: CacheOptions = {},
 ): Promise<T | null> {
-  if (!isConfigured()) return null;
+  if (!hasRepo()) return null;
 
-  const response = await ghFetch(
-    `/repos/${REPO}/contents/${file}?ref=${DATA_BRANCH}`,
+  // With a token, use the Contents API (rate-limit friendly, private-safe).
+  // Without a token, fall back to the public raw CDN so a public repo still works.
+  if (TOKEN) {
+    const response = await ghFetch(
+      `/repos/${REPO}/contents/${file}?ref=${DATA_BRANCH}`,
+      cacheInit(options),
+    );
+    if (response.ok) {
+      const payload = (await response.json()) as { content?: string; encoding?: string };
+      if (payload.content) {
+        const text = Buffer.from(payload.content, "base64").toString("utf-8");
+        return JSON.parse(text) as T;
+      }
+    }
+  }
+
+  const raw = await fetch(
+    `https://raw.githubusercontent.com/${REPO}/${DATA_BRANCH}/${file}`,
     cacheInit(options),
   );
-
-  if (!response.ok) return null;
-
-  const payload = (await response.json()) as { content?: string; encoding?: string };
-  if (!payload.content) return null;
-
-  const text = Buffer.from(payload.content, "base64").toString("utf-8");
-  return JSON.parse(text) as T;
+  if (!raw.ok) return null;
+  return (await raw.json()) as T;
 }
 
 export interface ActionsRun {
