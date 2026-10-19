@@ -3,7 +3,7 @@ run-name: Scrape ${{ inputs.role || 'all' }}
 
 on:
   schedule:
-    # 07:00 IST (01:30 UTC)
+    # 07:00 IST (01:30 UTC). Linux runner, uses the cloud-safe sources only.
     - cron: "30 1 * * *"
   workflow_dispatch:
     inputs:
@@ -29,16 +29,17 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      roles: ${{ steps.set.outputs.roles }}
+      matrix: ${{ steps.set.outputs.matrix }}
     steps:
-      - name: Choose roles
+      - name: Checkout portal
+        uses: actions/checkout@v4
+        with:
+          path: portal
+
+      - name: Build matrix
         id: set
-        run: |
-          if [ "${{ inputs.role }}" = "" ] || [ "${{ inputs.role }}" = "all" ]; then
-            echo 'roles=["genai","data","uiux"]' >> "$GITHUB_OUTPUT"
-          else
-            echo "roles=[\"${{ inputs.role }}\"]" >> "$GITHUB_OUTPUT"
-          fi
+        working-directory: portal
+        run: python automation/matrix.py --role "${{ inputs.role || 'all' }}" >> "$GITHUB_OUTPUT"
 
   scrape:
     needs: prepare
@@ -47,8 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 1
-      matrix:
-        role: ${{ fromJSON(needs.prepare.outputs.roles) }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
     steps:
       - name: Checkout portal
@@ -56,27 +56,10 @@ jobs:
         with:
           path: portal
 
-      - name: Read role profile
-        id: profile
-        working-directory: portal
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          role = "${{ matrix.role }}"
-          with open(f"profiles/{role}.json", encoding="utf-8") as fh:
-              profile = json.load(fh)
-          print(f"repo={profile['repo']}")
-          print(f"db={profile['db']}")
-          print("sources=" + " ".join(profile["sources"]))
-          print(f"playwright={str(profile.get('playwright', False)).lower()}")
-          print(f"min_score={profile.get('min_score', 20)}")
-          print(f"max_days={profile.get('max_days', 14)}")
-          PY
-
       - name: Checkout scraper repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.profile.outputs.repo }}
+          repository: ${{ matrix.repo }}
           path: vendor/${{ matrix.role }}
 
       - name: Set up Python
@@ -91,10 +74,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r "vendor/${{ matrix.role }}/requirements.txt"
 
-      - name: Install Playwright Chromium
-        if: steps.profile.outputs.playwright == 'true'
-        run: python -m playwright install --with-deps chromium
-
       - name: Run pipeline and export JSON
         working-directory: portal
         env:
@@ -102,12 +81,10 @@ jobs:
         run: |
           python automation/run_source.py \
             --role "${{ matrix.role }}" \
+            --profile "profiles/${{ matrix.role }}.json" \
             --repo-dir "${{ github.workspace }}/vendor/${{ matrix.role }}" \
-            --db "${{ steps.profile.outputs.db }}" \
             --out "artifacts/${{ matrix.role }}.json" \
-            --sources ${{ steps.profile.outputs.sources }} \
-            --min-score "${{ steps.profile.outputs.min_score }}" \
-            --max-days "${{ steps.profile.outputs.max_days }}" \
+            --no-playwright \
             --no-validate
 
       - name: Upload role artifact
@@ -137,5 +114,5 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Publish to data branch
-        run: python automation/publish.py --artifacts artifacts --branch data
+      - name: Publish to data branch (merges with existing data)
+        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21

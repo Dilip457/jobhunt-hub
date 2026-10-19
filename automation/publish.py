@@ -19,10 +19,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from export import canonical_url
+
 ROLES = ("genai", "data", "uiux")
+DEFAULT_RETENTION_DAYS = 21
 
 
 def run(cmd: list[str], cwd: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
@@ -39,10 +42,70 @@ def read_json(path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def previous_file(branch: str, filename: str) -> Optional[str]:
+def _job_key(job: Dict[str, Any]) -> str:
+    url = canonical_url(job.get("url") or "")
+    if url:
+        return url
+    title = (job.get("title") or "").strip().lower()
+    company = (job.get("company") or "").strip().lower()
+    location = (job.get("location") or "").strip().lower()
+    return f"{title}|{company}|{location}" if title else ""
+
+
+def merge_payloads(
+    previous: Dict[str, Any],
+    fresh: Dict[str, Any],
+    retention_days: int,
+) -> Dict[str, Any]:
+    """Union two role payloads so a lighter run never removes richer data."""
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    for source in (previous, fresh):
+        for job in source.get("jobs", []):
+            key = _job_key(job)
+            if not key:
+                continue
+            current = merged.get(key)
+            if current is None:
+                merged[key] = job
+                continue
+            if (job.get("score") or 0) > (current.get("score") or 0):
+                merged[key] = {**current, **job}
+            else:
+                merged[key] = {**job, **current}
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).date().isoformat()
+    jobs = []
+    for job in merged.values():
+        stamp = (job.get("posted_date") or job.get("first_seen") or "")[:10]
+        if stamp and stamp < cutoff:
+            continue
+        jobs.append(job)
+
+    jobs.sort(key=lambda j: (-(j.get("score") or 0), j.get("posted_date") or ""))
+
+    sources: Dict[str, int] = {}
+    for job in jobs:
+        name = job.get("source") or "Unknown"
+        sources[name] = sources.get(name, 0) + 1
+
+    stamps = [p.get("generated_at") for p in (previous, fresh) if p.get("generated_at")]
+
+    return {
+        "role": fresh.get("role") or previous.get("role"),
+        "generated_at": max(stamps) if stamps else datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "count": len(jobs),
+        "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
+        "jobs": jobs,
+        "demo": False,
+    }
+
+
+def previous_file(branch: str, filename: str, cwd: Optional[str] = None) -> Optional[str]:
     """Return the previous file content from origin/<branch>, if it exists."""
     result = subprocess.run(
         ["git", "show", f"origin/{branch}:{filename}"],
+        cwd=cwd,
         capture_output=True,
         text=True,
     )
@@ -56,6 +119,8 @@ def main() -> int:
     parser.add_argument("--artifacts", default="artifacts")
     parser.add_argument("--branch", default="data")
     parser.add_argument("--repo-dir", default=".")
+    parser.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS)
+    parser.add_argument("--no-merge", action="store_true", help="Overwrite roles instead of merging")
     args = parser.parse_args()
 
     repo_dir = os.path.abspath(args.repo_dir)
@@ -78,7 +143,7 @@ def main() -> int:
 
     previous: Dict[str, str] = {}
     for role in ROLES:
-        content = previous_file(args.branch, f"{role}.json")
+        content = previous_file(args.branch, f"{role}.json", repo_dir)
         if content:
             previous[role] = content
 
@@ -89,21 +154,38 @@ def main() -> int:
         artifact = os.path.join(artifacts, f"{role}.json")
         candidate = read_json(artifact) if os.path.exists(artifact) else None
 
-        if candidate and isinstance(candidate.get("jobs"), list):
-            count = int(candidate.get("count") or len(candidate["jobs"]))
-            if count > 0 or role not in previous:
-                payloads[role] = candidate
-                statuses[role] = "fresh"
-                continue
-
+        previous_payload = None
         if role in previous:
             try:
-                payloads[role] = json.loads(previous[role])
-                statuses[role] = "kept-previous"
-                print(f"[publish] {role}: no fresh data, keeping previous JSON")
-                continue
+                previous_payload = json.loads(previous[role])
             except Exception:
-                pass
+                previous_payload = None
+
+        fresh_ok = bool(
+            candidate
+            and isinstance(candidate.get("jobs"), list)
+            and int(candidate.get("count") or len(candidate["jobs"])) > 0
+        )
+
+        if fresh_ok and previous_payload and not args.no_merge:
+            payloads[role] = merge_payloads(previous_payload, candidate, args.retention_days)
+            statuses[role] = "merged"
+            print(
+                f"[publish] {role}: merged {candidate.get('count', 0)} fresh + "
+                f"{previous_payload.get('count', 0)} previous -> {payloads[role]['count']}"
+            )
+            continue
+
+        if fresh_ok:
+            payloads[role] = candidate
+            statuses[role] = "fresh"
+            continue
+
+        if previous_payload:
+            payloads[role] = previous_payload
+            statuses[role] = "kept-previous"
+            print(f"[publish] {role}: no fresh data, keeping previous JSON")
+            continue
 
         print(f"[publish] {role}: no data available")
         statuses[role] = "missing"
@@ -129,11 +211,14 @@ def main() -> int:
     }
 
     # Build the orphan branch in a temporary git worktree so the main checkout
-    # is never modified.
+    # is never modified. The branch name is unique per run so repeated local
+    # publishes (the PC agent) never collide, and it is deleted afterwards.
     worktree = os.path.join(tempfile.gettempdir(), f"jobhunt-data-{os.getpid()}")
+    tmp_branch = f"portal-data-{os.getpid()}"
     if os.path.exists(worktree):
         shutil.rmtree(worktree, ignore_errors=True)
 
+    subprocess.run(["git", "worktree", "prune"], cwd=repo_dir, check=False, capture_output=True)
     subprocess.run(
         ["git", "worktree", "add", "--detach", worktree],
         cwd=repo_dir,
@@ -142,7 +227,7 @@ def main() -> int:
     )
 
     try:
-        subprocess.run(["git", "checkout", "--orphan", "portal-data"], cwd=worktree, check=True)
+        subprocess.run(["git", "checkout", "--orphan", tmp_branch], cwd=worktree, check=True)
         subprocess.run(["git", "rm", "-rf", "."], cwd=worktree, check=False, capture_output=True)
 
         for role, payload in payloads.items():
@@ -166,6 +251,12 @@ def main() -> int:
     finally:
         subprocess.run(
             ["git", "worktree", "remove", "--force", worktree],
+            cwd=repo_dir,
+            check=False,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "branch", "-D", tmp_branch],
             cwd=repo_dir,
             check=False,
             capture_output=True,

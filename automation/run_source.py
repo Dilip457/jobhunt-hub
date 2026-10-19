@@ -20,6 +20,7 @@ import argparse
 import importlib
 import json
 import os
+import re
 import sys
 import time
 
@@ -79,7 +80,33 @@ def _patch_scoring(scoring_engine, config) -> None:
     )
 
 
-def _patch_sources() -> None:
+PLAYWRIGHT_CITIES = ["Hyderabad", "Bangalore", "Pune"]
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^\w\s-]", "", value.lower()).strip().replace(" ", "-")
+
+
+def _plus(value: str) -> str:
+    return re.sub(r"\s+", "+", value.strip())
+
+
+def build_portal_searches(keywords: list[str], cities: list[str]) -> dict[str, list[str]]:
+    """Role-appropriate search URLs for the vendor Playwright scraper."""
+    portals: dict[str, list[str]] = {"naukri": [], "indeed": [], "foundit": []}
+    for keyword in keywords:
+        for city in cities:
+            portals["naukri"].append(f"https://www.naukri.com/{_slug(keyword)}-jobs-in-{city.lower()}")
+            portals["indeed"].append(
+                f"https://in.indeed.com/jobs?q={_plus(keyword)}&l={_plus(city)}&fromage=7"
+            )
+            portals["foundit"].append(
+                f"https://www.foundit.in/srp/results?query={_plus(keyword)}&locations={_plus(city)}&sort=1"
+            )
+    return portals
+
+
+def _patch_sources(keywords: list[str] | None = None, cities: list[str] | None = None) -> None:
     try:
         from scrapers.linkedin_scraper import LinkedInScraper
 
@@ -87,6 +114,19 @@ def _patch_sources() -> None:
         print("[run_source] LinkedIn geoIds patched for pan-India search")
     except Exception as exc:  # pragma: no cover - optional patch
         print(f"[run_source] LinkedIn patch skipped: {exc}")
+
+    # Point the browser scraper at the role's keywords/cities.
+    if keywords:
+        try:
+            import scrapers.playwright_scraper as pw_scraper
+
+            pw_scraper.PORTAL_SEARCHES = build_portal_searches(keywords, cities or PLAYWRIGHT_CITIES)
+            print(
+                "[run_source] Playwright PORTAL_SEARCHES patched: "
+                f"{len(keywords)} keywords x {len(cities or PLAYWRIGHT_CITIES)} cities"
+            )
+        except Exception as exc:
+            print(f"[run_source] Playwright searches patch skipped: {exc}")
 
     try:
         from playwright.sync_api import sync_playwright
@@ -98,8 +138,9 @@ def _patch_sources() -> None:
 
             PlaywrightScraper.CHROME_PATHS = [executable]
             print(f"[run_source] Playwright using bundled Chromium: {executable}")
-    except Exception as exc:
-        print(f"[run_source] Playwright patch skipped: {exc}")
+    except Exception:
+        # No bundled browser: the vendor code falls back to system Chrome (Windows).
+        pass
 
 
 def _disable_dashboard(main_module, config, repo_dir: str) -> None:
@@ -155,7 +196,7 @@ def run(args) -> int:
 
     main_module = importlib.import_module("main")
     _disable_dashboard(main_module, config, repo_dir)
-    _patch_sources()
+    _patch_sources(getattr(args, "keywords", None), getattr(args, "cities", None))
 
     if args.no_validate:
         _disable_validation()
@@ -217,14 +258,39 @@ def main() -> None:
     parser.add_argument("--role", required=True)
     parser.add_argument("--repo-dir", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--profile", default=None, help="profiles/<role>.json (overrides db/sources/limits)")
     parser.add_argument("--db", default="jobs.db", help="Fallback DB filename")
     parser.add_argument("--sources", nargs="*", default=None)
     parser.add_argument("--min-score", type=float, default=20.0)
     parser.add_argument("--max-days", type=int, default=14)
     parser.add_argument("--limit", type=int, default=800)
     parser.add_argument("--max-keywords", type=int, default=0, help="Truncate keyword lists (debugging)")
+    parser.add_argument("--no-playwright", action="store_true", help="Skip the browser source")
     parser.add_argument("--no-validate", action="store_true")
     args = parser.parse_args()
+
+    args.keywords = None
+    args.cities = None
+    if args.profile:
+        with open(args.profile, encoding="utf-8-sig") as handle:
+            profile = json.load(handle)
+        args.db = profile.get("db", args.db)
+        args.sources = profile.get("sources", args.sources)
+        args.min_score = profile.get("min_score", args.min_score)
+        args.max_days = profile.get("max_days", args.max_days)
+        args.limit = profile.get("limit", args.limit)
+        args.keywords = profile.get("keywords")
+        args.cities = profile.get("cities")
+        if profile.get("playwright"):
+            sources = list(args.sources or [])
+            if "playwright" not in sources:
+                sources.insert(0, "playwright")
+            args.sources = sources
+        print(f"[run_source] loaded profile {args.profile}")
+
+    if args.no_playwright and args.sources:
+        args.sources = [s for s in args.sources if s != "playwright"]
+        args.keywords = None
 
     raise SystemExit(run(args))
 

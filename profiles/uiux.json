@@ -16,6 +16,8 @@
     "company_pages"
   ],
   "playwright": false,
+  "keywords": ["Product Designer", "UX Designer", "UI Designer", "Interaction Designer"],
+  "cities": ["Hyderabad", "Bangalore", "Pune"],
   "min_score": 20,
   "max_days": 14
 }
