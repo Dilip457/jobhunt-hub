@@ -78,6 +78,10 @@ jobs:
         working-directory: portal
         env:
           PYTHONUNBUFFERED: "1"
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
         run: |
           python automation/run_source.py \
             --role "${{ matrix.role }}" \

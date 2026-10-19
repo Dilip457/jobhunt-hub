@@ -3,7 +3,7 @@
 A public, daily-updated job portal for three role tracks — **GenAI**, **Data Engineering** and **UI/UX** — built from three existing Python scrapers.
 
 - **UI:** Next.js on Vercel
-- **Scraper:** GitHub Actions (cloud-safe sources) + a local PC agent (residential-IP sources)
+- **Scraper:** GitHub Actions only — scrapers **plus official job APIs** (no PC required)
 - **Data:** compact JSON on an orphan `data` branch
 - **Database:** none
 - **Cost:** ₹0/month
@@ -13,16 +13,12 @@ A public, daily-updated job portal for three role tracks — **GenAI**, **Data E
 ## How it works
 
 ```
-Cloud: GitHub Actions (07:00 IST or manual — LinkedIn, company pages, Indeed/Shine)
+GitHub Actions (07:00 IST or manual — runs entirely in the cloud, no PC needed)
   ├─ checkout each scraper repo
   ├─ patch config for pan-India search
-  ├─ run pipeline → SQLite
+  ├─ run pipeline → SQLite            (LinkedIn, company pages, Indeed/Shine)
+  ├─ fetch official job APIs          (Adzuna, Jooble, Google Jobs, Remotive, …)
   └─ export compact JSON (no PII, no full descriptions)
-            │
-PC: local agent (every 15 min, at logon, at startup — Naukri, Indeed, Foundit, …)
-  ├─ runs only when the published data is stale (catch-up) or on demand
-  ├─ full source list incl. a real browser (residential IP)
-  └─ export compact JSON
             │
             ▼
    orphan `data` branch (single commit, JSON is MERGED, never clobbered)
@@ -37,6 +33,7 @@ Vercel — Next.js
 ```
 
 The scraper never runs on Vercel. Vercel only serves the UI and small API routes.
+**No computer of your own is required** — everything runs on GitHub's servers.
 
 ---
 
@@ -47,12 +44,13 @@ jobhunt-hub/
 ├─ .github/workflows/scrape.yml   # cron + manual dispatch + publish
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
+│  ├─ api_sources.py              # cloud-safe job APIs (Adzuna, Jooble, …)
 │  ├─ export.py                   # SQLite → compact public JSON
 │  ├─ publish.py                  # rebuild the orphan `data` branch (merges)
 │  ├─ matrix.py                   # workflow matrix helper
-│  ├─ agent.py                    # local PC agent (residential-IP scraping)
-│  ├─ install-agent.ps1           # one-time PC setup + scheduled task
-│  └─ run-agent.ps1               # Task Scheduler entry point
+│  ├─ agent.py                    # OPTIONAL local PC agent (residential IP)
+│  ├─ install-agent.ps1           # optional PC setup + scheduled task
+│  └─ run-agent.ps1               # optional Task Scheduler entry point
 ├─ profiles/
 │  ├─ genai.json
 │  ├─ data.json
@@ -99,52 +97,57 @@ The wrapper patches the vendor repo in memory (pan-India locations, no hard expe
 
 ---
 
-## Local agent (residential-IP sources)
+## Cloud-safe job API sources
 
-Naukri, Indeed and Foundit block datacenter IPs, so they return nothing from GitHub's
-runners. The **local agent** runs the exact same pipeline from your own PC, where those
-portals work — including the vendor browser scraper (`playwright`) for GenAI/Data.
+Naukri, Indeed and Foundit block datacenter IPs, so scraping alone can never see them from
+GitHub's runners. Instead the pipeline also queries **official / public job APIs**, which
+work from any IP and need no machine of your own. They are a normal part of
+`run_source.py` (see `automation/api_sources.py`) and run in the same cloud job.
 
-**It never needs your PC on at a fixed time.** It runs on a Windows Scheduled Task every
-15 minutes, at logon and at startup, with *"start when available"*, and it scrapes only
-when the published data is stale. So whenever the PC is next on, it catches up within
-minutes.
+| Source | What it adds | Key needed |
+|---|---|---|
+| **Adzuna** | Aggregated India listings across many boards | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (free) |
+| **Jooble** | Aggregated India listings | `JOOBLE_API_KEY` (free) |
+| **Google Jobs** (JSearch) | Google-for-Jobs index — surfaces Naukri/Indeed/Foundit postings | `JSEARCH_API_KEY` (free tier) |
+| **Remotive** | Remote roles | none |
+| **Himalayas** | Remote roles | none |
 
-One-time setup (Windows, run once):
+**Missing keys are simply skipped**, so the site keeps working with whatever you configure.
+Results are filtered to India + Remote and de-duplicated against the scraper output.
+
+### Add the keys (GitHub → Settings → Secrets and variables → Actions)
+
+| Secret | Where to get it |
+|---|---|
+| `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | free signup at <https://developer.adzuna.com/signup> |
+| `JOOBLE_API_KEY` | free key at <https://jooble.org/api/about> |
+| `JSEARCH_API_KEY` | free RapidAPI key at <https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch> |
+
+Test any of them locally:
+
+```bash
+ADZUNA_APP_ID=... ADZUNA_APP_KEY=... \
+  python automation/api_sources.py --role data --profile profiles/data.json \
+    --out /tmp/apis.json
+```
+
+**Merging:** `publish.py` unions each run with the previously published file, so a lighter
+run never removes jobs. Jobs older than 21 days are dropped.
+
+---
+
+## Optional: local agent (residential-IP scraping)
+
+Only if you later want Naukri/Foundit scraped *directly* rather than via Google Jobs.
+This is **not required** and the site works fully without it.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\automation\install-agent.ps1
 ```
 
-That will:
-
-1. clone the three scraper repos into `vendor\<role>`;
-2. create one Python virtualenv per role under `vendor\venvs\<role>`;
-3. register the scheduled task **JobHunt India Agent**.
-
-Useful flags:
-
-```powershell
-# just install environments, don't touch the scheduled task
-.\automation\install-agent.ps1 -SkipTask
-
-# also download a Chromium build for the browser scraper (needs Google Chrome otherwise)
-.\automation\install-agent.ps1 -InstallBrowsers
-```
-
-Manual control:
-
-```bash
-python automation/agent.py --dry-run          # show what it would do
-python automation/agent.py --force            # scrape all roles now
-python automation/agent.py --roles uiux       # just one role
-```
-
-Logs live in `vendor\agent.log`.
-
-**Merging:** `publish.py` unions each run with the previously published file, so the
-always-on cloud run (LinkedIn-heavy) and the fuller local run never overwrite each other.
-Jobs older than 21 days are dropped.
+It registers a Windows Scheduled Task (every 15 min, at logon, at startup, *start when
+available*) that runs the full pipeline from your PC only when the data is stale — so it
+catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `--force`).
 
 ---
 
@@ -201,8 +204,8 @@ Protections:
 - 25-minute cooldown per role (`lib/github.ts`).
 - Same-origin check on the POST route.
 - Seeded data remains visible if GitHub is unreachable.
-- Refresh triggers the **cloud** pass (LinkedIn, company pages, Indeed/Shine). The blocked
-  Indian portals are refreshed by the local agent whenever your PC is next online.
+- Refresh triggers the **cloud** pass (scrapers + official APIs). Everything runs on
+  GitHub's servers; no PC is involved.
 
 ---
 
@@ -228,29 +231,28 @@ Protections:
 
 ---
 
-## Scraper reliability
+## Source reliability
 
-Job boards treat datacenter and residential IPs very differently:
+Scrapers and APIs fail in different ways, so the pipeline uses both:
 
-| Source | Cloud runner | Local agent |
+| Source | Cloud (GitHub Actions) | Notes |
 |---|---|---|
-| LinkedIn | ✅ works | ✅ works |
-| Company career pages | ✅ works | ✅ works |
-| Indeed / Shine (UI/UX) | ✅ sometimes | ✅ works |
-| Naukri | ❌ `406` bot wall | ✅ with browser |
-| Indeed (GenAI/Data), Foundit | ❌ `403` / dead API | ✅ with browser |
+| LinkedIn | ✅ works | guest API |
+| Company career pages | ✅ works | direct sites |
+| Indeed / Shine (UI/UX) | ✅ sometimes | scraper |
+| **Adzuna / Jooble / Google Jobs** | ✅ works (with keys) | official APIs, no PC |
+| Naukri / Foundit (direct scrape) | ❌ `406` / dead API | only via Google Jobs or the optional local agent |
 
 The design degrades gracefully:
 
 - Each role runs in its own cloud job; one failure does not stop the others.
-- `publish` runs with `if: always()` and **merges**, so richer local data is never lost.
-- Previous JSON is preserved for failed roles.
-- The local agent covers the blocked Indian portals and catches up whenever the PC is on.
+- API sources are attempted even if every scraper is blocked, so the portal is never empty.
+- A pipeline or export error no longer aborts the run — API jobs are still written.
+- `publish` runs with `if: always()` and **merges**, so data is never removed.
+- Missing API keys are skipped silently.
 
-Playwright is enabled per profile (`"playwright": true`) and is used only by the local
-agent. The cloud workflow runs with `--no-playwright` to stay fast and within its time
-limit. If Google Chrome is installed the agent uses it; otherwise run
-`install-agent.ps1 -InstallBrowsers`.
+Playwright is enabled per profile (`"playwright": true`) and is only used by the optional
+local agent; the cloud workflow runs with `--no-playwright` to stay fast.
 
 ---
 

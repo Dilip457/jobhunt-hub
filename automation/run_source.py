@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 
 # Portal-wide defaults for a public, pan-India board.
 PAN_INDIA_LOCATIONS = [
@@ -220,17 +221,50 @@ def run(args) -> int:
     print("=" * 68)
 
     started = time.time()
-    pipeline = main_module.JobSearchPipeline(sources=sources)
-    stats = pipeline.run()
-    elapsed = time.time() - started
-
-    print(f"[run_source] pipeline finished in {elapsed:.0f}s: {json.dumps(stats)}")
+    stats: dict = {}
+    payload = None
+    try:
+        pipeline = main_module.JobSearchPipeline(sources=sources)
+        stats = pipeline.run()
+        elapsed = time.time() - started
+        print(f"[run_source] pipeline finished in {elapsed:.0f}s: {json.dumps(stats)}")
+    except Exception as exc:
+        elapsed = time.time() - started
+        print(f"[run_source] pipeline failed after {elapsed:.0f}s: {exc}")
 
     db_path = getattr(config, "DB_PATH", os.path.join(repo_dir, args.db))
-    if not os.path.exists(db_path):
-        print(f"[run_source] DB not found at {db_path}; writing empty payload")
+    if os.path.exists(db_path):
+        try:
+            payload = export_db(db_path, args.role, args.min_score, args.limit)
+        except Exception as exc:
+            print(f"[run_source] export failed: {exc}")
+    else:
+        print(f"[run_source] DB not found at {db_path}")
 
-    payload = export_db(db_path, args.role, args.min_score, args.limit)
+    if payload is None:
+        payload = {
+            "role": args.role,
+            "generated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+            "count": 0,
+            "sources": {},
+            "jobs": [],
+        }
+
+    # Cloud-safe API sources (Adzuna, Jooble, Google Jobs, Remotive, Himalayas).
+    # Always attempted, so the portal still gets data even when every scraper is blocked.
+    if not args.no_apis:
+        try:
+            from api_sources import collect_api_jobs, merge_api_jobs
+
+            api_jobs = collect_api_jobs(
+                args.role,
+                getattr(args, "profile_data", {}) or {},
+                args.max_days,
+                args.min_score,
+            )
+            payload = merge_api_jobs(payload, api_jobs)
+        except Exception as exc:
+            print(f"[run_source] API sources skipped: {exc}")
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as handle:
@@ -266,14 +300,17 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=800)
     parser.add_argument("--max-keywords", type=int, default=0, help="Truncate keyword lists (debugging)")
     parser.add_argument("--no-playwright", action="store_true", help="Skip the browser source")
+    parser.add_argument("--no-apis", action="store_true", help="Skip the cloud-safe API sources")
     parser.add_argument("--no-validate", action="store_true")
     args = parser.parse_args()
 
     args.keywords = None
     args.cities = None
+    args.profile_data = {}
     if args.profile:
         with open(args.profile, encoding="utf-8-sig") as handle:
             profile = json.load(handle)
+        args.profile_data = profile
         args.db = profile.get("db", args.db)
         args.sources = profile.get("sources", args.sources)
         args.min_score = profile.get("min_score", args.min_score)
