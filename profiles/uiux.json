@@ -1,0 +1,21 @@
+{
+  "role": "uiux",
+  "label": "UI/UX",
+  "repo": "Dilip457/UI-UX-Job_Hunt",
+  "db": "jobs.db",
+  "sources": [
+    "linkedin",
+    "naukri",
+    "indeed",
+    "foundit",
+    "shine",
+    "timesjobs",
+    "wellfound",
+    "glassdoor",
+    "instahyre",
+    "company_pages"
+  ],
+  "playwright": false,
+  "min_score": 20,
+  "max_days": 14
+}

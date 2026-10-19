@@ -1,0 +1,44 @@
+{
+ "generated_at": "2026-10-19T07:30:00+05:30",
+ "demo": true,
+ "roles": {
+  "genai": {
+   "role": "genai",
+   "count": 14,
+   "generated_at": "2026-10-19T07:30:00+05:30",
+   "sources": {
+    "LinkedIn": 7,
+    "Naukri": 3,
+    "Indeed": 3,
+    "Shine": 1
+   },
+   "demo": true,
+   "status": "demo"
+  },
+  "data": {
+   "role": "data",
+   "count": 14,
+   "generated_at": "2026-10-19T07:30:00+05:30",
+   "sources": {
+    "LinkedIn": 6,
+    "Naukri": 4,
+    "Indeed": 3,
+    "Shine": 1
+   },
+   "demo": true,
+   "status": "demo"
+  },
+  "uiux": {
+   "role": "uiux",
+   "count": 396,
+   "generated_at": "2026-10-19T19:32:57+05:30",
+   "sources": {
+    "LinkedIn": 256,
+    "Indeed": 86,
+    "Shine": 54
+   },
+   "demo": true,
+   "status": "demo"
+  }
+ }
+}

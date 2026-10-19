@@ -1,0 +1,141 @@
+name: Scrape jobs
+run-name: Scrape ${{ inputs.role || 'all' }}
+
+on:
+  schedule:
+    # 07:00 IST (01:30 UTC)
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+    inputs:
+      role:
+        description: "Role track to scrape"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - genai
+          - data
+          - uiux
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jobhunt-scrape
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      roles: ${{ steps.set.outputs.roles }}
+    steps:
+      - name: Choose roles
+        id: set
+        run: |
+          if [ "${{ inputs.role }}" = "" ] || [ "${{ inputs.role }}" = "all" ]; then
+            echo 'roles=["genai","data","uiux"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "roles=[\"${{ inputs.role }}\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  scrape:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        role: ${{ fromJSON(needs.prepare.outputs.roles) }}
+
+    steps:
+      - name: Checkout portal
+        uses: actions/checkout@v4
+        with:
+          path: portal
+
+      - name: Read role profile
+        id: profile
+        working-directory: portal
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          role = "${{ matrix.role }}"
+          with open(f"profiles/{role}.json", encoding="utf-8") as fh:
+              profile = json.load(fh)
+          print(f"repo={profile['repo']}")
+          print(f"db={profile['db']}")
+          print("sources=" + " ".join(profile["sources"]))
+          print(f"playwright={str(profile.get('playwright', False)).lower()}")
+          print(f"min_score={profile.get('min_score', 20)}")
+          print(f"max_days={profile.get('max_days', 14)}")
+          PY
+
+      - name: Checkout scraper repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.profile.outputs.repo }}
+          path: vendor/${{ matrix.role }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: vendor/${{ matrix.role }}/requirements.txt
+
+      - name: Install scraper dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r "vendor/${{ matrix.role }}/requirements.txt"
+
+      - name: Install Playwright Chromium
+        if: steps.profile.outputs.playwright == 'true'
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run pipeline and export JSON
+        working-directory: portal
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python automation/run_source.py \
+            --role "${{ matrix.role }}" \
+            --repo-dir "${{ github.workspace }}/vendor/${{ matrix.role }}" \
+            --db "${{ steps.profile.outputs.db }}" \
+            --out "artifacts/${{ matrix.role }}.json" \
+            --sources ${{ steps.profile.outputs.sources }} \
+            --min-score "${{ steps.profile.outputs.min_score }}" \
+            --max-days "${{ steps.profile.outputs.max_days }}" \
+            --no-validate
+
+      - name: Upload role artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobs-${{ matrix.role }}
+          path: |
+            portal/artifacts/${{ matrix.role }}.json
+            portal/artifacts/${{ matrix.role }}.json.status.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish:
+    needs: [prepare, scrape]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout portal
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download role artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish to data branch
+        run: python automation/publish.py --artifacts artifacts --branch data

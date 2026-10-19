@@ -1,0 +1,133 @@
+import type { Job } from "./types";
+
+export function cn(...values: Array<string | false | null | undefined>): string {
+  return values.filter(Boolean).join(" ");
+}
+
+export interface Tier {
+  label: string;
+  color: string;
+}
+
+export function scoreTier(score: number): Tier {
+  if (score >= 85) return { label: "Excellent match", color: "#34d399" };
+  if (score >= 75) return { label: "Strong match", color: "#38bdf8" };
+  if (score >= 65) return { label: "Good match", color: "#a78bfa" };
+  if (score >= 50) return { label: "Fair match", color: "#fbbf24" };
+  return { label: "Low match", color: "#94a3b8" };
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value.length <= 10 ? `${value}T00:00:00` : value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+export function timeAgo(value?: string | null): string {
+  if (!value) return "never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "never";
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return formatDate(value);
+}
+
+export function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-IN").format(value);
+}
+
+export function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+export function uniqueCompanies(jobs: Job[]): number {
+  return new Set(jobs.map((j) => j.company.toLowerCase())).size;
+}
+
+export interface CityCount {
+  city: string;
+  count: number;
+}
+
+export function cityCounts(jobs: Job[]): CityCount[] {
+  const map = new Map<string, number>();
+  for (const job of jobs) {
+    const city = job.location || "India";
+    map.set(city, (map.get(city) ?? 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
+}
+
+export function experienceLabel(job: Job): string {
+  const min = job.experience_min;
+  const max = job.experience_max;
+  if (min == null && max == null) return "Experience not specified";
+  if (min === 0 && (max === 0 || max == null)) return "Fresher / entry level";
+  if (min != null && max != null && min === max) return `${min} yrs`;
+  if (min != null && max != null) return `${min}–${max} yrs`;
+  if (min != null) return `${min}+ yrs`;
+  return `Up to ${max} yrs`;
+}
+
+export type ExperienceBucket = "all" | "fresher" | "mid" | "senior" | "lead";
+
+export function matchesExperience(job: Job, bucket: ExperienceBucket): boolean {
+  if (bucket === "all") return true;
+  const min = job.experience_min ?? null;
+  const max = job.experience_max ?? null;
+  const lower = min ?? 0;
+  const upper = max ?? (min != null ? min + 2 : 99);
+
+  switch (bucket) {
+    case "fresher":
+      return lower <= 1;
+    case "mid":
+      return lower <= 5 && upper >= 2;
+    case "senior":
+      return lower >= 3 && lower <= 8;
+    case "lead":
+      return lower >= 6 || (job.title.toLowerCase().match(/\b(lead|principal|staff|architect|head|director|manager)\b/) !== null);
+    default:
+      return true;
+  }
+}
+
+export function initials(value: string): string {
+  const clean = value.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
+  if (!clean || clean.toLowerCase() === "unknown") return "–";
+  const parts = clean.split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
+
+const SOURCE_COLORS: Record<string, string> = {
+  linkedin: "#0a66c2",
+  naukri: "#ff7555",
+  indeed: "#2557a7",
+  foundit: "#f4a300",
+  shine: "#f97316",
+  timesjobs: "#e11d48",
+  wellfound: "#0f172a",
+  glassdoor: "#0caa41",
+  instahyre: "#6366f1",
+  "company career pages": "#14b8a6",
+  company_pages: "#14b8a6",
+  playwright: "#8b5cf6",
+};
+
+export function sourceColor(source: string): string {
+  return SOURCE_COLORS[source.toLowerCase()] ?? "#64748b";
+}

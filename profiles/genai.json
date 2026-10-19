@@ -1,0 +1,10 @@
+{
+  "role": "genai",
+  "label": "GenAI",
+  "repo": "Dilip457/Job-Hunt-for-GenAI-Profile",
+  "db": "genai_jobs.db",
+  "sources": ["linkedin", "naukri", "indeed", "foundit", "company_pages"],
+  "playwright": false,
+  "min_score": 20,
+  "max_days": 14
+}

@@ -1,0 +1,10 @@
+{
+  "role": "data",
+  "label": "Data Engineer",
+  "repo": "Dilip457/DataEngineer_JobHunt",
+  "db": "de_jobs.db",
+  "sources": ["linkedin", "naukri", "indeed", "foundit", "company_pages"],
+  "playwright": false,
+  "min_score": 20,
+  "max_days": 14
+}
