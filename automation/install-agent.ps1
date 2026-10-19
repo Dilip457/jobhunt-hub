@@ -13,7 +13,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$PortalDir = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
+    [string]$PortalDir = (Split-Path -Parent $PSScriptRoot),
     [string]$PythonExe = "python",
     [string]$TaskName = "JobHunt India Agent",
     [int]$IntervalMinutes = 15,
@@ -90,7 +90,7 @@ $action = New-ScheduledTaskAction -Execute "powershell.exe" `
 $triggers = @(
     (New-ScheduledTaskTrigger -AtStartup),
     (New-ScheduledTaskTrigger -AtLogOn),
-    (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes))
+    (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) -RepetitionDuration (New-TimeSpan -Days 3650))
 )
 
 $settings = New-ScheduledTaskSettingsSet `
