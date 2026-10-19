@@ -1,0 +1,18 @@
+{
+  "_comment": "Public ATS job boards. No API key, no card, works from any IP. Add companies you care about; invalid tokens are skipped automatically.",
+  "greenhouse": [
+    "highradius", "zenoti", "gitlab", "druva", "groww", "turing", "thoughtworks",
+    "glance", "slice", "postman", "browserstack", "hasura", "freshworks",
+    "chargebee", "cleartax", "smallcase", "upstox", "atlan", "moengage",
+    "innovaccer", "whatfix", "icertis", "mindtickle", "clevertap", "zetwerk"
+  ],
+  "lever": [
+    "meesho", "cred", "toptal", "spotify"
+  ],
+  "ashby": [
+    "atlan", "openai", "notion", "ramp", "cursor", "vanta", "linear", "deel"
+  ],
+  "smartrecruiters": [
+    "boschgroup", "servicenow", "canva", "visa", "publicis"
+  ]
+}

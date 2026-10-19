@@ -235,7 +235,7 @@ def run(args) -> int:
     db_path = getattr(config, "DB_PATH", os.path.join(repo_dir, args.db))
     if os.path.exists(db_path):
         try:
-            payload = export_db(db_path, args.role, args.min_score, args.limit)
+            payload = export_db(db_path, args.role, args.min_score, args.limit, args.max_days)
         except Exception as exc:
             print(f"[run_source] export failed: {exc}")
     else:
@@ -261,6 +261,7 @@ def run(args) -> int:
                 getattr(args, "profile_data", {}) or {},
                 args.max_days,
                 args.min_score,
+                include_ats=not getattr(args, "no_ats", False),
             )
             payload = merge_api_jobs(payload, api_jobs)
         except Exception as exc:
@@ -301,6 +302,7 @@ def main() -> None:
     parser.add_argument("--max-keywords", type=int, default=0, help="Truncate keyword lists (debugging)")
     parser.add_argument("--no-playwright", action="store_true", help="Skip the browser source")
     parser.add_argument("--no-apis", action="store_true", help="Skip the cloud-safe API sources")
+    parser.add_argument("--no-ats", action="store_true", help="Skip company ATS boards")
     parser.add_argument("--no-validate", action="store_true")
     args = parser.parse_args()
 

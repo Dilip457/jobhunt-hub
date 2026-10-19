@@ -98,6 +98,23 @@ FOREIGN_MARKERS = {
     "new york", "london", "san francisco", "seattle", "boston", "austin",
     "toronto", "berlin", "amsterdam", "paris", "sydney", "melbourne",
     "remote - us", "remote, us", "emea", "apac",
+    "vancouver", "montreal", "brazil", "brasil", "latam", "latin america",
+    "mexico", "argentina", "colombia", "chile", "peru", "costa rica",
+    "poland", "romania", "portugal", "czech", "hungary", "ukraine", "russia",
+    "sweden", "norway", "denmark", "finland", "switzerland", "austria",
+    "belgium", "luxembourg", "greece", "turkey", "israel", "egypt", "nigeria",
+    "kenya", "south africa", "philippines", "malaysia", "thailand", "vietnam",
+    "indonesia", "hong kong", "taiwan", "korea", "saudi", "qatar", "kuwait",
+    "bahrain", "oman", "new zealand", "los angeles", "chicago", "denver",
+    "atlanta", "dallas", "houston", "miami", "phoenix", "portland",
+    "washington", "philadelphia", "detroit", "minneapolis", "columbus",
+    "barcelona", "madrid", "munich", "hamburg", "frankfurt", "dublin",
+    "manchester", "edinburgh", "bristol", "stockholm", "oslo", "helsinki",
+    "copenhagen", "zurich", "geneva", "vienna", "prague", "warsaw", "lisbon",
+    "athens", "istanbul", "tel aviv", "cairo", "lagos", "nairobi",
+    "johannesburg", "cape town", "manila", "kuala lumpur", "bangkok",
+    "jakarta", "taipei", "seoul", "tokyo", "osaka", "shanghai", "beijing",
+    "shenzhen", "riyadh", "doha",
 }
 
 
@@ -130,6 +147,15 @@ def normalize_location(raw: str) -> Tuple[str, bool]:
 
     # Unknown location: keep it, tagged India so it is not silently lost.
     return ("India", True)
+
+
+def looks_foreign(text: str) -> bool:
+    """True when a free-text field names a non-India place we recognise."""
+    low = unescape(str(text or "")).lower()
+    for marker in FOREIGN_MARKERS:
+        if re.search(rf"(?<![a-z]){re.escape(marker)}(?![a-z])", low):
+            return True
+    return False
 
 
 # ── Experience extraction ─────────────────────────────────────────────────────
@@ -236,9 +262,11 @@ def valid_url(url: str) -> bool:
 
 # ── Export ────────────────────────────────────────────────────────────────────
 
-def export(db_path: str, role: str, min_score: float, limit: int) -> Dict[str, Any]:
+def export(db_path: str, role: str, min_score: float, limit: int, max_days: int = 21) -> Dict[str, Any]:
     if not os.path.exists(db_path):
         raise SystemExit(f"[export] DB not found: {db_path}")
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_days)).date().isoformat()
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -261,6 +289,7 @@ def export(db_path: str, role: str, min_score: float, limit: int) -> Dict[str, A
     seen = set()
     sources: Dict[str, int] = {}
     dropped_foreign = 0
+    dropped_stale = 0
 
     for row in rows:
         url = (row["url"] or "").strip()
@@ -285,6 +314,13 @@ def export(db_path: str, role: str, min_score: float, limit: int) -> Dict[str, A
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", posted):
             fallback = (row["last_seen"] or row["first_seen"] or "")[:10]
             posted = fallback if re.match(r"^\d{4}-\d{2}-\d{2}$", fallback) else ""
+
+        # Never publish jobs that have aged out. The scraper DB ships inside the
+        # vendor repos, so without this a fresh clone would re-publish months-old
+        # rows (e.g. Indeed/Shine) as if they were current.
+        if posted and posted < cutoff:
+            dropped_stale += 1
+            continue
 
         job = {
             "id": str(row["job_id"] or key),
@@ -327,7 +363,7 @@ def export(db_path: str, role: str, min_score: float, limit: int) -> Dict[str, A
 
     print(
         f"[export] role={role} jobs={len(jobs)} sources={len(sources)} "
-        f"dropped_foreign={dropped_foreign}",
+        f"dropped_foreign={dropped_foreign} dropped_stale={dropped_stale}",
         file=sys.stderr,
     )
     return payload
@@ -340,9 +376,10 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="Output JSON path")
     parser.add_argument("--min-score", type=float, default=25.0)
     parser.add_argument("--limit", type=int, default=800)
+    parser.add_argument("--max-days", type=int, default=21, help="Drop jobs older than this (days)")
     args = parser.parse_args()
 
-    payload = export(args.db, args.role, args.min_score, args.limit)
+    payload = export(args.db, args.role, args.min_score, args.limit, args.max_days)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:

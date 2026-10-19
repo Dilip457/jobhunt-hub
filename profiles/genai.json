@@ -3,7 +3,7 @@
   "label": "GenAI",
   "repo": "Dilip457/Job-Hunt-for-GenAI-Profile",
   "db": "genai_jobs.db",
-  "sources": ["playwright", "linkedin", "naukri", "indeed", "foundit", "company_pages"],
+  "sources": ["playwright", "linkedin", "company_pages"],
   "playwright": true,
   "keywords": ["Generative AI Engineer", "LLM Engineer", "Machine Learning Engineer", "AI Engineer"],
   "cities": ["Hyderabad", "Bangalore", "Pune"],

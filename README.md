@@ -16,7 +16,8 @@ A public, daily-updated job portal for three role tracks — **GenAI**, **Data E
 GitHub Actions (07:00 IST or manual — runs entirely in the cloud, no PC needed)
   ├─ checkout each scraper repo
   ├─ patch config for pan-India search
-  ├─ run pipeline → SQLite            (LinkedIn, company pages, Indeed/Shine)
+  ├─ run pipeline → SQLite            (LinkedIn + company career pages)
+  ├─ fetch company ATS boards         (Greenhouse/Lever/Ashby/SmartRecruiters — no key)
   ├─ fetch official job APIs          (Adzuna, Jooble, Google Jobs, Remotive, …)
   └─ export compact JSON (no PII, no full descriptions)
             │
@@ -44,7 +45,8 @@ jobhunt-hub/
 ├─ .github/workflows/scrape.yml   # cron + manual dispatch + publish
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
-│  ├─ api_sources.py              # cloud-safe job APIs (Adzuna, Jooble, …)
+│  ├─ api_sources.py              # cloud-safe sources: ATS boards + job APIs
+│  ├─ companies.json              # company ATS tokens (edit freely, no key)
 │  ├─ export.py                   # SQLite → compact public JSON
 │  ├─ publish.py                  # rebuild the orphan `data` branch (merges)
 │  ├─ matrix.py                   # workflow matrix helper
@@ -106,11 +108,15 @@ work from any IP and need no machine of your own. They are a normal part of
 
 | Source | What it adds | Key needed |
 |---|---|---|
+| **Company ATS boards** | Real openings pulled straight from companies' own hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters) | **none** — public JSON, works from any IP |
 | **Adzuna** | Aggregated India listings across many boards | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (free) |
 | **Jooble** | Aggregated India listings | `JOOBLE_API_KEY` (free) |
 | **Google Jobs** (JSearch) | Google-for-Jobs index — surfaces Naukri/Indeed/Foundit postings | `JSEARCH_API_KEY` (free tier) |
 | **Remotive** | Remote roles | none |
 | **Himalayas** | Remote roles | none |
+
+The ATS board list lives in `automation/companies.json` — add any company token you
+like; invalid ones are skipped automatically. No signup, no card, no key.
 
 **Missing keys are simply skipped**, so the site keeps working with whatever you configure.
 Results are filtered to India + Remote and de-duplicated against the scraper output.
@@ -238,18 +244,23 @@ Scrapers and APIs fail in different ways, so the pipeline uses both:
 | Source | Cloud (GitHub Actions) | Notes |
 |---|---|---|
 | LinkedIn | ✅ works | guest API |
-| Company career pages | ✅ works | direct sites |
-| Indeed / Shine (UI/UX) | ✅ sometimes | scraper |
-| **Adzuna / Jooble / Google Jobs** | ✅ works (with keys) | official APIs, no PC |
-| Naukri / Foundit (direct scrape) | ❌ `406` / dead API | only via Google Jobs or the optional local agent |
+| Company ATS boards | ✅ works | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
+| Adzuna / Jooble / Google Jobs | ✅ works (with keys) | official APIs, no PC |
+| Indeed / Shine (UI/UX scrape) | ❌ now returns 0 | portal changed; stale rows are filtered out |
+| Naukri / Foundit / others (direct scrape) | ❌ `406` / dead API | never worked from the cloud |
+
+> **Why the portal sometimes showed months-old jobs:** the vendor repos commit their
+> `jobs.db` to git, so a fresh CI checkout contained old Indeed/Shine rows that were
+> re-published as if current. `export.py` now drops anything older than `--max-days`
+> (21 by default), so only fresh listings are published.
 
 The design degrades gracefully:
 
 - Each role runs in its own cloud job; one failure does not stop the others.
-- API sources are attempted even if every scraper is blocked, so the portal is never empty.
-- A pipeline or export error no longer aborts the run — API jobs are still written.
+- ATS boards and APIs are attempted even if every scraper is blocked, so the portal is never empty.
+- A pipeline or export error no longer aborts the run — ATS/API jobs are still written.
 - `publish` runs with `if: always()` and **merges**, so data is never removed.
-- Missing API keys are skipped silently.
+- Missing API keys are skipped silently; ATS boards need no keys at all.
 
 Playwright is enabled per profile (`"playwright": true`) and is only used by the optional
 local agent; the cloud workflow runs with `--no-playwright` to stay fast.

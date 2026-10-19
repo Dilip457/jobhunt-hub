@@ -23,6 +23,7 @@ Usage (usually called by run_source.py):
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as cf
 import json
 import os
 import re
@@ -37,6 +38,7 @@ from export import (
     canonical_url,
     clean_company,
     clean_title,
+    looks_foreign,
     make_snippet,
     normalize_location,
     valid_url,
@@ -134,9 +136,15 @@ def search_terms(role: str) -> List[str]:
     return ROLE_SEARCH_TERMS.get(role, ["jobs"])
 
 
+def _hit(token: str, text: str) -> bool:
+    if len(token) <= 3:
+        return re.search(rf"\b{re.escape(token)}\b", text) is not None
+    return token in text
+
+
 def title_relevant(role: str, title: str) -> bool:
     low = (title or "").lower()
-    return any(token in low for token in ROLE_TITLE_TOKENS.get(role, []))
+    return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
 
 
 def score_job(role: str, title: str, snippet: str) -> float:
@@ -144,7 +152,7 @@ def score_job(role: str, title: str, snippet: str) -> float:
     title_l = (title or "").lower()
     score = 30.0
     for token in ROLE_TITLE_TOKENS.get(role, []):
-        if token in title_l:
+        if _hit(token, title_l):
             score += 8
     for skill in ROLE_SKILLS.get(role, []):
         if skill in text:
@@ -166,6 +174,8 @@ def build_job(
     if not valid_url(url):
         return None
     if not title_relevant(role, title):
+        return None
+    if looks_foreign(title):
         return None
     city, keep = norm_location(location)
     if not keep:
@@ -327,24 +337,182 @@ def fetch_himalayas(role: str, max_days: int) -> List[Dict[str, Any]]:
     return jobs
 
 
+# ── Company ATS boards (keyless, public JSON) ─────────────────────────────────
+#
+# Naukri / Indeed / Foundit block datacenter IPs *and* now return nothing even
+# from a home IP, so we read companies' own careers systems instead. These
+# endpoints are official, public, need no key and no card, and answer fine from
+# GitHub Actions. The company list lives in companies.json.
+
+COMPANIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "companies.json")
+CAREERS_SOURCE = "Company Career Pages"
+
+
+def load_companies() -> Dict[str, List[str]]:
+    try:
+        with open(COMPANIES_FILE, encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+    except Exception:
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, list) and not k.startswith("_")}
+
+
+def pretty(token: str) -> str:
+    return " ".join(part.capitalize() for part in str(token).replace("_", "-").split("-") if part)
+
+
+def _greenhouse(token: str, role: str) -> List[Dict[str, Any]]:
+    data = get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs")
+    jobs = []
+    for item in data.get("jobs", []):
+        places = ((item.get("location") or {}).get("name") or "").strip()
+        if not places:
+            continue
+        job = build_job(
+            role, CAREERS_SOURCE,
+            item.get("title", ""),
+            pretty(token),
+            places,
+            item.get("absolute_url", ""),
+            "",
+            to_date(item.get("updated_at") or item.get("first_published")),
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _lever(token: str, role: str) -> List[Dict[str, Any]]:
+    data = get_json(f"https://api.lever.co/v0/postings/{token}", params={"mode": "json"})
+    jobs = []
+    for item in (data if isinstance(data, list) else []):
+        places = ((item.get("categories") or {}).get("location") or "").strip()
+        if not places:
+            continue
+        job = build_job(
+            role, CAREERS_SOURCE,
+            item.get("text", ""),
+            pretty(token),
+            places,
+            item.get("hostedUrl", ""),
+            item.get("descriptionPlain") or "",
+            to_date(item.get("createdAt")),
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _ashby(token: str, role: str) -> List[Dict[str, Any]]:
+    data = get_json(f"https://api.ashbyhq.com/posting-api/job-board/{token}")
+    jobs = []
+    for item in data.get("jobs", []):
+        if item.get("isListed") is False:
+            continue
+        places = (item.get("location") or item.get("locationName") or "").strip()
+        if not places:
+            continue
+        job = build_job(
+            role, CAREERS_SOURCE,
+            item.get("title", ""),
+            pretty(token),
+            places,
+            item.get("jobUrl") or item.get("applyUrl") or "",
+            item.get("descriptionPlain") or "",
+            to_date(item.get("publishedAt")),
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _smartrecruiters(token: str, role: str) -> List[Dict[str, Any]]:
+    data = get_json(
+        f"https://api.smartrecruiters.com/v1/companies/{token}/postings",
+        params={"limit": 100},
+    )
+    jobs = []
+    for item in data.get("content", []):
+        loc = item.get("location") or {}
+        places = ", ".join(p for p in [loc.get("city"), loc.get("region") or loc.get("country")] if p).strip()
+        if not places:
+            continue
+        job = build_job(
+            role, CAREERS_SOURCE,
+            item.get("name", ""),
+            pretty(token),
+            places,
+            f"https://jobs.smartrecruiters.com/{token}/{item.get('id')}",
+            "",
+            to_date(item.get("releasedDate")),
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+_ATS_FETCHERS = {
+    "greenhouse": _greenhouse,
+    "lever": _lever,
+    "ashby": _ashby,
+    "smartrecruiters": _smartrecruiters,
+}
+
+
+def fetch_ats(role: str, max_days: int) -> List[Dict[str, Any]]:
+    companies = load_companies()
+    targets = [
+        (ats, token)
+        for ats, tokens in companies.items()
+        for token in tokens
+        if ats in _ATS_FETCHERS
+    ]
+    if not targets:
+        return []
+    jobs: List[Dict[str, Any]] = []
+    with cf.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(_ATS_FETCHERS[ats], token, role): (ats, token) for ats, token in targets}
+        for future in cf.as_completed(futures):
+            ats, token = futures[future]
+            try:
+                jobs.extend(future.result() or [])
+            except Exception:
+                continue
+    return jobs
+
+
 SOURCES = (
     ("adzuna", fetch_adzuna),
     ("jooble", fetch_jooble),
     ("jsearch", fetch_jsearch),
     ("remotive", fetch_remotive),
     ("himalayas", fetch_himalayas),
+    ("ats", fetch_ats),
 )
 
 
 # ── Collection / merging ──────────────────────────────────────────────────────
 
-def collect_api_jobs(role: str, profile: Dict[str, Any], max_days: int, min_score: float = 20.0) -> List[Dict[str, Any]]:
+def collect_api_jobs(
+    role: str,
+    profile: Dict[str, Any],
+    max_days: int,
+    min_score: float = 20.0,
+    include_ats: bool = True,
+) -> List[Dict[str, Any]]:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=max_days)).date().isoformat()
     seen = set()
+    seen_roles = set()
     collected: List[Dict[str, Any]] = []
     counts: Dict[str, int] = {}
 
     for name, fetcher in SOURCES:
+        if name == "ats" and not include_ats:
+            continue
         try:
             found = fetcher(role, max_days) or []
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
@@ -361,10 +529,19 @@ def collect_api_jobs(role: str, profile: Dict[str, Any], max_days: int, min_scor
             key = canonical_url(job["url"])
             if not key or key in seen:
                 continue
+            # Collapse the same role relisted under several ATS departments.
+            role_key = (
+                (job.get("company") or "").lower(),
+                (job.get("title") or "").lower(),
+                (job.get("location") or "").lower(),
+            )
+            if role_key in seen_roles:
+                continue
             stamp = (job.get("posted_date") or "")[:10]
             if stamp and stamp < cutoff:
                 continue
             seen.add(key)
+            seen_roles.add(role_key)
             collected.append(job)
             kept += 1
         counts[name] = kept
@@ -409,6 +586,7 @@ def main() -> None:
     parser.add_argument("--profile", default=None)
     parser.add_argument("--max-days", type=int, default=14)
     parser.add_argument("--min-score", type=float, default=20.0)
+    parser.add_argument("--no-ats", action="store_true", help="Skip company ATS boards")
     args = parser.parse_args()
 
     profile: Dict[str, Any] = {}
@@ -419,7 +597,7 @@ def main() -> None:
     if args.min_score == 20.0 and profile.get("min_score") is not None:
         args.min_score = float(profile["min_score"])
 
-    jobs = collect_api_jobs(args.role, profile, args.max_days, args.min_score)
+    jobs = collect_api_jobs(args.role, profile, args.max_days, args.min_score, include_ats=not args.no_ats)
     payload = merge_api_jobs({"role": args.role, "jobs": []}, jobs)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

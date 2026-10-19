@@ -3,7 +3,7 @@
   "label": "Data Engineer",
   "repo": "Dilip457/DataEngineer_JobHunt",
   "db": "de_jobs.db",
-  "sources": ["playwright", "linkedin", "naukri", "indeed", "foundit", "company_pages"],
+  "sources": ["playwright", "linkedin", "company_pages"],
   "playwright": true,
   "keywords": ["Data Engineer", "Big Data Engineer", "PySpark Developer", "Cloud Data Engineer"],
   "cities": ["Hyderabad", "Bangalore", "Pune"],
