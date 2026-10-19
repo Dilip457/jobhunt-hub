@@ -59,9 +59,16 @@ ROLE_TITLE_TOKENS = {
     "genai": ["ai", "ml", "machine learning", "generative", "genai", "llm", "nlp",
               "deep learning", "artificial intelligence", "data scientist", "prompt"],
     "data": ["data engineer", "data", "etl", "elt", "big data", "analytics engineer",
-             "spark", "pyspark", "warehouse", "databricks", "snowflake", "sql"],
+             "spark", "pyspark", "data warehouse", "databricks", "snowflake", "sql"],
     "uiux": ["ux", "ui", "designer", "design", "interaction", "visual", "figma",
              "user experience", "product design"],
+}
+
+# Titles that contain a role token but are clearly a different job family.
+ROLE_TITLE_EXCLUDE = {
+    "genai": ["sales", "account executive", "recruiter", "marketing", "support specialist"],
+    "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee"],
+    "uiux": ["mechanical", "hardware", "electrical", "civil", "data center", "instructional"],
 }
 
 ROLE_SKILLS = {
@@ -144,6 +151,8 @@ def _hit(token: str, text: str) -> bool:
 
 def title_relevant(role: str, title: str) -> bool:
     low = (title or "").lower()
+    if any(_hit(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
+        return False
     return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
 
 
