@@ -67,7 +67,7 @@ ROLE_TITLE_TOKENS = {
 # Titles that contain a role token but are clearly a different job family.
 ROLE_TITLE_EXCLUDE = {
     "genai": ["sales", "account executive", "recruiter", "marketing", "support specialist"],
-    "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee"],
+    "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee", "data center"],
     "uiux": ["mechanical", "hardware", "electrical", "civil", "data center", "instructional"],
 }
 
