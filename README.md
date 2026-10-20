@@ -3,7 +3,7 @@
 A public, daily-updated job portal for three role tracks — **GenAI**, **Data Engineering** and **UI/UX** — built from three existing Python scrapers.
 
 - **UI:** Next.js on Vercel
-- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine) + LinkedIn, plus optional keyless boards (no PC required)
+- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired) + LinkedIn, plus optional keyless boards (no PC required)
 - **Data:** compact JSON on an orphan `data` branch
 - **Database:** none
 - **Cost:** ₹0/month
@@ -18,7 +18,8 @@ GitHub Actions (07:00 IST or manual — runs entirely in the cloud, no PC needed
   ├─ patch config for pan-India search
   ├─ run pipeline → SQLite            (LinkedIn + company career pages)
   ├─ scrape Naukri / Foundit / Indeed / Shine directly
-  │    (plain HTTP for Shine & Foundit, real Chrome via Playwright for Naukri & Indeed)
+  │    (plain HTTP for Shine & Foundit, real Chrome via Playwright for Naukri)
+  ├─ scrape Indeed SEO + SimplyHired through an isolated WARP job
   ├─ optional: keyless ATS boards     (Greenhouse/Lever/Ashby/SmartRecruiters)
   └─ export compact JSON (no PII, no full descriptions)
             │
@@ -46,7 +47,7 @@ jobhunt-hub/
 ├─ .github/workflows/scrape.yml   # cron + manual dispatch + publish
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
-│  ├─ portal_scrapers.py          # direct Naukri / Foundit / Indeed / Shine scrapers
+│  ├─ portal_scrapers.py          # direct Naukri / Foundit / Indeed / Shine / SimplyHired scrapers
 │  ├─ api_sources.py              # optional: ATS boards + job APIs
 │  ├─ companies.json              # company ATS tokens (edit freely, no key)
 │  ├─ export.py                   # SQLite → compact public JSON
