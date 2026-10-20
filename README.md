@@ -248,19 +248,28 @@ If a role's scrape fails or returns zero jobs, the publisher **keeps the previou
 
 ## Refresh flow
 
-1. User clicks **Refresh**.
-2. `POST /api/refresh` checks for an active run and a 25-minute cooldown, then calls the GitHub `workflow_dispatch` API.
-3. The UI polls `/api/status` every 8 seconds.
-4. When the run succeeds, the page re-fetches `/api/jobs?fresh=1` and shows the new `generated_at`.
+The refresh control is **hidden from public visitors** so an accidental click cannot spend a workflow run. It is available only in admin mode:
+
+1. Open `/?admin=1` once. This reveals a small **Refresh** button for the current browser session (stored in `sessionStorage`).
+2. Click **Refresh**, then confirm in the dialog.
+3. `POST /api/refresh` checks for an active run and a 25-minute cooldown, then calls the GitHub `workflow_dispatch` API.
+4. The UI polls `/api/status` every 8 seconds.
+5. When the run succeeds, the page re-fetches `/api/jobs?fresh=1` and shows the new `generated_at`.
 
 Protections:
 
+- Refresh button hidden from the public UI; admin-only via `?admin=1`.
+- Confirmation dialog before a run is dispatched.
 - GitHub Actions `concurrency: jobhunt-scrape` serialises runs.
 - 25-minute cooldown per role (`lib/github.ts`).
 - Same-origin check on the POST route.
 - Seeded data remains visible if GitHub is unreachable.
 - Refresh triggers the **cloud** pass (scrapers + official APIs). Everything runs on
   GitHub's servers; no PC is involved.
+
+Hiding the button is a UX guard, not an authentication boundary: the API route is still
+reachable. The cooldown and one-run concurrency limit keep accidental or repeated use
+bounded. A secret token can be added to the route if hard access control is needed.
 
 ---
 
@@ -371,6 +380,12 @@ git show origin/data:manifest.json
 # local agent (PC, residential IP)
 python automation/agent.py --dry-run --force
 ```
+
+---
+
+## Contact
+
+Feature request, bug, or issue? Email **heyjarvis.03@gmail.com**.
 
 ---
 

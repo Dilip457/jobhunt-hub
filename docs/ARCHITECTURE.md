@@ -28,7 +28,7 @@ It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company car
 3. The results are merged with the previous published data.
 4. The merged JSON is force-pushed to an orphan `data` branch.
 5. Vercel serves a Next.js UI and API routes that read that JSON.
-6. Users can also press **Refresh** to run the same workflow on demand.
+6. An admin can reveal a hidden refresh control and run the same workflow on demand.
 
 The scraper never runs on Vercel. The website never runs on the user's PC. Everything happens on GitHub's runners and Vercel's servers.
 
@@ -355,15 +355,23 @@ After a publish, the site may take roughly **1–5 minutes** to show new data un
 
 ## 9. Manual refresh flow
 
+The refresh control is hidden from public visitors. Open `/?admin=1` once to reveal it for
+the current browser session; the flag is stored in `sessionStorage`, not in the shared URL.
+Clicking **Refresh** opens a confirmation dialog before any workflow is dispatched.
+
 ```mermaid
 sequenceDiagram
-    participant User
+    participant Admin
     participant UI as Dashboard
     participant Refresh as POST /api/refresh
     participant Status as GET /api/status
     participant GH as GitHub Actions
 
-    User->>UI: Click Refresh
+    Admin->>UI: Open /?admin=1
+    UI->>UI: Reveal admin Refresh button
+    Admin->>UI: Click Refresh
+    UI->>UI: Confirm dialog
+    Admin->>UI: Confirm refresh
     UI->>Refresh: { role: "genai" }
     Refresh->>GH: workflow_dispatch
     GH-->>Refresh: 204
@@ -389,6 +397,10 @@ sequenceDiagram
 | Dispatch accepted | `202 { ok: true, role, state: "queued" }` |
 
 A **cancelled** run is reported as `cancelled`, not `failed`.
+
+Hiding the button is a UX guard, not authentication. The endpoint remains reachable and is
+bounded by the cooldown and one-run concurrency; add a server-side token if hard access
+control is required.
 
 ---
 

@@ -9,7 +9,8 @@ import {
   type ExperienceBucket,
 } from "@/lib/utils";
 import Filters from "./Filters";
-import { AlertIcon, CheckIcon, GithubIcon, RefreshIcon, SparkIcon } from "./Icons";
+import { AlertIcon, MailIcon, RefreshIcon, SparkIcon } from "./Icons";
+import ConfirmRefresh from "./ConfirmRefresh";
 import JobCard from "./JobCard";
 import RefreshPanel from "./RefreshPanel";
 import RoleSelect from "./RoleSelect";
@@ -42,6 +43,8 @@ export default function Dashboard() {
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [adminMode, setAdminMode] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshOpen, setRefreshOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -69,6 +72,22 @@ export default function Dashboard() {
     if (exp) setExperience(exp as ExperienceBucket);
     setDateRange(params.get("days") ?? "all");
     setSort(params.get("sort") ?? "score");
+
+    // The refresh control is hidden from public visitors. Opening the site with
+    // ?admin=1 reveals it for this browser session only.
+    try {
+      if (params.get("admin") === "1") {
+        window.sessionStorage.setItem("jobhunt-admin", "1");
+        setAdminMode(true);
+      } else if (params.get("admin") === "0") {
+        window.sessionStorage.removeItem("jobhunt-admin");
+        setAdminMode(false);
+      } else if (window.sessionStorage.getItem("jobhunt-admin") === "1") {
+        setAdminMode(true);
+      }
+    } catch {
+      // sessionStorage can be unavailable in strict privacy modes.
+    }
   }, []);
 
   // ── Load jobs for the selected role ─────────────────────────────────────────
@@ -188,19 +207,28 @@ export default function Dashboard() {
         pushToast("info", "Scrape queued. This usually takes 10–15 minutes.");
         setStatus((current) => (current ? { ...current, state: "queued" } : current));
       } else if (response.status === 409) {
+        setRefreshOpen(false);
         pushToast("info", "A scrape is already running.");
       } else if (response.status === 429) {
+        setRefreshOpen(false);
         const payload = (await response.json()) as { error?: string };
         pushToast("info", payload.error ?? "Please wait before refreshing again.");
       } else if (response.status === 503) {
+        setRefreshOpen(false);
         pushToast("error", "Refresh is not configured on this deployment yet.");
       } else {
+        setRefreshOpen(false);
         pushToast("error", "Could not start the scrape.");
       }
     } catch {
+      setRefreshOpen(false);
       pushToast("error", "Could not reach the refresh service.");
     }
   }
+
+  useEffect(() => {
+    setConfirmOpen(false);
+  }, [role]);
 
   // ── Derived job list ────────────────────────────────────────────────────────
   const jobs = useMemo<Job[]>(() => data?.jobs ?? [], [data]);
@@ -268,15 +296,19 @@ export default function Dashboard() {
 
           <div className="header-actions">
             <RoleSelect value={role} onChange={setRole} />
-            <button
-              type="button"
-              className={`refresh-btn ${running ? "is-running" : ""}`}
-              onClick={triggerRefresh}
-              aria-label="Refresh jobs"
-            >
-              <RefreshIcon width={16} height={16} />
-              {running ? "Scraping…" : "Refresh"}
-            </button>
+            {adminMode ? (
+              <button
+                type="button"
+                className={`admin-refresh-btn ${running ? "is-running" : ""}`}
+                onClick={() => setConfirmOpen(true)}
+                disabled={running}
+                aria-label={running ? "Scrape in progress" : "Refresh jobs"}
+                title={running ? "Scrape in progress" : "Refresh jobs"}
+              >
+                <RefreshIcon width={16} height={16} />
+                {running ? "Scraping…" : "Refresh"}
+              </button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -379,8 +411,8 @@ export default function Dashboard() {
             <ol>
               <li>A GitHub Action scrapes public job listings every morning at 7 AM IST.</li>
               <li>Each listing is scored against a reference profile and de-duplicated.</li>
-              <li>Results are published as JSON, which this portal reads instantly.</li>
-              <li>Press <strong>Refresh</strong> to queue a fresh scrape on demand.</li>
+              <li>Results are published as JSON, which this portal reads.</li>
+              <li>New results appear automatically once a scrape publishes — no account needed.</li>
             </ol>
           </div>
           <div className="explainer-card">
@@ -402,27 +434,26 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
+            <p className="explainer-contact">
+              <MailIcon width={14} height={14} />
+              <span>
+                Feature request, bug, or issue?{" "}
+                <a href="mailto:heyjarvis.03@gmail.com">heyjarvis.03@gmail.com</a>
+              </span>
+            </p>
           </div>
         </section>
       </main>
 
-      <footer className="site-footer">
-        <div className="shell footer-inner">
-          <p>
-            Job listings belong to their respective portals and are linked back to the original
-            source. SimplyHired is Indeed&apos;s sister site and carries the same listings.
-            Match scores are a reference signal, not personalised advice.
-          </p>
-          <span className="footer-badge">
-            <CheckIcon width={14} height={14} />
-            Respectful, rate-limited scraping
-          </span>
-          <a className="footer-link" href="https://github.com" target="_blank" rel="noopener noreferrer">
-            <GithubIcon width={15} height={15} />
-            Source
-          </a>
-        </div>
-      </footer>
+      <ConfirmRefresh
+        open={confirmOpen}
+        roleLabel={roleMeta.label}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void triggerRefresh();
+        }}
+      />
 
       <RefreshPanel
         open={refreshOpen}

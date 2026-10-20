@@ -633,14 +633,18 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 
 `Dashboard.tsx` polls `/api/status` every 8 seconds while queued/running. On `success`, it reloads jobs with `fresh=1` and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
 
+The public UI does **not** show a refresh button. Opening `/?admin=1` sets an admin flag in `sessionStorage` and reveals a small **Refresh** button for that browser session. Clicking it opens a confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. `/?admin=0` clears the flag.
+
 ### 6.6 UI
 
 - Role dropdown: GenAI / Data Engineer / UI/UX.
 - Filters: search, city, source, experience bucket, minimum score, sort.
 - Job card: title, company, location, experience, posted date, snippet, source badge, score tier, Apply button.
-- Footer: `Posted <relative> · First seen <relative>`.
+- Job card date line: `Posted <relative> · First seen <relative>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
 - `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
+- Contact link in the “Being built in the open” card: `mailto:heyjarvis.03@gmail.com`.
+- No site footer; the contact link stays inside the explainer card.
 
 ### 6.7 Environment variables
 

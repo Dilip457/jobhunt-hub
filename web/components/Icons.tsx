@@ -99,6 +99,15 @@ export function SparkIcon(props: IconProps) {
   );
 }
 
+export function MailIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
+
 export function BriefcaseIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
