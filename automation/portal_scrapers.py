@@ -366,28 +366,42 @@ def _fetch_indeed_http(role: str, profile: Dict[str, Any]) -> List[Dict[str, Any
 
     jobs: List[Dict[str, Any]] = []
     session = cffi_requests.Session()
+    warp_mode = os.environ.get("WARP_SYSTEM") == "1"
+    warp_ready = not warp_mode
+    request_timeout = 20 if warp_mode else 40
 
-    if os.environ.get("WARP_SYSTEM") == "1":
+    if warp_mode:
         probe = "https://in.indeed.com/q-ui-ux-designer-l-bangalore-jobs.html"
         for attempt in range(1, 4):
             try:
-                response = session.get(probe, impersonate="chrome", timeout=40)
+                response = session.get(probe, impersonate="chrome", timeout=request_timeout)
             except Exception as exc:
                 print(f"[portal] indeed: WARP probe error {exc}", file=sys.stderr)
                 response = None
             if response is not None and response.status_code == 200 and "job_seen_beacon" in response.text:
                 print(f"[portal] indeed: WARP IP accepted (attempt {attempt})", file=sys.stderr)
+                warp_ready = True
                 break
             status = response.status_code if response is not None else "?"
             print(f"[portal] indeed: WARP IP rejected ({status}); reconnecting", file=sys.stderr)
             if not _warp_reconnect():
                 break
+        if not warp_ready:
+            print("[portal] indeed: no clean WARP IP; skipping", file=sys.stderr)
+            return []
 
     for query in _queries(role):
         for city in _cities(profile):
-            for url in _indeed_variants(query, city):
+            variants = _indeed_variants(query, city)
+            if warp_mode:
+                # Desktop and mobile always return 401/403 through WARP; the
+                # server-rendered SEO page is the only surface worth trying.
+                variants = [variants[-1]]
+            for url in variants:
                 try:
-                    response = session.get(url, impersonate="chrome", timeout=40, **_proxy_kwargs())
+                    response = session.get(
+                        url, impersonate="chrome", timeout=request_timeout, **_proxy_kwargs()
+                    )
                 except Exception as exc:
                     print(f"[portal] indeed {url}: {exc}", file=sys.stderr)
                     continue
