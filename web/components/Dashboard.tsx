@@ -407,7 +407,8 @@ export default function Dashboard() {
         <div className="shell footer-inner">
           <p>
             Job listings belong to their respective portals and are linked back to the original
-            source. Match scores are a reference signal, not personalised advice.
+            source. SimplyHired is Indeed&apos;s sister site and carries the same listings.
+            Match scores are a reference signal, not personalised advice.
           </p>
           <span className="footer-badge">
             <CheckIcon width={14} height={14} />
