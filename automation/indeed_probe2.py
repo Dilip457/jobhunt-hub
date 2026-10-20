@@ -11,6 +11,7 @@ the status plus the number of job cards in the returned HTML.
 from __future__ import annotations
 
 import re
+import urllib.request
 
 from curl_cffi import requests
 
@@ -24,6 +25,11 @@ URLS = [
 
 
 def main() -> None:
+    try:
+        ip = urllib.request.urlopen("https://api.ipify.org", timeout=10).read().decode().strip()
+    except Exception:
+        ip = "unknown"
+    print(f"[probe2] public_ip={ip}")
     for name, url in URLS:
         try:
             response = requests.get(url, impersonate="chrome", timeout=40)

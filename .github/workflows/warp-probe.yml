@@ -1,0 +1,46 @@
+name: Diagnose Indeed via WARP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warp-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout portal
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install curl_cffi
+        run: |
+          python -m pip install --upgrade pip
+          pip install curl_cffi
+
+      - name: Baseline (no WARP)
+        run: python automation/indeed_probe2.py
+
+      - name: Install and connect Cloudflare WARP
+        continue-on-error: true
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cloudflare-warp
+          warp-cli --accept-tos registration new || true
+          warp-cli --accept-tos connect || true
+          sleep 8
+          warp-cli --accept-tos status || true
+          curl -s https://cloudflare.com/cdn-cgi/trace || true
+
+      - name: Probe through WARP
+        run: python automation/indeed_probe2.py
