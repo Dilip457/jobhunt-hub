@@ -61,11 +61,6 @@ def merge_payloads(
     """Union two role payloads so a lighter run never removes richer data."""
     merged: Dict[str, Dict[str, Any]] = {}
 
-    # Payloads published before this change stored the portal's posted date in
-    # first_seen for every non-LinkedIn source. Treat those as legacy once, so
-    # existing jobs switch to a real scrape date after the next publish.
-    legacy_previous = previous.get("first_seen_semantics") != "scrape"
-
     for source in (previous, fresh):
         for job in source.get("jobs", []):
             key = _job_key(job)
@@ -80,16 +75,14 @@ def merge_payloads(
             else:
                 merged_job = {**job, **current}
 
-            # "First seen" must mean the first time our scraper collected the
-            # job, so keep the oldest value across runs. LinkedIn already used
-            # a real first-seen date; the portal scrapers used the posted date.
-            previous_seen = current.get("first_seen")
-            fresh_seen = job.get("first_seen")
-            if legacy_previous and (job.get("source") or "") != "LinkedIn":
-                merged_job["first_seen"] = fresh_seen or previous_seen
-            else:
-                stamps = [value for value in (previous_seen, fresh_seen) if value]
-                merged_job["first_seen"] = min(stamps) if stamps else None
+            # "First seen" is the first time our scraper collected the job, so
+            # keep the oldest value across runs. A job that was already known
+            # must not look newly scraped just because it appeared again.
+            # Older payloads stored the posted date here; keeping the minimum
+            # preserves that older listing date instead of relabelling
+            # long-known jobs as new.
+            stamps = [value for value in (current.get("first_seen"), job.get("first_seen")) if value]
+            merged_job["first_seen"] = min(stamps) if stamps else None
 
             merged[key] = merged_job
 
@@ -117,8 +110,6 @@ def merge_payloads(
         "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
         "jobs": jobs,
         "demo": False,
-        # Tells the next publish that first_seen now means scrape date.
-        "first_seen_semantics": "scrape",
     }
 
 
