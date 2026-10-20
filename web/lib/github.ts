@@ -115,6 +115,7 @@ function toState(run: ActionsRun): StatusResponse["state"] {
   if (run.status === "queued" || run.status === "requested" || run.status === "waiting") return "queued";
   if (run.status === "in_progress") return "running";
   if (run.conclusion === "success") return "success";
+  if (run.conclusion === "cancelled") return "cancelled";
   if (run.conclusion) return "failed";
   return "idle";
 }

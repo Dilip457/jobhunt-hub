@@ -57,7 +57,7 @@ export interface Manifest {
   roles: Partial<Record<RoleSlug, ManifestRole>>;
 }
 
-export type RunState = "idle" | "queued" | "running" | "success" | "failed";
+export type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelled";
 
 export interface StatusResponse {
   configured: boolean;

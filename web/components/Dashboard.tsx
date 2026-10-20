@@ -154,6 +154,9 @@ export default function Dashboard() {
       } else if (status.state === "failed") {
         pushToast("error", "The scrape failed. Check the run log.");
         setRefreshOpen(false);
+      } else if (status.state === "cancelled") {
+        pushToast("info", "The scrape was cancelled before it finished.");
+        setRefreshOpen(false);
       }
     }
     previousState.current = status.state;

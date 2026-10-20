@@ -23,7 +23,7 @@ const STEPS = [
 
 function activeStep(state: RunState, elapsed: number): number {
   if (state === "success") return STEPS.length;
-  if (state === "failed" || state === "idle") return -1;
+  if (state === "failed" || state === "cancelled" || state === "idle") return -1;
   if (state === "queued") return 0;
   if (elapsed < 420) return 1;
   if (elapsed < 780) return 2;
@@ -61,6 +61,8 @@ export default function RefreshPanel({
                 ? "Fresh jobs are live"
                 : state === "failed"
                 ? "Scrape failed"
+                : state === "cancelled"
+                ? "Scrape cancelled"
                 : `Refreshing ${roleLabel}`}
             </h2>
             <p className="modal-sub">
@@ -70,6 +72,8 @@ export default function RefreshPanel({
                 ? "Results have been published and loaded."
                 : state === "failed"
                 ? "Check the GitHub Actions log for details."
+                : state === "cancelled"
+                ? "The run was cancelled before it finished. You can try again."
                 : `Live scraping takes about 10–15 minutes · ${formatDuration(elapsed)} elapsed`}
             </p>
           </div>
