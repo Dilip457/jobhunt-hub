@@ -288,9 +288,76 @@ def fetch_naukri(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
     return jobs
 
 
-# ── Indeed (real Chrome) ─────────────────────────────────────────────────────
+# ── Indeed (Chrome TLS fingerprint, browser fallback) ────────────────────────
 
-def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+def _indeed_variants(query: str, city: str) -> List[str]:
+    return [
+        "https://in.indeed.com/jobs?" + urllib.parse.urlencode({"q": query, "l": city}),
+        "https://in.indeed.com/m/jobs?" + urllib.parse.urlencode({"q": query, "l": city}),
+        f"https://in.indeed.com/q-{_slug(query)}-l-{_slug(city)}-jobs.html",
+    ]
+
+
+def _parse_indeed_html(role: str, html: str) -> List[Dict[str, Any]]:
+    jobs: List[Dict[str, Any]] = []
+    soup = BeautifulSoup(html, "lxml")
+    for card in soup.select("div.job_seen_beacon"):
+        anchor = card.select_one("h3.jobTitle a") or card.select_one("a.jobTitle")
+        if not anchor:
+            continue
+        jk = anchor.get("data-jk") or ""
+        if not jk:
+            match = re.search(r"[?&]jk=([0-9a-zA-Z]+)", anchor.get("href", ""))
+            jk = match.group(1) if match else ""
+        if not jk:
+            continue
+        job = build_job(
+            role, "Indeed",
+            _text(anchor.select_one("span") or anchor),
+            _text(card.select_one('[data-testid="company-name"]')),
+            _text(card.select_one('[data-testid="text-location"]')),
+            f"https://in.indeed.com/viewjob?jk={jk}",
+            _text(card.select_one(".job-snippet")),
+            datetime.now(timezone.utc).date().isoformat(),
+            jk,
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _fetch_indeed_http(role: str, profile: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Indeed is behind Cloudflare: plain requests and headless Chrome both get
+    a 'Just a moment...' challenge from datacenter IPs. curl_cffi reproduces
+    Chrome's TLS/JA3 fingerprint, which often passes and returns the
+    server-rendered HTML (no JS needed)."""
+    try:
+        from curl_cffi import requests as cffi_requests
+    except Exception as exc:
+        print(f"[portal] indeed: curl_cffi unavailable ({exc})", file=sys.stderr)
+        return []
+
+    jobs: List[Dict[str, Any]] = []
+    session = cffi_requests.Session()
+    for query in _queries(role):
+        for city in _cities(profile):
+            for url in _indeed_variants(query, city):
+                try:
+                    response = session.get(url, impersonate="chrome", timeout=40)
+                except Exception as exc:
+                    print(f"[portal] indeed {url}: {exc}", file=sys.stderr)
+                    continue
+                if response.status_code == 200 and "job_seen_beacon" in response.text:
+                    found = _parse_indeed_html(role, response.text)
+                    jobs.extend(found)
+                    if found:
+                        break
+                elif response.status_code == 403:
+                    print(f"[portal] indeed 403 (Cloudflare) {url}", file=sys.stderr)
+    return jobs
+
+
+def _fetch_indeed_browser(role: str, profile: Dict[str, Any]) -> List[Dict[str, Any]]:
     jobs: List[Dict[str, Any]] = []
     cities = _cities(profile)
     pw = browser = ctx = None
@@ -298,29 +365,18 @@ def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
         pw, browser = _open_browser()
         ctx, page = _new_page(browser)
 
-        # Warm up the session. If the homepage itself is blocked, every search
-        # will fail, so skip the source instead of trying 12 URLs.
         try:
             home = page.goto("https://in.indeed.com/", wait_until="domcontentloaded", timeout=45000)
             page.wait_for_timeout(2500)
             if home and home.status >= 400:
-                print(
-                    f"[portal] indeed: homepage {home.status}; skipping (runner IP blocked)",
-                    file=sys.stderr,
-                )
+                print(f"[portal] indeed: homepage {home.status}; browser fallback skipped", file=sys.stderr)
                 return []
         except Exception as exc:
             print(f"[portal] indeed: homepage error {exc}", file=sys.stderr)
 
         for query in _queries(role):
             for city in cities:
-                variants = [
-                    "https://in.indeed.com/jobs?"
-                    + urllib.parse.urlencode({"q": query, "l": city}),
-                    "https://in.indeed.com/m/jobs?"
-                    + urllib.parse.urlencode({"q": query, "l": city}),
-                    f"https://in.indeed.com/q-{_slug(query)}-l-{_slug(city)}-jobs.html",
-                ]
+                variants = _indeed_variants(query, city)
                 resp = None
                 used = ""
                 for url in variants:
@@ -342,30 +398,7 @@ def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
                     continue
                 if used != variants[0]:
                     print(f"[portal] indeed fallback OK: {used}", file=sys.stderr)
-
-                soup = BeautifulSoup(page.content(), "lxml")
-                for card in soup.select("div.job_seen_beacon"):
-                    anchor = card.select_one("h3.jobTitle a") or card.select_one("a.jobTitle")
-                    if not anchor:
-                        continue
-                    jk = anchor.get("data-jk") or ""
-                    if not jk:
-                        m = re.search(r"[?&]jk=([0-9a-zA-Z]+)", anchor.get("href", ""))
-                        jk = m.group(1) if m else ""
-                    if not jk:
-                        continue
-                    job = build_job(
-                        role, "Indeed",
-                        _text(anchor.select_one("span") or anchor),
-                        _text(card.select_one('[data-testid="company-name"]')),
-                        _text(card.select_one('[data-testid="text-location"]')),
-                        f"https://in.indeed.com/viewjob?jk={jk}",
-                        _text(card.select_one(".job-snippet")),
-                        datetime.now(timezone.utc).date().isoformat(),
-                        jk,
-                    )
-                    if job:
-                        jobs.append(job)
+                jobs.extend(_parse_indeed_html(role, page.content()))
                 time.sleep(3)
     finally:
         if ctx:
@@ -375,6 +408,17 @@ def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
         if pw:
             pw.stop()
     return jobs
+
+
+def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    """Try the fast TLS-impersonation path first; only start a browser if it
+    returns nothing (e.g. Cloudflare changed its challenge)."""
+    jobs = _fetch_indeed_http(role, profile)
+    if jobs:
+        print(f"[portal] indeed: {len(jobs)} jobs via curl_cffi", file=sys.stderr)
+        return jobs
+    print("[portal] indeed: HTTP path empty; trying browser", file=sys.stderr)
+    return _fetch_indeed_browser(role, profile)
 
 
 # ── Collection ────────────────────────────────────────────────────────────────
