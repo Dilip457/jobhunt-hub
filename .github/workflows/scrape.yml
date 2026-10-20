@@ -74,14 +74,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r "vendor/${{ matrix.role }}/requirements.txt"
 
+      - name: Install Playwright for portal scrapers
+        working-directory: portal
+        run: |
+          pip install -r automation/requirements.txt
+          python -m playwright install --with-deps chromium
+
       - name: Run pipeline and export JSON
         working-directory: portal
         env:
           PYTHONUNBUFFERED: "1"
-          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
-          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
-          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
-          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
         run: |
           python automation/run_source.py \
             --role "${{ matrix.role }}" \
@@ -89,6 +91,7 @@ jobs:
             --repo-dir "${{ github.workspace }}/vendor/${{ matrix.role }}" \
             --out "artifacts/${{ matrix.role }}.json" \
             --no-playwright \
+            --no-apis \
             --no-validate
 
       - name: Upload role artifact

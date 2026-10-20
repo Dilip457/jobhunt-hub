@@ -250,6 +250,23 @@ def run(args) -> int:
             "jobs": [],
         }
 
+    # Direct portal scrapers (Naukri, Foundit, Indeed, Shine). These are the
+    # primary sources: no API keys, no accounts, no signups.
+    if not getattr(args, "no_portal", False):
+        try:
+            from portal_scrapers import collect_portal_jobs, merge_portal_jobs
+
+            portal_jobs = collect_portal_jobs(
+                args.role,
+                getattr(args, "profile_data", {}) or {},
+                args.max_days,
+                args.min_score,
+            )
+            payload = merge_portal_jobs(payload, portal_jobs)
+            print(f"[run_source] portal scrapers merged: {len(portal_jobs)} jobs")
+        except Exception as exc:
+            print(f"[run_source] portal scrapers skipped: {exc}")
+
     # Cloud-safe API sources (Adzuna, Jooble, Google Jobs, Remotive, Himalayas).
     # Always attempted, so the portal still gets data even when every scraper is blocked.
     if not args.no_apis:
@@ -301,6 +318,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=800)
     parser.add_argument("--max-keywords", type=int, default=0, help="Truncate keyword lists (debugging)")
     parser.add_argument("--no-playwright", action="store_true", help="Skip the browser source")
+    parser.add_argument("--no-portal", action="store_true", help="Skip the direct portal scrapers")
     parser.add_argument("--no-apis", action="store_true", help="Skip the cloud-safe API sources")
     parser.add_argument("--no-ats", action="store_true", help="Skip company ATS boards")
     parser.add_argument("--no-validate", action="store_true")

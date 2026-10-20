@@ -3,7 +3,7 @@
 A public, daily-updated job portal for three role tracks — **GenAI**, **Data Engineering** and **UI/UX** — built from three existing Python scrapers.
 
 - **UI:** Next.js on Vercel
-- **Scraper:** GitHub Actions only — scrapers **plus official job APIs** (no PC required)
+- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine) + LinkedIn, plus optional keyless boards (no PC required)
 - **Data:** compact JSON on an orphan `data` branch
 - **Database:** none
 - **Cost:** ₹0/month
@@ -17,8 +17,9 @@ GitHub Actions (07:00 IST or manual — runs entirely in the cloud, no PC needed
   ├─ checkout each scraper repo
   ├─ patch config for pan-India search
   ├─ run pipeline → SQLite            (LinkedIn + company career pages)
-  ├─ fetch company ATS boards         (Greenhouse/Lever/Ashby/SmartRecruiters — no key)
-  ├─ fetch official job APIs          (Adzuna, Jooble, Google Jobs, Remotive, …)
+  ├─ scrape Naukri / Foundit / Indeed / Shine directly
+  │    (plain HTTP for Shine & Foundit, real Chrome via Playwright for Naukri & Indeed)
+  ├─ optional: keyless ATS boards     (Greenhouse/Lever/Ashby/SmartRecruiters)
   └─ export compact JSON (no PII, no full descriptions)
             │
             ▼
@@ -45,7 +46,8 @@ jobhunt-hub/
 ├─ .github/workflows/scrape.yml   # cron + manual dispatch + publish
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
-│  ├─ api_sources.py              # cloud-safe sources: ATS boards + job APIs
+│  ├─ portal_scrapers.py          # direct Naukri / Foundit / Indeed / Shine scrapers
+│  ├─ api_sources.py              # optional: ATS boards + job APIs
 │  ├─ companies.json              # company ATS tokens (edit freely, no key)
 │  ├─ export.py                   # SQLite → compact public JSON
 │  ├─ publish.py                  # rebuild the orphan `data` branch (merges)
@@ -97,21 +99,56 @@ python automation/run_source.py \
 
 The wrapper patches the vendor repo in memory (pan-India locations, no hard experience rejects, no dashboard generation). It does not edit the scraper repos.
 
+The direct portal scrapers need Playwright for Naukri/Indeed:
+
+```bash
+pip install playwright
+python -m playwright install chromium   # Skips if you already have Chrome (used via channel="chrome")
+```
+
+Run only the portal scrapers, without any vendor repo:
+
+```bash
+python automation/portal_scrapers.py --role uiux --profile profiles/uiux.json \
+  --out artifacts/uiux.portal.json
+```
+
 ---
 
-## Cloud-safe job API sources
+## Direct portal scrapers (primary)
 
-Naukri, Indeed and Foundit block datacenter IPs, so scraping alone can never see them from
-GitHub's runners. Instead the pipeline also queries **official / public job APIs**, which
-work from any IP and need no machine of your own. They are a normal part of
-`run_source.py` (see `automation/api_sources.py`) and run in the same cloud job.
+The vendor repos' Naukri/Indeed/Foundit scrapers are out of date. `automation/portal_scrapers.py`
+replaces them with four portal-specific scrapers that run inside the same GitHub Actions job —
+**no API key, no account, no signup**:
+
+| Portal | How it is read | Speed |
+|---|---|---|
+| **Naukri** | real Chrome (Playwright) renders the search page; job cards are parsed from the DOM | ~5s per query/city |
+| **Indeed** | real Chrome renders `in.indeed.com`; cards are parsed from the DOM | ~7s per query/city |
+| **Foundit** | its own public `/middleware/jobsearch` JSON endpoint | instant |
+| **Shine** | server-rendered HTML search pages | instant |
+
+Why a real Chrome? Naukri's bot wall returns `403 Access Denied` to Playwright's bundled
+headless shell, but accepts the system Chrome. The workflow installs Playwright and launches
+`channel="chrome"` (Google Chrome is preinstalled on GitHub's Ubuntu runners).
+
+Each source is filtered to India/Remote, scored with the same role rules, de-duplicated by
+URL **and** by `(company, title, location)`, then merged with LinkedIn and any other sources.
+If a portal refuses the runner's IP on a given day, it reports 0 for that run and the rest
+still publish.
+
+### Optional: keyless ATS boards and job APIs
+
+`automation/api_sources.py` still contains keyless company ATS boards and optional official
+APIs. They are **off in the cloud workflow** (`--no-apis`) because the direct scrapers are the
+primary source; remove the flag to re-enable them.
 
 | Source | What it adds | Key needed |
 |---|---|---|
-| **Company ATS boards** | Real openings pulled straight from companies' own hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters) | **none** — public JSON, works from any IP |
+| **Company ATS boards** | Real openings pulled straight from companies' own hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters) | **none** — public JSON |
 | **Adzuna** | Aggregated India listings across many boards | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (free) |
 | **Jooble** | Aggregated India listings | `JOOBLE_API_KEY` (free) |
-| **Google Jobs** (JSearch) | Google-for-Jobs index — surfaces Naukri/Indeed/Foundit postings | `JSEARCH_API_KEY` (free tier) |
+| **Google Jobs** (JSearch) | Google-for-Jobs index | `JSEARCH_API_KEY` (free tier) |
 | **Remotive** | Remote roles | none |
 | **Himalayas** | Remote roles | none |
 
@@ -142,10 +179,11 @@ run never removes jobs. Jobs older than 21 days are dropped.
 
 ---
 
-## Optional: local agent (residential-IP scraping)
+## Optional: local agent (residential-IP fallback)
 
-Only if you later want Naukri/Foundit scraped *directly* rather than via Google Jobs.
-This is **not required** and the site works fully without it.
+The cloud workflow already scrapes all four portals directly. The local agent is **not
+required**; it is only a fallback if a portal starts refusing GitHub's IPs and you want to
+run the same pipeline from your home connection.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\automation\install-agent.ps1
@@ -239,15 +277,19 @@ Protections:
 
 ## Source reliability
 
-Scrapers and APIs fail in different ways, so the pipeline uses both:
+Scrapers and optional APIs fail in different ways, so the pipeline can use both:
 
 | Source | Cloud (GitHub Actions) | Notes |
 |---|---|---|
 | LinkedIn | ✅ works | guest API |
-| Company ATS boards | ✅ works | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
-| Adzuna / Jooble / Google Jobs | ✅ works (with keys) | official APIs, no PC |
-| Indeed / Shine (UI/UX scrape) | ❌ now returns 0 | portal changed; stale rows are filtered out |
-| Naukri / Foundit / others (direct scrape) | ❌ `406` / dead API | never worked from the cloud |
+| **Naukri** | ✅ direct scrape | real Chrome; bundled headless shell gets `403` |
+| **Indeed** | ✅ direct scrape | real Chrome |
+| **Foundit** | ✅ direct scrape | public `/middleware/jobsearch` JSON |
+| **Shine** | ✅ direct scrape | static HTML search pages |
+| Company ATS boards | ✅ works (optional) | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
+| Adzuna / Jooble / Google Jobs | ✅ works (optional, with keys) | official APIs, no PC |
+
+Cloud runs use `--no-apis`, so only the direct scrapers + LinkedIn publish by default.
 
 > **Why the portal sometimes showed months-old jobs:** the vendor repos commit their
 > `jobs.db` to git, so a fresh CI checkout contained old Indeed/Shine rows that were
@@ -257,13 +299,13 @@ Scrapers and APIs fail in different ways, so the pipeline uses both:
 The design degrades gracefully:
 
 - Each role runs in its own cloud job; one failure does not stop the others.
-- ATS boards and APIs are attempted even if every scraper is blocked, so the portal is never empty.
-- A pipeline or export error no longer aborts the run — ATS/API jobs are still written.
+- Every source is independent: a portal that blocks the runner contributes 0 and the rest still publish.
+- A pipeline or export error no longer aborts the run — portal/API jobs are still written.
 - `publish` runs with `if: always()` and **merges**, so data is never removed.
-- Missing API keys are skipped silently; ATS boards need no keys at all.
+- Missing API keys are skipped silently; the direct scrapers need no keys at all.
 
-Playwright is enabled per profile (`"playwright": true`) and is only used by the optional
-local agent; the cloud workflow runs with `--no-playwright` to stay fast.
+The vendor Playwright source is still disabled in the cloud (`--no-playwright`); the new
+`automation/portal_scrapers.py` handles Naukri and Indeed itself with real Chrome.
 
 ---
 
