@@ -154,6 +154,24 @@ def _proxy_kwargs() -> Dict[str, Any]:
     return {"proxies": {"http": proxy, "https": proxy}}
 
 
+def _warp_reconnect() -> bool:
+    """Rotate the WARP egress IP. Some WARP IPs are challenged by Indeed while
+    others return the SEO page, so a reconnect often fixes a 401/403."""
+    if os.environ.get("WARP_SYSTEM") != "1":
+        return False
+    import subprocess
+
+    try:
+        subprocess.run(["warp-cli", "--accept-tos", "disconnect"], timeout=20, capture_output=True)
+        time.sleep(2)
+        subprocess.run(["warp-cli", "--accept-tos", "connect"], timeout=20, capture_output=True)
+        time.sleep(6)
+        return True
+    except Exception as exc:
+        print(f"[portal] indeed: WARP reconnect failed ({exc})", file=sys.stderr)
+        return False
+
+
 # ── Shine (plain HTTP) ────────────────────────────────────────────────────────
 
 def fetch_shine(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
@@ -348,6 +366,23 @@ def _fetch_indeed_http(role: str, profile: Dict[str, Any]) -> List[Dict[str, Any
 
     jobs: List[Dict[str, Any]] = []
     session = cffi_requests.Session()
+
+    if os.environ.get("WARP_SYSTEM") == "1":
+        probe = "https://in.indeed.com/q-ui-ux-designer-l-bangalore-jobs.html"
+        for attempt in range(1, 4):
+            try:
+                response = session.get(probe, impersonate="chrome", timeout=40)
+            except Exception as exc:
+                print(f"[portal] indeed: WARP probe error {exc}", file=sys.stderr)
+                response = None
+            if response is not None and response.status_code == 200 and "job_seen_beacon" in response.text:
+                print(f"[portal] indeed: WARP IP accepted (attempt {attempt})", file=sys.stderr)
+                break
+            status = response.status_code if response is not None else "?"
+            print(f"[portal] indeed: WARP IP rejected ({status}); reconnecting", file=sys.stderr)
+            if not _warp_reconnect():
+                break
+
     for query in _queries(role):
         for city in _cities(profile):
             for url in _indeed_variants(query, city):

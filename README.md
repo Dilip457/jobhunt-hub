@@ -286,13 +286,44 @@ Scrapers and optional APIs fail in different ways, so the pipeline can use both:
 |---|---|---|
 | LinkedIn | ✅ works | guest API |
 | **Naukri** | ✅ direct scrape | real Chrome; bundled headless shell gets `403` |
-| **Indeed** | ✅ direct scrape | real Chrome |
 | **Foundit** | ✅ direct scrape | public `/middleware/jobsearch` JSON |
 | **Shine** | ✅ direct scrape | static HTML search pages |
+| **Indeed** | ⚠️ IP-blocked | Cloudflare `403 Security Check - Indeed.com` from Azure runner IPs, on every path |
+| **SimplyHired** (Indeed inventory) | ✅ via WARP (optional) | Indeed's sister site; same Indian listings |
 | Company ATS boards | ✅ works (optional) | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
 | Adzuna / Jooble / Google Jobs | ✅ works (optional, with keys) | official APIs, no PC |
 
 Cloud runs use `--no-apis`, so only the direct scrapers + LinkedIn publish by default.
+
+### Why Indeed needs special handling
+
+Indeed protects itself with **IP reputation**, not just a JavaScript challenge. From
+GitHub's Azure runners, every URL returns:
+
+```
+403  Security Check - Indeed.com
+```
+
+This was verified with:
+
+- plain HTTP (`requests`)
+- `curl_cffi` with Chrome's TLS/JA3 fingerprint
+- headless Chrome **and** headed Chrome under Xvfb
+- the desktop, mobile (`/m/jobs`) and SEO (`/q-...-jobs.html`) surfaces
+- Cloudflare WARP (sometimes `401 Authenticating...`)
+- Jina Reader (also challenged)
+
+The block follows the IP, so no scraper change can fix it. The project therefore
+offers two honest paths:
+
+1. **SimplyHired (owned by Indeed)** carries the same Indian listings. It is
+   reachable through Cloudflare WARP and is published under its own
+   `SimplyHired` badge. Enable it by connecting WARP before the scrape
+   (`WARP_SYSTEM=1` for system mode, or `WARP_PROXY=http://127.0.0.1:40000`
+   for an explicit proxy). Without WARP it is skipped in under a second.
+2. **Local Indeed agent** (`automation/agent.py`) runs on a residential IP and
+   pushes true Indeed rows to the same `data` branch. It is optional: the cloud
+   site never depends on your PC being on.
 
 > **Why the portal sometimes showed months-old jobs:** the vendor repos commit their
 > `jobs.db` to git, so a fresh CI checkout contained old Indeed/Shine rows that were
@@ -308,7 +339,7 @@ The design degrades gracefully:
 - Missing API keys are skipped silently; the direct scrapers need no keys at all.
 
 The vendor Playwright source is still disabled in the cloud (`--no-playwright`); the new
-`automation/portal_scrapers.py` handles Naukri and Indeed itself with real Chrome.
+`automation/portal_scrapers.py` handles Naukri, Indeed and SimplyHired itself.
 
 ---
 

@@ -288,7 +288,7 @@ export default function Dashboard() {
             <h1>
               Find your next <span style={{ color: roleMeta.accent }}>{roleMeta.label}</span> role
             </h1>
-            <p>{roleMeta.blurb} Curated from LinkedIn, Naukri, Indeed, Foundit and more — filtered by city, experience and match score.</p>
+            <p>{roleMeta.blurb} Curated from LinkedIn, Naukri, Indeed, Foundit, Shine and SimplyHired — filtered by city, experience and match score.</p>
           </div>
         </section>
 
