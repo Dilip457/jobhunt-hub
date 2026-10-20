@@ -137,6 +137,9 @@ URL **and** by `(company, title, location)`, then merged with LinkedIn and any o
 If a portal refuses the runner's IP on a given day, it reports 0 for that run and the rest
 still publish.
 
+Local end-to-end run (UI/UX, 14-day window): **633 jobs** — LinkedIn 215, Naukri 173,
+Shine 112, Indeed 88, Foundit 45 — exported to 385 KB of JSON.
+
 ### Optional: keyless ATS boards and job APIs
 
 `automation/api_sources.py` still contains keyless company ATS boards and optional official

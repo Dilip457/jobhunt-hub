@@ -297,21 +297,51 @@ def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
     try:
         pw, browser = _open_browser()
         ctx, page = _new_page(browser)
+
+        # Warm up the session. If the homepage itself is blocked, every search
+        # will fail, so skip the source instead of trying 12 URLs.
+        try:
+            home = page.goto("https://in.indeed.com/", wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(2500)
+            if home and home.status >= 400:
+                print(
+                    f"[portal] indeed: homepage {home.status}; skipping (runner IP blocked)",
+                    file=sys.stderr,
+                )
+                return []
+        except Exception as exc:
+            print(f"[portal] indeed: homepage error {exc}", file=sys.stderr)
+
         for query in _queries(role):
             for city in cities:
-                url = (
+                variants = [
                     "https://in.indeed.com/jobs?"
-                    + urllib.parse.urlencode({"q": query, "l": city})
-                )
-                try:
-                    resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                    page.wait_for_timeout(7000)
-                except Exception as exc:
-                    print(f"[portal] indeed {url}: {exc}", file=sys.stderr)
+                    + urllib.parse.urlencode({"q": query, "l": city}),
+                    "https://in.indeed.com/m/jobs?"
+                    + urllib.parse.urlencode({"q": query, "l": city}),
+                    f"https://in.indeed.com/q-{_slug(query)}-l-{_slug(city)}-jobs.html",
+                ]
+                resp = None
+                used = ""
+                for url in variants:
+                    try:
+                        resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                        page.wait_for_timeout(7000 if url == variants[0] else 5000)
+                    except Exception as exc:
+                        print(f"[portal] indeed {url}: {exc}", file=sys.stderr)
+                        resp = None
+                        continue
+                    if resp and resp.status < 400:
+                        used = url
+                        break
+                if not resp or resp.status >= 400:
+                    print(
+                        f"[portal] indeed {resp.status if resp else '?'} all variants for {query}/{city}",
+                        file=sys.stderr,
+                    )
                     continue
-                if resp and resp.status >= 400:
-                    print(f"[portal] indeed {resp.status} {url}", file=sys.stderr)
-                    continue
+                if used != variants[0]:
+                    print(f"[portal] indeed fallback OK: {used}", file=sys.stderr)
 
                 soup = BeautifulSoup(page.content(), "lxml")
                 for card in soup.select("div.job_seen_beacon"):
