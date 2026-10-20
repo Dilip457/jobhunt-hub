@@ -372,7 +372,11 @@ def _fetch_indeed_http(role: str, profile: Dict[str, Any]) -> List[Dict[str, Any
 
     if warp_mode:
         probe = "https://in.indeed.com/q-ui-ux-designer-l-bangalore-jobs.html"
-        for attempt in range(1, 4):
+        # WARP hands out a new exit IP on every reconnect. Only some of those
+        # IPs pass Indeed's wall (GenAI passed on attempt 1; Data/UI-UX were
+        # 401 on all three). A 401 is instant, so trying more IPs is cheap and
+        # materially improves the odds of getting real Indeed rows.
+        for attempt in range(1, 9):
             try:
                 response = session.get(probe, impersonate="chrome", timeout=request_timeout)
             except Exception as exc:
