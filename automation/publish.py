@@ -248,6 +248,19 @@ def main() -> int:
         with open(os.path.join(worktree, "manifest.json"), "w", encoding="utf-8") as handle:
             json.dump(manifest, handle, ensure_ascii=False, indent=1)
 
+        # Vercel auto-deploys every branch. This branch contains only JSON (no
+        # `web/` app), so Vercel's build fails with: "The specified Root
+        # Directory 'web' does not exist." Tell Vercel to skip this branch.
+        with open(os.path.join(worktree, "vercel.json"), "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "$schema": "https://openapi.vercel.sh/vercel.json",
+                    "git": {"deploymentEnabled": {args.branch: False}},
+                },
+                handle,
+                indent=1,
+            )
+
         subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
         subprocess.run(
             ["git", "commit", "-m", f"data: publish {', '.join(payloads)} at {now}"],
