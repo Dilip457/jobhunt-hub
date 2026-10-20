@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import shutil
@@ -151,8 +152,18 @@ def main() -> int:
     statuses: Dict[str, str] = {}
 
     for role in ROLES:
-        artifact = os.path.join(artifacts, f"{role}.json")
-        candidate = read_json(artifact) if os.path.exists(artifact) else None
+        # A role can arrive as more than one artifact: the main scrape writes
+        # <role>.json, the optional WARP job writes <role>.warp.json. Merge all
+        # of them before comparing with the previous published data.
+        candidate = None
+        for path in sorted(glob.glob(os.path.join(artifacts, f"{role}*.json"))):
+            part = read_json(path)
+            if not part or not isinstance(part.get("jobs"), list):
+                continue
+            if candidate is None:
+                candidate = part
+            else:
+                candidate = merge_payloads(candidate, part, args.retention_days)
 
         previous_payload = None
         if role in previous:

@@ -456,10 +456,15 @@ def _fetch_indeed_browser(role: str, profile: Dict[str, Any]) -> List[Dict[str, 
 
 def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
     """Try the fast TLS-impersonation path first; only start a browser if it
-    returns nothing (e.g. Cloudflare changed its challenge)."""
+    returns nothing (e.g. Cloudflare changed its challenge). Inside the WARP
+    job we never start a browser: headed/headless Chrome gets the same 401/403
+    and a hung page.goto would stall the job."""
     jobs = _fetch_indeed_http(role, profile)
     if jobs:
         print(f"[portal] indeed: {len(jobs)} jobs via curl_cffi", file=sys.stderr)
+        return jobs
+    if os.environ.get("WARP_SYSTEM") == "1":
+        print("[portal] indeed: HTTP path empty under WARP; skipping browser", file=sys.stderr)
         return jobs
     print("[portal] indeed: HTTP path empty; trying browser", file=sys.stderr)
     return _fetch_indeed_browser(role, profile)
