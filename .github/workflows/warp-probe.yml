@@ -49,3 +49,13 @@ jobs:
 
       - name: Probe session and browser through WARP
         run: python automation/warp_probe2.py
+
+      - name: Probe WARP proxy mode (targeted routing)
+        run: |
+          warp-cli --accept-tos mode proxy || true
+          warp-cli --accept-tos disconnect || true
+          warp-cli --accept-tos connect || true
+          sleep 8
+          ss -ltnp 2>/dev/null | grep 40000 || true
+          curl -s -x http://127.0.0.1:40000 https://cloudflare.com/cdn-cgi/trace || true
+          python automation/warp_proxy_test.py
