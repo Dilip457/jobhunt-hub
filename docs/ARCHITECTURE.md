@@ -355,9 +355,9 @@ After a publish, the site may take roughly **1–5 minutes** to show new data un
 
 ## 9. Manual refresh flow
 
-The refresh control is hidden from public visitors. Open `/?admin=1` once to reveal it for
-the current browser session; the flag is stored in `sessionStorage`, not in the shared URL.
-Clicking **Refresh** opens a confirmation dialog before any workflow is dispatched.
+The refresh control is not rendered anywhere on the site. There is no separate admin URL
+and no role parameter in the homepage URL. On the main site, press **`Alt` + `Shift` + `R`**
+to open a confirmation dialog; only **Confirm refresh** dispatches the workflow.
 
 ```mermaid
 sequenceDiagram
@@ -367,10 +367,8 @@ sequenceDiagram
     participant Status as GET /api/status
     participant GH as GitHub Actions
 
-    Admin->>UI: Open /?admin=1
-    UI->>UI: Reveal admin Refresh button
-    Admin->>UI: Click Refresh
-    UI->>UI: Confirm dialog
+    Admin->>UI: Press Alt+Shift+R on the main site
+    UI->>UI: Confirmation dialog
     Admin->>UI: Confirm refresh
     UI->>Refresh: { role: "genai" }
     Refresh->>GH: workflow_dispatch
@@ -383,6 +381,10 @@ sequenceDiagram
     end
     UI->>UI: success → reload jobs with fresh=1
 ```
+
+The selected role is not appended to the homepage URL. `/` stays clean when switching
+roles; old `?role=...` links load once and are then cleaned. Filter parameters are still
+written for shareable filtered views.
 
 ### Guards
 

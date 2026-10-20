@@ -633,11 +633,14 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 
 `Dashboard.tsx` polls `/api/status` every 8 seconds while queued/running. On `success`, it reloads jobs with `fresh=1` and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
 
-The public UI does **not** show a refresh button. Opening `/?admin=1` sets an admin flag in `sessionStorage` and reveals a small **Refresh** button for that browser session. Clicking it opens a confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. `/?admin=0` clears the flag.
+The public UI does **not** render a refresh button, and there is no admin URL. On the main site, press **`Alt` + `Shift` + `R`** to open the confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. The shortcut is ignored while typing in an input, textarea, select or contenteditable element.
+
+The selected role is **not** written to the URL. `/` stays clean when switching roles. Old `?role=...` links are read once, then the role parameter is removed from the address bar. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are still written for shareable filtered views.
 
 ### 6.6 UI
 
 - Role dropdown: GenAI / Data Engineer / UI/UX.
+- The selected role is local state only; the homepage URL stays `/` (filter params may be added).
 - Filters: search, city, source, experience bucket, minimum score, sort.
 - Job card: title, company, location, experience, posted date, snippet, source badge, score tier, Apply button.
 - Job card date line: `Posted <relative> · First seen <relative>`.

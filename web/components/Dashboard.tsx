@@ -9,7 +9,7 @@ import {
   type ExperienceBucket,
 } from "@/lib/utils";
 import Filters from "./Filters";
-import { AlertIcon, MailIcon, RefreshIcon, SparkIcon } from "./Icons";
+import { AlertIcon, MailIcon, SparkIcon } from "./Icons";
 import ConfirmRefresh from "./ConfirmRefresh";
 import JobCard from "./JobCard";
 import RefreshPanel from "./RefreshPanel";
@@ -43,7 +43,6 @@ export default function Dashboard() {
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [adminMode, setAdminMode] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshOpen, setRefreshOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -72,23 +71,25 @@ export default function Dashboard() {
     if (exp) setExperience(exp as ExperienceBucket);
     setDateRange(params.get("days") ?? "all");
     setSort(params.get("sort") ?? "score");
-
-    // The refresh control is hidden from public visitors. Opening the site with
-    // ?admin=1 reveals it for this browser session only.
-    try {
-      if (params.get("admin") === "1") {
-        window.sessionStorage.setItem("jobhunt-admin", "1");
-        setAdminMode(true);
-      } else if (params.get("admin") === "0") {
-        window.sessionStorage.removeItem("jobhunt-admin");
-        setAdminMode(false);
-      } else if (window.sessionStorage.getItem("jobhunt-admin") === "1") {
-        setAdminMode(true);
-      }
-    } catch {
-      // sessionStorage can be unavailable in strict privacy modes.
-    }
   }, []);
+
+  // Hidden admin shortcut: Alt+Shift+R opens the confirmation dialog. There is
+  // no visible refresh button and no separate admin URL.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!event.altKey || !event.shiftKey || event.key.toLowerCase() !== "r") return;
+      const target = event.target as HTMLElement | null;
+      if (target && target.closest("input, textarea, select, [contenteditable='true']")) return;
+      event.preventDefault();
+      if (status?.state === "queued" || status?.state === "running") {
+        pushToast("info", "A scrape is already running.");
+        return;
+      }
+      setConfirmOpen(true);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [status, pushToast]);
 
   // ── Load jobs for the selected role ─────────────────────────────────────────
   useEffect(() => {
@@ -117,10 +118,9 @@ export default function Dashboard() {
     return () => controller.abort();
   }, [role, reloadKey]);
 
-  // ── Keep the URL shareable ──────────────────────────────────────────────────
+  // ── Keep filter state shareable without putting the role in the URL ────────
   useEffect(() => {
     const params = new URLSearchParams();
-    params.set("role", role);
     if (query) params.set("q", query);
     if (city !== "all") params.set("city", city);
     if (source !== "all") params.set("source", source);
@@ -128,8 +128,9 @@ export default function Dashboard() {
     if (experience !== "all") params.set("exp", experience);
     if (dateRange !== "all") params.set("days", dateRange);
     if (sort !== "score") params.set("sort", sort);
-    window.history.replaceState(null, "", `?${params.toString()}`);
-  }, [role, query, city, source, score, experience, dateRange, sort]);
+    const next = params.toString();
+    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
+  }, [query, city, source, score, experience, dateRange, sort]);
 
   // ── Poll GitHub Actions while a scrape runs ─────────────────────────────────
   useEffect(() => {
@@ -268,7 +269,6 @@ export default function Dashboard() {
   }, [query, city, source, score, experience, dateRange, sort, role]);
 
   const shownJobs = filtered.slice(0, visible);
-  const running = status?.state === "queued" || status?.state === "running";
 
   function resetFilters() {
     setQuery("");
@@ -296,19 +296,6 @@ export default function Dashboard() {
 
           <div className="header-actions">
             <RoleSelect value={role} onChange={setRole} />
-            {adminMode ? (
-              <button
-                type="button"
-                className={`admin-refresh-btn ${running ? "is-running" : ""}`}
-                onClick={() => setConfirmOpen(true)}
-                disabled={running}
-                aria-label={running ? "Scrape in progress" : "Refresh jobs"}
-                title={running ? "Scrape in progress" : "Refresh jobs"}
-              >
-                <RefreshIcon width={16} height={16} />
-                {running ? "Scraping…" : "Refresh"}
-              </button>
-            ) : null}
           </div>
         </div>
       </header>
