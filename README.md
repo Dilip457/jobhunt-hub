@@ -316,11 +316,15 @@ This was verified with:
 The block follows the IP, so no scraper change can fix it. The project therefore
 offers two honest paths:
 
-1. **SimplyHired (owned by Indeed)** carries the same Indian listings. It is
-   reachable through Cloudflare WARP and is published under its own
-   `SimplyHired` badge. Enable it by connecting WARP before the scrape
-   (`WARP_SYSTEM=1` for system mode, or `WARP_PROXY=http://127.0.0.1:40000`
-   for an explicit proxy). Without WARP it is skipped in under a second.
+1. **SimplyHired (owned by Indeed)** carries the same Indian listings. A
+   separate, failure-tolerant `warp` job in `.github/workflows/scrape.yml`
+   connects Cloudflare WARP, scrapes Indeed's SEO pages + SimplyHired, and
+   uploads `<role>.warp.json`. `publish.py` merges that artifact with the
+   normal scrape, so the site shows both `Indeed` and `SimplyHired` badges when
+   WARP finds a clean IP. The job never blocks publication: if WARP is
+   unavailable it contributes nothing and the three working portals still
+   publish. The browser fallback is disabled inside this job because Chrome
+   receives the same 401/403 and a hung `page.goto` would stall the runner.
 2. **Local Indeed agent** (`automation/agent.py`) runs on a residential IP and
    pushes true Indeed rows to the same `data` branch. It is optional: the cloud
    site never depends on your PC being on.
