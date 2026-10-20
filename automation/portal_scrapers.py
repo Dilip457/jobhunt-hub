@@ -145,6 +145,15 @@ def _new_page(browser):
     return ctx, ctx.new_page()
 
 
+def _proxy_kwargs() -> Dict[str, Any]:
+    """Route a request through WARP when WARP_PROXY is set (proxy mode).
+    Unset means direct, so the other portals keep the runner IP."""
+    proxy = os.environ.get("WARP_PROXY", "").strip()
+    if not proxy:
+        return {}
+    return {"proxies": {"http": proxy, "https": proxy}}
+
+
 # ── Shine (plain HTTP) ────────────────────────────────────────────────────────
 
 def fetch_shine(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
@@ -343,7 +352,7 @@ def _fetch_indeed_http(role: str, profile: Dict[str, Any]) -> List[Dict[str, Any
         for city in _cities(profile):
             for url in _indeed_variants(query, city):
                 try:
-                    response = session.get(url, impersonate="chrome", timeout=40)
+                    response = session.get(url, impersonate="chrome", timeout=40, **_proxy_kwargs())
                 except Exception as exc:
                     print(f"[portal] indeed {url}: {exc}", file=sys.stderr)
                     continue
@@ -421,6 +430,77 @@ def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
     return _fetch_indeed_browser(role, profile)
 
 
+# ── SimplyHired (Indeed's sister site, reachable via WARP) ───────────────────
+
+def fetch_simplyhired(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    """SimplyHired India carries Indeed's inventory. Cloudflare blocks it from
+    datacenter IPs, so it only runs when traffic goes through WARP (either the
+    system tunnel or the explicit WARP_PROXY)."""
+    if not os.environ.get("WARP_PROXY", "").strip() and os.environ.get("WARP_SYSTEM", "") != "1":
+        print("[portal] simplyhired: no WARP route; skipping", file=sys.stderr)
+        return []
+    try:
+        from curl_cffi import requests as cffi_requests
+    except Exception as exc:
+        print(f"[portal] simplyhired: curl_cffi unavailable ({exc})", file=sys.stderr)
+        return []
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    session = cffi_requests.Session()
+    jobs: List[Dict[str, Any]] = []
+    failures = 0
+
+    for query in _queries(role):
+        for city in _cities(profile):
+            url = "https://www.simplyhired.co.in/search?" + urllib.parse.urlencode(
+                {"q": query, "l": city}
+            )
+            try:
+                response = session.get(
+                    url, impersonate="chrome", timeout=25, **_proxy_kwargs()
+                )
+            except Exception as exc:
+                print(f"[portal] simplyhired {url}: {exc}", file=sys.stderr)
+                failures += 1
+                if failures >= 2:
+                    print("[portal] simplyhired: proxy unreachable; stopping", file=sys.stderr)
+                    return jobs
+                continue
+            if response.status_code != 200:
+                print(f"[portal] simplyhired {response.status_code} {url}", file=sys.stderr)
+                failures += 1
+                if failures >= 3:
+                    print("[portal] simplyhired: blocked; stopping", file=sys.stderr)
+                    return jobs
+                continue
+            failures = 0
+            soup = BeautifulSoup(response.text, "lxml")
+            for card in soup.select("div[data-testid='searchSerpJob']"):
+                link = card.select_one("h2[data-testid='searchSerpJobTitle'] a")
+                if not link:
+                    continue
+                href = link.get("href", "")
+                if href.startswith("/"):
+                    href = "https://www.simplyhired.co.in" + href
+                job = build_job(
+                    role,
+                    "SimplyHired",
+                    _text(link),
+                    _text(card.select_one("[data-testid='companyName']")),
+                    _text(card.select_one("[data-testid='searchSerpJobLocation']")),
+                    href,
+                    _text(card),
+                    today,
+                    card.get("data-jobkey") or href,
+                )
+                if job:
+                    jobs.append(job)
+            time.sleep(1)
+
+    print(f"[portal] simplyhired: {len(jobs)} raw jobs", file=sys.stderr)
+    return jobs
+
+
 # ── Collection ────────────────────────────────────────────────────────────────
 
 SOURCES = (
@@ -428,6 +508,7 @@ SOURCES = (
     ("foundit", fetch_foundit),
     ("naukri", fetch_naukri),
     ("indeed", fetch_indeed),
+    ("simplyhired", fetch_simplyhired),
 )
 
 

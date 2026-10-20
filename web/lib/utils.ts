@@ -117,6 +117,7 @@ const SOURCE_COLORS: Record<string, string> = {
   linkedin: "#0a66c2",
   naukri: "#ff7555",
   indeed: "#2557a7",
+  simplyhired: "#2557a7",
   foundit: "#f4a300",
   shine: "#f97316",
   timesjobs: "#e11d48",
