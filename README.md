@@ -10,6 +10,13 @@ A public, daily-updated job portal for three role tracks — **GenAI**, **Data E
 
 ---
 
+## Documentation
+
+- **[Architecture](docs/ARCHITECTURE.md)** — components, data flow, branch model, caching, failure handling and design decisions.
+- **[Implementation](docs/IMPLEMENTATION.md)** — workflow jobs, scraper internals, publisher merge logic, API routes, data contract, deployment and troubleshooting.
+
+---
+
 ## How it works
 
 ```
