@@ -23,7 +23,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r automation/requirements.txt
+          pip install curl_cffi
           python -m playwright install --with-deps chromium
+
+      - name: Probe curl_cffi (Chrome TLS fingerprint)
+        run: python automation/indeed_probe2.py
 
       - name: Probe headless Chrome
         run: python automation/indeed_probe.py
