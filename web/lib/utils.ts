@@ -41,6 +41,28 @@ export function timeAgo(value?: string | null): string {
   return formatDate(value);
 }
 
+/**
+ * Relative label for date-only values (YYYY-MM-DD). Unlike timeAgo(), a bare
+ * date never reports hours — it reads as "today", "yesterday" or "N days ago".
+ */
+export function dateAgo(value?: string | null): string {
+  if (!value) return "";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!match) return timeAgo(value);
+
+  const then = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (Number.isNaN(then.getTime())) return "";
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.max(0, Math.round((today.getTime() - then.getTime()) / 86_400_000));
+
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days} days ago`;
+  return formatDate(value);
+}
+
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-IN").format(value);
 }

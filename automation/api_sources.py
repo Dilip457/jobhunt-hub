@@ -205,7 +205,9 @@ def build_job(
         "experience_max": None,
         "snippet": snippet,
         "is_new": False,
-        "first_seen": posted,
+        # When *we* first scraped this job, not when the portal posted it.
+        # publish.py keeps the oldest value across runs so it stays stable.
+        "first_seen": datetime.now(timezone.utc).date().isoformat(),
     }
 
 

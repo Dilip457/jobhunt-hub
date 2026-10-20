@@ -1,5 +1,5 @@
 import type { Job } from "@/lib/types";
-import { experienceLabel, formatDate, initials, scoreTier, sourceColor, timeAgo } from "@/lib/utils";
+import { dateAgo, experienceLabel, formatDate, initials, scoreTier, sourceColor } from "@/lib/utils";
 import { BuildingIcon, CalendarIcon, ExternalIcon, MapPinIcon } from "./Icons";
 import ScoreRing from "./ScoreRing";
 
@@ -78,7 +78,11 @@ export default function JobCard({ job, showScore }: Props) {
         </a>
       </div>
 
-      <span className="job-seen">Added {timeAgo(job.first_seen)}</span>
+      <span className="job-seen">
+        {job.posted_date ? <span>Posted {dateAgo(job.posted_date)}</span> : null}
+        {job.posted_date && job.first_seen ? <span aria-hidden> · </span> : null}
+        {job.first_seen ? <span>First seen {dateAgo(job.first_seen)}</span> : null}
+      </span>
     </article>
   );
 }
