@@ -179,19 +179,22 @@ The cinematic intro is progressive enhancement, never a gate:
 
 | Condition | Behaviour |
 |---|---|
-| Normal visit | Rigged 3D character close-up (`HI.`), camera pullback, path, walk, role selection |
+| Normal visit | Four-second rigged 3D character close-up (`HI.`), camera pullback, path, turn, walk, role selection |
 | Returning visitor (`localStorage` flag) | Starts at the role selection with the scene already framed |
 | **Skip intro** | Cancels timers and jumps straight to role selection |
 | `prefers-reduced-motion: reduce` | Static portrait selector with the same three destinations; no canvas |
 | WebGL unavailable, model fails, or a 12 s load timeout | Static portrait selector fallback |
-| Very small screen | Responsive camera and a scrollable role panel |
+| Very small screen | Responsive camera and a bottom-sheet role selector |
 | Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |
 
 The 3D character is a stylized, rigged CC0 **“Casual Man”** base by Grab3D, simplified
-from 244,257 to 85,487 triangles, with 1024px WebP textures, a blue-black jacket, runtime
-glasses and a generated breathing idle. It has no facial blendshapes, eye rig, lip-sync or
-motion capture; the source ships only walk and run clips. The dashboard states this and the
-full modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
+from 244,257 to 85,487 triangles, with 1024px WebP textures, flat navy fabric, flat brown
+hair, a cleaned basecolour and a generated breathing idle. The material is uniformly matte
+(no roughness/metallic maps) to remove specular flecks, and the earlier runtime glasses are
+gone. The destination gates stay hidden during the close-up and fade into the world with
+the pullback. The character has no facial blendshapes, eye rig, lip-sync or motion capture;
+the source ships only walk and run clips. The dashboard states this and the full
+modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 
 ### 4.6 GitHub API
 
@@ -491,7 +494,7 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 6. **Legacy `first_seen` values.** Pre-change jobs may show the portal posted date as “first seen” because no earlier scrape history was stored.
 7. **Retention is 21 days.** A job that disappears from the portals can remain on the board for up to 21 days.
 8. **Terms of service.** Scraping public pages may be restricted by individual portals; this project is intended for personal, non-commercial use.
-9. **The 3D guide is a prototype.** The rigged character is a stylized CC0 base (a bearded adult in a technical bomber jacket) with no facial blendshapes, eye rig, lip-sync or motion capture. Its walk/run clips are the only shipped animation, and the close-up is staged to avoid uncanny detail the asset cannot support.
+9. **The 3D guide is a prototype.** The rigged character is a stylized CC0 base (a bearded adult in a technical bomber jacket with a white knit top) with no facial blendshapes, eye rig, lip-sync or motion capture. Its walk/run clips are the only shipped animation, and the close-up is staged to avoid uncanny detail the asset cannot support. The basecolour has been cleaned and the material made matte for the cinematic; it is still a modified stock asset, not a bespoke character.
 10. **The cinematic is not required.** Reduced-motion, WebGL failure and model failure all fall back to a static selector; jobs are never blocked behind the animation.
 
 ---

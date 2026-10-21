@@ -31,6 +31,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${bodyFont.variable} ${displayFont.variable}`}>
+      <head>
+        <link
+          rel="preload"
+          href="/models/student/student.glb"
+          as="fetch"
+          type="model/gltf-binary"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -213,10 +213,10 @@ catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `
 
 `/` is a cinematic entry point, not a gate:
 
-1. A close-up of the guide says **“HI.”** against red/blue rim light.
+1. A four-second close-up of the guide says **“HI.”** against red/blue rim light.
 2. The camera pulls back to reveal an illuminated path and three gates.
-3. The guide walks to the selector; the role panel offers GenAI, Data Engineering and UI/UX.
-4. Choosing a destination animates the walk and opens `/jobs/<role>`.
+3. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering and UI/UX (a bottom sheet on phones).
+4. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 
 The dashboard is one click away in every degraded mode:
 
@@ -232,10 +232,12 @@ and filter parameters are preserved in the URL.
 ### The 3D guide is a prototype
 
 The guide is a **stylized, rigged CC0 “Casual Man” base by Grab3D**, optimized for the
-web. It was simplified from 244,257 to 85,487 triangles, its textures were reduced to
-1024px WebP, its jacket was recolored blue-black, and round 3D glasses were added at
-runtime. The character has **no facial blendshapes, eye rig or lip-sync**; a short breathing
-idle is generated from the walk clip’s neutral frame. This is a prototype, not a finished
+web. It was simplified from 244,257 to 85,487 triangles and its textures were reduced to
+1024px WebP. The basecolour was cleaned to remove bright texture flecks: the jacket and
+jeans use a flat navy fabric treatment, the hair uses a flat warm brown, and the material
+is uniformly matte (`metalness: 0`, high roughness, no roughness/metalness maps). The
+character has **no facial blendshapes, eye rig or lip-sync**; a short breathing idle is
+generated from the walk clip’s neutral frame. This is a prototype, not a finished
 character. The dashboard credits the asset, and the full modification record ships at
 [`web/public/models/student/ATTRIBUTION.txt`](web/public/models/student/ATTRIBUTION.txt).
 

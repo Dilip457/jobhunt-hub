@@ -19,10 +19,19 @@ const MODEL_URL = "/models/student/student.glb";
 
 const SELECTOR_Z = -3.4;
 const WALK_SPEED = 1.5;
+// The walk clip advances 1.8m of ground per 1s cycle at timeScale 1.
+// Keeping this honest is what prevents the feet from sliding.
 const WALK_CYCLE_DISTANCE = 1.8;
-const TRAVEL_RAMP = 0.4;
-const GREETING_MS = 1900;
-const REVEAL_SECONDS = 2.9;
+const TRAVEL_RAMP = 0.45;
+// Turn in place before travelling. Rotating while stepping was the main
+// source of the “moonwalk” feeling.
+const TURN_DELAY = 0.55;
+const GREETING_MS = 4000;
+const REVEAL_SECONDS = 2.8;
+// The runway is a real surface. The character stands on top of it rather
+// than intersecting the markers.
+const GROUND_Y = 0.014;
+const DAIS_TOP = 0.04;
 
 const GATE_POSITIONS: Record<RoleSlug, THREE.Vector3> = {
   genai: new THREE.Vector3(-3.45, 0, -9.0),
@@ -38,6 +47,14 @@ const GATE_COLORS: Record<RoleSlug, number> = {
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function renderPixelRatio(): number {
+  const dpr = window.devicePixelRatio || 1;
+  // Supersample 1x displays instead of accepting a soft canvas. Cap mobile
+  // separately so high-density phones do not render a 4K frame buffer.
+  if (window.innerWidth < 760) return Math.min(1.75, Math.max(1.25, dpr));
+  return Math.min(2, Math.max(1.5, dpr));
 }
 
 function smoothstep(value: number): number {
@@ -63,97 +80,34 @@ function dampAngle(current: number, target: number, dt: number, lambda: number):
 }
 
 function travelDuration(distance: number): number {
-  return distance / WALK_SPEED + TRAVEL_RAMP;
+  return TURN_DELAY + distance / WALK_SPEED + TRAVEL_RAMP;
 }
 
 function travelProfile(elapsed: number, distance: number) {
-  const total = travelDuration(distance);
-  const t = clamp(elapsed, 0, total);
+  const moveDuration = distance / WALK_SPEED + TRAVEL_RAMP;
+  const total = TURN_DELAY + moveDuration;
+  const t = clamp(elapsed - TURN_DELAY, 0, moveDuration);
   let covered = 0;
   let speed = 0;
   if (t < TRAVEL_RAMP) {
     const a = WALK_SPEED / TRAVEL_RAMP;
     covered = 0.5 * a * t * t;
     speed = a * t;
-  } else if (t < total - TRAVEL_RAMP) {
+  } else if (t < moveDuration - TRAVEL_RAMP) {
     covered = WALK_SPEED * (t - TRAVEL_RAMP / 2);
     speed = WALK_SPEED;
   } else {
-    const remaining = total - t;
+    const remaining = moveDuration - t;
     const a = WALK_SPEED / TRAVEL_RAMP;
     covered = distance - 0.5 * a * remaining * remaining;
     speed = a * remaining;
   }
-  return { covered: clamp(covered, 0, distance), speed, total, done: t >= total - 0.001 };
-}
-
-function roundedRectShape(width: number, height: number, radius: number): THREE.Shape {
-  const shape = new THREE.Shape();
-  const x = -width / 2;
-  const y = -height / 2;
-  const r = Math.min(radius, width / 2, height / 2);
-  shape.moveTo(x + r, y);
-  shape.lineTo(x + width - r, y);
-  shape.absarc(x + width - r, y + r, r, -Math.PI / 2, 0);
-  shape.lineTo(x + width, y + height - r);
-  shape.absarc(x + width - r, y + height - r, r, 0, Math.PI / 2);
-  shape.lineTo(x + r, y + height);
-  shape.absarc(x + r, y + height - r, r, Math.PI / 2, Math.PI);
-  shape.lineTo(x, y + r);
-  shape.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
-  return shape;
-}
-
-function frameGeometry(width: number, height: number, radius: number, thickness: number, depth: number) {
-  const outer = roundedRectShape(width, height, radius);
-  outer.holes.push(roundedRectShape(width - thickness * 2, height - thickness * 2, Math.max(0.08, radius - thickness)));
-  return new THREE.ExtrudeGeometry(outer, { depth, bevelEnabled: false, curveSegments: 10 });
-}
-
-function createGlasses(): THREE.Group {
-  const group = new THREE.Group();
-  group.name = "student-glasses";
-  const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x05060a,
-    roughness: 0.3,
-    metalness: 0.58,
-  });
-  const lensMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x83b8ff,
-    transparent: true,
-    opacity: 0.055,
-    roughness: 0.04,
-    metalness: 0.08,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-  });
-
-  for (const x of [-2.35, 2.35]) {
-    const frame = new THREE.Mesh(frameGeometry(4.6, 2.9, 1.25, 0.22, 0.17), frameMaterial);
-    frame.position.set(x, 8.85, 9.8);
-    frame.renderOrder = 3;
-    group.add(frame);
-    const lens = new THREE.Mesh(new THREE.ShapeGeometry(roundedRectShape(4.16, 2.46, 1.08), 12), lensMaterial);
-    lens.position.set(x, 8.85, 9.82);
-    lens.renderOrder = 2;
-    group.add(lens);
-  }
-
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.24, 0.22), frameMaterial);
-  bridge.position.set(0, 8.98, 9.8);
-  group.add(bridge);
-
-  for (const side of [-1, 1]) {
-    const temple = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.19, 8.2), frameMaterial);
-    temple.position.set(side * 4.65, 8.85, 5.8);
-    temple.rotation.x = 0.04;
-    group.add(temple);
-    const ear = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.33, 0.2), frameMaterial);
-    ear.position.set(side * 4.65, 8.65, 1.9);
-    group.add(ear);
-  }
-
-  return group;
+  return {
+    covered: clamp(covered, 0, distance),
+    speed: elapsed < TURN_DELAY ? 0 : speed,
+    total,
+    done: elapsed >= total - 0.001,
+  };
 }
 
 function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): THREE.AnimationClip {
@@ -220,7 +174,6 @@ interface Gate {
   group: THREE.Group;
   strips: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[];
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-  shards: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[];
   light: THREE.PointLight;
   glow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 }
@@ -314,19 +267,28 @@ export default function CinematicIntro({ onComplete }: Props) {
       return;
     }
     if (reduced) return;
-
     setPhase("greeting");
-    schedule(GREETING_MS, () => {
-      setPhase("reveal");
-    });
-    const approachSeconds = travelDuration(Math.abs(SELECTOR_Z)) + 0.95;
-    schedule(GREETING_MS + REVEAL_SECONDS * 1000, () => {
-      setPhase("approach");
-    });
-    schedule(GREETING_MS + REVEAL_SECONDS * 1000 + approachSeconds * 1000, () => {
-      setPhase("selecting");
-    });
-  }, [reduced, schedule]);
+  }, [reduced]);
+
+  // Start each hold after the phase has actually committed. Previously the
+  // 4s greeting timer started before the first painted frame, so a slow
+  // shader/frame budget could make “HI.” disappear after ~1s.
+  useEffect(() => {
+    if (phase === "greeting") {
+      const timer = window.setTimeout(() => setPhase("reveal"), GREETING_MS);
+      return () => window.clearTimeout(timer);
+    }
+    if (phase === "reveal") {
+      const timer = window.setTimeout(() => setPhase("approach"), REVEAL_SECONDS * 1000);
+      return () => window.clearTimeout(timer);
+    }
+    if (phase === "approach") {
+      const approachSeconds = travelDuration(Math.abs(SELECTOR_Z)) + 0.95;
+      const timer = window.setTimeout(() => setPhase("selecting"), approachSeconds * 1000);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [phase]);
 
   // If the model/WebGL takes too long, fall back to the accessible static intro.
   useEffect(() => {
@@ -392,10 +354,10 @@ export default function CinematicIntro({ onComplete }: Props) {
       if (disposed) return;
 
       const isMobile = window.innerWidth < 760;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 1.6));
+      renderer.setPixelRatio(renderPixelRatio());
       renderer.setSize(window.innerWidth, window.innerHeight, false);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.0;
+      renderer.toneMappingExposure = 1.02;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
 
       scene = new THREE.Scene();
@@ -417,31 +379,33 @@ export default function CinematicIntro({ onComplete }: Props) {
         // Environment reflections are a nice-to-have.
       }
 
-      scene.add(new THREE.HemisphereLight(0x9eb6ff, 0x08090d, 0.62));
-      const key = new THREE.DirectionalLight(0xffe8df, 1.55);
-      key.position.set(-2.5, 4.5, 4);
+      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, 0.5));
+      // Neutral key + soft fill keep the skin clean. The red/blue accents are
+      // now behind the character as rim lights instead of tinting the face.
+      const key = new THREE.DirectionalLight(0xfff2e8, 1.8);
+      key.position.set(-2.5, 4.5, 4.5);
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x6694ff, 1.1);
-      rim.position.set(1.8, 3.5, -4.5);
+      const rim = new THREE.DirectionalLight(0x6f9bff, 0.9);
+      rim.position.set(2.2, 3.2, -3.8);
       scene.add(rim);
-      const fill = new THREE.DirectionalLight(0xffdfd2, 0.5);
-      fill.position.set(0.8, 2.2, 4.2);
+      const fill = new THREE.DirectionalLight(0xffe4d8, 0.62);
+      fill.position.set(2.2, 2.4, 3.8);
       scene.add(fill);
-      const redLight = new THREE.PointLight(0xff304f, 12, 8, 2);
-      redLight.position.set(-2.8, 1.6, 1.4);
+      const redLight = new THREE.PointLight(0xff304f, 7, 8, 2);
+      redLight.position.set(-3.2, 1.5, -1.8);
       scene.add(redLight);
-      const blueLight = new THREE.PointLight(0x287bff, 12, 8, 2);
-      blueLight.position.set(2.8, 1.5, 1.4);
+      const blueLight = new THREE.PointLight(0x287bff, 7, 8, 2);
+      blueLight.position.set(3.2, 1.5, -1.8);
       scene.add(blueLight);
-      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 2.2 : 3.2, 4.2, 2);
-      faceFill.position.set(0.35, 1.78, 1.05);
+      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 1.0 : 1.25, 3.2, 2);
+      faceFill.position.set(0.25, 1.86, 1.2);
       scene.add(faceFill);
 
       const floorMaterial = new THREE.MeshStandardMaterial({
         color: 0x04050a,
-        roughness: 0.28,
-        metalness: 0.58,
-        envMapIntensity: 0.7,
+        roughness: 0.78,
+        metalness: 0.12,
+        envMapIntensity: 0.3,
       });
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMaterial);
       floor.rotation.x = -Math.PI / 2;
@@ -458,12 +422,14 @@ export default function CinematicIntro({ onComplete }: Props) {
       scene.add(path);
       const pathMaterial = new THREE.MeshStandardMaterial({
         color: 0x060810,
-        roughness: 0.3,
-        metalness: 0.55,
-        envMapIntensity: 0.75,
+        roughness: 0.68,
+        metalness: 0.16,
+        envMapIntensity: 0.4,
       });
-      const runway = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.035, 20), pathMaterial);
-      runway.position.set(0, 0.018, -8.2);
+      // Thin, flush runway. The old 35mm slab was high enough to swallow the
+      // shoe soles and the emissive markers.
+      const runway = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.012, 20), pathMaterial);
+      runway.position.set(0, 0, -8.2);
       path.add(runway);
 
       const curbMaterial = new THREE.MeshStandardMaterial({
@@ -472,34 +438,14 @@ export default function CinematicIntro({ onComplete }: Props) {
         metalness: 0.6,
       });
       [-1.48, 1.48].forEach((x) => {
-        const curb = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 20), curbMaterial);
-        curb.position.set(x, 0.04, -8.2);
+        const curb = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.012, 20), curbMaterial);
+        curb.position.set(x, 0.006, -8.2);
         path.add(curb);
       });
 
-      const edgeRed = new THREE.Mesh(
-        new THREE.BoxGeometry(0.026, 0.025, 20),
-        new THREE.MeshStandardMaterial({
-          color: 0xff304f,
-          emissive: 0xff304f,
-          emissiveIntensity: 0.5,
-          roughness: 0.25,
-        }),
-      );
-      edgeRed.position.set(-1.53, 0.045, -8.2);
-      path.add(edgeRed);
-      const edgeBlue = new THREE.Mesh(
-        new THREE.BoxGeometry(0.026, 0.025, 20),
-        new THREE.MeshStandardMaterial({
-          color: 0x287bff,
-          emissive: 0x287bff,
-          emissiveIntensity: 0.5,
-          roughness: 0.25,
-        }),
-      );
-      edgeBlue.position.set(1.53, 0.045, -8.2);
-      path.add(edgeBlue);
-
+      // The two 20m emissive edge strips read as laser beams in the wide
+      // shot and crossed the character's feet. The gates already carry the
+      // red/blue/white colour language, so the runway stays neutral.
       const markers: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>[] = [];
       for (let index = 0; index < 26; index += 1) {
         const markerMaterial = new THREE.MeshStandardMaterial({
@@ -509,8 +455,8 @@ export default function CinematicIntro({ onComplete }: Props) {
           roughness: 0.3,
           metalness: 0.4,
         });
-        const marker = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.014, 0.06), markerMaterial);
-        marker.position.set(0, 0.048, 1.0 - index * 0.62);
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.006, 0.06), markerMaterial);
+        marker.position.set(0, 0.004, 1.0 - index * 0.62);
         path.add(marker);
         markers.push(marker);
       }
@@ -523,6 +469,9 @@ export default function CinematicIntro({ onComplete }: Props) {
         const color = GATE_COLORS[role];
         const group = new THREE.Group();
         group.position.copy(position);
+        // Human-scaled destinations. The first pass made 4m arches dominate the
+        // 1.8m character and read like a game level.
+        group.scale.setScalar(0.86);
         scene?.add(group);
 
         const frameMaterial = new THREE.MeshStandardMaterial({
@@ -539,15 +488,15 @@ export default function CinematicIntro({ onComplete }: Props) {
           metalness: 0.25,
         });
 
-        const dais = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 2.0, 0.12, 40), frameMaterial);
-        dais.position.y = 0.06;
+        const dais = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 2.0, 0.04, 40), frameMaterial);
+        dais.position.y = 0.02;
         group.add(dais);
         const daisRing = new THREE.Mesh(
-          new THREE.TorusGeometry(1.72, 0.032, 8, 56),
+          new THREE.TorusGeometry(1.72, 0.028, 8, 56),
           stripMaterial.clone(),
         );
         daisRing.rotation.x = Math.PI / 2;
-        daisRing.position.y = 0.13;
+        daisRing.position.y = 0.045;
         group.add(daisRing);
 
         const pillarGeometry = new THREE.BoxGeometry(0.17, 3.85, 0.42);
@@ -618,19 +567,6 @@ export default function CinematicIntro({ onComplete }: Props) {
         core.position.set(0, 2.2, 0.32);
         group.add(core);
 
-        const shards: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[] = [];
-        for (let index = 0; index < 4; index += 1) {
-          const shard = new THREE.Mesh(
-            new THREE.BoxGeometry(0.25, 0.035, 0.035),
-            stripMaterial.clone(),
-          );
-          const angle = (index / 4) * Math.PI * 2;
-          shard.position.set(Math.cos(angle) * 1.7, 1.35 + index * 0.42, 0.1 + Math.sin(angle) * 0.2);
-          shard.rotation.z = angle * 0.6;
-          group.add(shard);
-          shards.push(shard);
-        }
-
         const light = new THREE.PointLight(color, 1.8, 5.2, 2);
         light.position.set(0, 2.0, 0.55);
         group.add(light);
@@ -646,10 +582,11 @@ export default function CinematicIntro({ onComplete }: Props) {
           }),
         );
         glow.rotation.x = -Math.PI / 2;
-        glow.position.y = 0.145;
+        glow.position.y = 0.052;
+        glow.visible = false;
         group.add(glow);
 
-        gates.push({ role, group, strips, ring, shards, light, glow });
+        gates.push({ role, group, strips, ring, light, glow });
       }
 
       gateRoles.forEach(addGate);
@@ -701,28 +638,6 @@ export default function CinematicIntro({ onComplete }: Props) {
       holoWall.position.set(0, 6.5, -25);
       scene.add(holoWall);
 
-      const particleCount = isMobile ? 120 : 260;
-      const positions = new Float32Array(particleCount * 3);
-      for (let index = 0; index < particleCount; index += 1) {
-        positions[index * 3] = (Math.random() - 0.5) * 28;
-        positions[index * 3 + 1] = Math.random() * 9;
-        positions[index * 3 + 2] = -26 + Math.random() * 28;
-      }
-      const particleGeometry = new THREE.BufferGeometry();
-      particleGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      const particles = new THREE.Points(
-        particleGeometry,
-        new THREE.PointsMaterial({
-          color: 0x8fb3ff,
-          size: isMobile ? 0.022 : 0.018,
-          transparent: true,
-          opacity: 0.42,
-          depthWrite: false,
-          blending: THREE.AdditiveBlending,
-        }),
-      );
-      scene.add(particles);
-
       function makeShadowTexture(): THREE.CanvasTexture {
         const shadowCanvas = document.createElement("canvas");
         shadowCanvas.width = 128;
@@ -750,7 +665,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         }),
       );
       shadow.rotation.x = -Math.PI / 2;
-      shadow.position.y = 0.012;
+      shadow.position.y = 0.006;
       scene.add(shadow);
 
       let model: THREE.Object3D | null = null;
@@ -768,6 +683,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         if (!disposed) setFailed(true);
         return;
       }
+      const anisotropy = renderer.capabilities.getMaxAnisotropy();
       model.traverse((object) => {
         const mesh = object as THREE.Mesh;
         if (!mesh.isMesh) return;
@@ -776,15 +692,25 @@ export default function CinematicIntro({ onComplete }: Props) {
         materials.forEach((material) => {
           if (!material) return;
           const standard = material as THREE.MeshStandardMaterial;
-          standard.envMapIntensity = 0.75;
+          // The source roughness/metalness map contains tiny high-gloss
+          // patches that aliased into white “paint flecks” on the hair and
+          // jacket. A uniform matte surface removes them and suits the
+          // stylised look; the colour texture keeps all of the detail.
+          standard.envMapIntensity = 0.32;
+          standard.metalness = 0;
+          standard.metalnessMap = null;
+          standard.roughness = 0.84;
+          standard.roughnessMap = null;
+          if (standard.normalMap) standard.normalScale.set(0.5, 0.5);
+          [standard.map, standard.normalMap].forEach((texture) => {
+            if (texture) texture.anisotropy = anisotropy;
+          });
           standard.needsUpdate = true;
         });
       });
 
-      const head = model.getObjectByName("Head");
-      if (head) head.add(createGlasses());
-
       const character = new THREE.Group();
+      character.position.y = GROUND_Y;
       character.add(model);
       scene.add(character);
 
@@ -813,12 +739,15 @@ export default function CinematicIntro({ onComplete }: Props) {
         speed: 0,
       };
 
-      const closePosition = new THREE.Vector3(0, 1.62, isMobile ? 1.08 : 0.88);
-      const closeLook = new THREE.Vector3(0, 1.595, 0);
-      const widePosition = new THREE.Vector3(0.3, isMobile ? 2.2 : 2.05, isMobile ? 7.9 : 6.4);
-      const wideLook = new THREE.Vector3(0.1, 1.02, -2.0);
-      const selectorPosition = new THREE.Vector3(isMobile ? 1.55 : 2.7, isMobile ? 2.05 : 2.05, isMobile ? 2.4 : 1.2);
-      const selectorLook = new THREE.Vector3(isMobile ? 0 : 0.12, isMobile ? 1.24 : 1.12, SELECTOR_Z - 0.15);
+      const closePosition = new THREE.Vector3(0, 1.6, isMobile ? 1.12 : 0.98);
+      const closeLook = new THREE.Vector3(0, 1.585, 0);
+      const widePosition = new THREE.Vector3(0.35, isMobile ? 2.1 : 2.0, isMobile ? 7.4 : 6.6);
+      const wideLook = new THREE.Vector3(0.05, 1.0, -2.2);
+      // The selection camera is a wide stage shot: character on the left,
+      // all three gates visible, role dock below. This is the layout change
+      // that stops the dock from covering the last two destinations.
+      const selectorPosition = new THREE.Vector3(isMobile ? 1.25 : 2.35, isMobile ? 2.5 : 2.35, isMobile ? 4.1 : 4.7);
+      const selectorLook = new THREE.Vector3(isMobile ? 0.25 : 1.2, isMobile ? 0.35 : 0.55, SELECTOR_Z - 0.8);
       const faceCameraAngle = Math.atan2(selectorPosition.x, selectorPosition.z - SELECTOR_Z);
 
       const desiredPosition = widePosition.clone();
@@ -828,30 +757,41 @@ export default function CinematicIntro({ onComplete }: Props) {
       const tempLook = new THREE.Vector3();
 
       function applyPhase(next: Phase, jump = false) {
+        // React and the scene controller can both report the same transition.
+        // Do not restart the phase clock on the duplicate call.
+        if (next === state.phase && !jump) return;
         const previous = state.phase;
         state.phase = next;
         state.phaseStart = performance.now() / 1000 - (jump ? 10 : 0);
+        if (next === "approach" || next === "departing") {
+          // Start every journey from the neutral frame so the walk never
+          // fades in halfway through a stride.
+          walkAction.time = 0;
+          mixer.update(0);
+        }
         if (next === "greeting" || next === "reveal") {
-          character.position.set(0, 0, 0);
+          character.position.set(0, GROUND_Y, 0);
           character.rotation.y = 0;
           state.walkBlend = 0;
         } else if (next === "approach") {
-          character.position.set(0, 0, 0);
+          character.position.set(0, GROUND_Y, 0);
           character.rotation.y = 0;
           state.walkBlend = 0;
         } else if (next === "selecting") {
-          character.position.set(0, 0, SELECTOR_Z);
+          character.position.set(0, GROUND_Y, SELECTOR_Z);
           character.rotation.y = faceCameraAngle;
           state.walkBlend = 0;
-          camera.position.copy(selectorPosition);
-          currentLook.copy(selectorLook);
-          camera.lookAt(currentLook);
+          if (jump) {
+            camera.position.copy(selectorPosition);
+            currentLook.copy(selectorLook);
+            camera.lookAt(currentLook);
+          }
         } else if (next === "departing" && previous !== "departing") {
-          character.position.set(0, 0, SELECTOR_Z);
+          character.position.set(0, GROUND_Y, SELECTOR_Z);
           state.walkBlend = 0;
         } else if (next === "transition") {
           const destination = state.selected ? GATE_POSITIONS[state.selected] : GATE_POSITIONS.data;
-          character.position.set(destination.x, 0, destination.z);
+          character.position.set(destination.x, DAIS_TOP, destination.z);
           state.walkBlend = 0;
         }
         if (jump && next === "selecting") {
@@ -866,17 +806,18 @@ export default function CinematicIntro({ onComplete }: Props) {
       currentLook.copy(state.phase === "selecting" ? selectorLook : closeLook);
       camera.lookAt(currentLook);
 
-      function updateCharacter(dt: number, time: number) {
-        const phaseTime = time - state.phaseStart;
+      function updateCharacter(dt: number) {
+        const phaseTime = performance.now() / 1000 - state.phaseStart;
         let moving = false;
         let speed = 0;
 
         if (state.phase === "approach") {
           const travel = travelProfile(phaseTime, Math.abs(SELECTOR_Z));
+          character.position.y = GROUND_Y;
           character.position.z = -travel.covered;
-          moving = !travel.done;
+          moving = travel.speed > 0.02 && !travel.done;
           speed = travel.speed;
-          const turn = easeInOutCubic(clamp(phaseTime / 1.05));
+          const turn = easeInOutCubic(clamp(phaseTime / TURN_DELAY));
           character.rotation.y = lerpAngle(0, Math.PI, turn);
           if (travel.done) {
             const settle = smoothstep(clamp((phaseTime - travel.total) / 0.9));
@@ -889,24 +830,29 @@ export default function CinematicIntro({ onComplete }: Props) {
           const ratio = distance > 0 ? travel.covered / distance : 1;
           character.position.x = lerp(0, destination.x, ratio);
           character.position.z = lerp(SELECTOR_Z, destination.z, ratio);
-          moving = !travel.done;
+          character.position.y = lerp(
+            GROUND_Y,
+            DAIS_TOP,
+            smoothstep(clamp((ratio - 0.82) / 0.18)),
+          );
+          moving = travel.speed > 0.02 && !travel.done;
           speed = travel.speed;
           const targetAngle = Math.atan2(destination.x, destination.z - SELECTOR_Z);
-          const turn = smoothstep(clamp(phaseTime / 0.95));
+          const turn = easeInOutCubic(clamp(phaseTime / TURN_DELAY));
           character.rotation.y = lerpAngle(faceCameraAngle, targetAngle, turn);
         } else if (state.phase === "selecting") {
-          character.position.set(0, 0, SELECTOR_Z);
+          character.position.set(0, GROUND_Y, SELECTOR_Z);
           character.rotation.y = faceCameraAngle;
         } else if (state.phase === "transition") {
           const destination = state.selected ? GATE_POSITIONS[state.selected] : GATE_POSITIONS.data;
-          character.position.set(destination.x, 0, destination.z);
+          character.position.set(destination.x, DAIS_TOP, destination.z);
           const targetAngle = Math.atan2(destination.x, destination.z - SELECTOR_Z);
           character.rotation.y = dampAngle(character.rotation.y, targetAngle, dt, 7);
         }
 
         state.speed = speed;
         const targetBlend = moving ? 1 : 0;
-        state.walkBlend = lerp(state.walkBlend, targetBlend, 1 - Math.exp(-dt * 9));
+        state.walkBlend = lerp(state.walkBlend, targetBlend, 1 - Math.exp(-dt * 8));
         walkAction.setEffectiveWeight(state.walkBlend);
         idleAction.setEffectiveWeight(1 - state.walkBlend);
         walkAction.timeScale = clamp(speed / WALK_CYCLE_DISTANCE, 0.04, 1.2);
@@ -924,28 +870,35 @@ export default function CinematicIntro({ onComplete }: Props) {
         });
 
         gates.forEach((gate) => {
+          // The opening portrait belongs to the character. The destinations
+          // appear with the pullback and ease up to full size instead of
+          // popping into the close-up at full scale.
+          gate.group.visible = state.phase !== "greeting";
+          const revealIn =
+            state.phase === "reveal"
+              ? 0.72 + 0.28 * smoothstep(clamp(phaseTime / 0.8))
+              : 1;
+          gate.group.scale.setScalar(0.86 * revealIn);
           const isSelected = state.selected === gate.role;
           const active = isSelected && (state.phase === "departing" || state.phase === "transition");
           const preparing = state.phase === "selecting";
           gate.strips.forEach((strip) => {
-            strip.material.emissiveIntensity = active ? 2.0 : preparing ? (isSelected ? 1.5 : 0.42) : 0.28;
+            strip.material.emissiveIntensity = active ? 1.7 : preparing ? (isSelected ? 1.3 : 0.36) : 0.24;
           });
-          gate.ring.material.emissiveIntensity = active ? 1.7 : preparing ? (isSelected ? 1.15 : 0.34) : 0.22;
-          gate.light.intensity = active ? 4.2 : preparing ? (isSelected ? 1.2 : 0.55) : 0.35;
+          gate.ring.material.emissiveIntensity = active ? 1.5 : preparing ? (isSelected ? 1.0 : 0.3) : 0.2;
+          gate.light.intensity = active ? 3.4 : preparing ? (isSelected ? 0.95 : 0.38) : 0.28;
           gate.glow.material.opacity = active ? 0.13 : preparing ? (isSelected ? 0.07 : 0.026) : 0.016;
-          gate.ring.rotation.z += dt * (active ? 0.5 : 0.16);
-          gate.shards.forEach((shard, index) => {
-            shard.position.y += Math.sin(time * 0.8 + index) * dt * 0.02;
-            shard.rotation.x += dt * 0.15;
-          });
+          gate.ring.rotation.z += dt * (active ? 0.4 : 0.12);
         });
       }
 
       function updateCamera(dt: number, time: number) {
         const phaseTime = time - state.phaseStart;
         if (state.phase === "greeting") {
+          const hold = smoothstep(clamp(phaseTime / (GREETING_MS / 1000)));
           desiredPosition.copy(closePosition);
-          desiredPosition.z -= Math.sin(time * 0.65) * 0.006;
+          desiredPosition.z += 0.035 * (1 - hold);
+          desiredPosition.z -= Math.sin(time * 0.5) * 0.003;
           desiredLook.copy(closeLook);
         } else if (state.phase === "reveal") {
           const progress = easeInOutCubic(clamp(phaseTime / REVEAL_SECONDS));
@@ -958,8 +911,8 @@ export default function CinematicIntro({ onComplete }: Props) {
           desiredLook.copy(wideLook).lerp(selectorLook, progress);
         } else if (state.phase === "selecting") {
           desiredPosition.copy(selectorPosition);
-          desiredPosition.x += Math.sin(time * 0.24) * 0.035;
-          desiredPosition.y += Math.sin(time * 0.33) * 0.018;
+          desiredPosition.x += Math.sin(time * 0.22) * 0.022;
+          desiredPosition.y += Math.sin(time * 0.3) * 0.012;
           desiredLook.copy(selectorLook);
         } else if (state.phase === "departing" || state.phase === "transition") {
           const destination = state.selected ? GATE_POSITIONS[state.selected] : GATE_POSITIONS.data;
@@ -1006,18 +959,16 @@ export default function CinematicIntro({ onComplete }: Props) {
         const time = frameTime / 1000;
         const dt = Math.min(0.05, time - lastTime);
         lastTime = time;
-        updateCharacter(dt, time);
+        updateCharacter(dt);
         updateCamera(dt, time);
-        particles.rotation.y += dt * 0.006;
         renderer?.render(scene as THREE.Scene, camera);
       }
 
       function onResize() {
         if (disposed) return;
-        const mobile = window.innerWidth < 760;
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
-        renderer?.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.25 : 1.6));
+        renderer?.setPixelRatio(renderPixelRatio());
         renderer?.setSize(window.innerWidth, window.innerHeight, false);
       }
 
@@ -1048,7 +999,14 @@ export default function CinematicIntro({ onComplete }: Props) {
         },
       };
 
-      if (scene) renderer.compile(scene, camera);
+      if (scene) {
+        try {
+          await renderer.compileAsync(scene, camera);
+        } catch {
+          // compileAsync is an optimisation; the first render is still valid.
+        }
+      }
+      if (disposed) return;
       setReady(true);
       handleSceneReady();
       raf = requestAnimationFrame(animate);
@@ -1119,7 +1077,7 @@ export default function CinematicIntro({ onComplete }: Props) {
               Skip journey
               <ArrowRightIcon width={14} height={14} />
             </button>
-          ) : phase !== "selecting" ? (
+          ) : phase !== "selecting" && phase !== "loading" ? (
             <button type="button" className="skip-intro" onClick={skipToRoles}>
               Skip intro
               <ArrowRightIcon width={14} height={14} />

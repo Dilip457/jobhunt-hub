@@ -19,6 +19,31 @@
   --radius-sm: 12px;
   --shadow: 0 26px 70px -34px rgba(0, 0, 0, 0.95);
   --shadow-red: 0 24px 60px -32px rgba(255, 48, 79, 0.55);
+
+  /* Interface scale. All intro spacing lands on a 4/8px rhythm. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 64px;
+  --radius-xs: 8px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+
+  /* One shared motion language for the UI layer. */
+  --duration-fast: 180ms;
+  --duration-ui: 420ms;
+  --duration-panel: 700ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --text-kicker: clamp(10px, 0.72vw, 11px);
+  --text-small: clamp(11px, 0.82vw, 12px);
+  --text-body: clamp(13px, 0.92vw, 14px);
+  --text-title: clamp(22px, 2.2vw, 30px);
+
   --font-body: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-display: "Space Grotesk", "Inter", "Segoe UI", system-ui, sans-serif;
 }
@@ -229,7 +254,7 @@ button:disabled {
   max-height: 760px;
   border-radius: 50%;
   filter: blur(90px);
-  opacity: 0.22;
+  opacity: 0.16;
   pointer-events: none;
   animation: ambient-float 12s ease-in-out infinite alternate;
 }
@@ -325,15 +350,12 @@ button:disabled {
   bottom: 12vh;
   z-index: 10;
   font-family: var(--font-display), sans-serif;
-  font-size: clamp(110px, 16vw, 250px);
+  font-size: clamp(96px, 14vw, 220px);
   font-weight: 700;
   line-height: 0.72;
-  letter-spacing: -0.09em;
+  letter-spacing: -0.085em;
   color: #fff;
-  text-shadow:
-    -0.035em 0 0 rgba(255, 48, 79, 0.5),
-    0.035em 0 0 rgba(40, 123, 255, 0.5),
-    0 0 90px rgba(255, 255, 255, 0.13);
+  text-shadow: 0 0 70px rgba(255, 255, 255, 0.11);
   pointer-events: none;
 }
 
@@ -455,83 +477,133 @@ button:disabled {
 
 /* Role selection inside the scene */
 
+/* Desktop: a shallow destination dock across the bottom. The stage above it
+   keeps the character, path and all three gates visible at once. */
 .intro-roles.intro-roles-cinematic {
   position: fixed;
-  top: clamp(86px, 11vh, 112px);
-  right: clamp(18px, 4vw, 64px);
-  bottom: auto;
+  top: auto;
+  left: 50%;
+  right: auto;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
   z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: min(448px, 35vw);
+  display: grid;
+  grid-template-columns: minmax(220px, 0.82fr) minmax(0, 2.8fr);
+  grid-template-areas:
+    "head grid"
+    "foot foot";
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  width: min(1180px, calc(100vw - 48px));
   min-height: 0;
-  max-height: calc(100svh - clamp(86px, 11vh, 112px) - 24px);
+  max-height: none;
   margin: 0;
-  padding: 24px;
+  padding: var(--space-4) var(--space-5);
   overflow: hidden;
+  transform: translateX(-50%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background:
-    linear-gradient(180deg, rgba(21, 24, 33, 0.88), rgba(8, 9, 13, 0.8));
+    linear-gradient(180deg, rgba(21, 24, 33, 0.9), rgba(8, 9, 13, 0.86));
   box-shadow: var(--shadow);
   backdrop-filter: blur(22px);
-  animation: panel-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: dock-in var(--duration-panel) var(--ease-out) both;
 }
 
 .intro-roles-cinematic .intro-roles-head {
-  flex: 0 0 auto;
+  grid-area: head;
   min-height: 0;
+  align-self: center;
+}
+
+.intro-roles-cinematic .intro-roles-head h2 {
+  font-size: var(--text-title);
+}
+
+.intro-roles-cinematic .intro-roles-sub {
+  margin-top: var(--space-1);
+  font-size: var(--text-small);
 }
 
 .intro-roles-cinematic .destination-grid {
-  flex: 0 1 auto;
+  grid-area: grid;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
   min-height: 0;
-  margin-top: 4px;
-  padding-right: 4px;
-  align-content: start;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  margin: 0;
+  padding: 0;
+  align-content: stretch;
+  overflow: visible;
 }
 
-.intro-roles-cinematic .destination-grid::-webkit-scrollbar {
-  width: 5px;
+.intro-roles-cinematic .destination-card {
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "index arrow"
+    "copy copy";
+  align-items: start;
+  gap: var(--space-1) var(--space-2);
+  min-height: 96px;
+  padding: var(--space-3);
 }
 
-.intro-roles-cinematic .destination-grid::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
+.intro-roles-cinematic .destination-index {
+  grid-area: index;
+  align-self: center;
+}
+
+.intro-roles-cinematic .destination-copy {
+  grid-area: copy;
+  gap: var(--space-1);
+}
+
+.intro-roles-cinematic .destination-copy strong {
+  font-size: 14px;
+}
+
+.intro-roles-cinematic .destination-copy span {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.intro-roles-cinematic .destination-arrow {
+  grid-area: arrow;
+  width: 26px;
+  height: 26px;
 }
 
 .intro-roles-cinematic .intro-footnote {
-  flex: 0 0 auto;
+  grid-area: foot;
   margin-top: 0;
+  font-size: 10.5px;
 }
 
-@media (max-height: 700px) {
+@media (max-height: 700px) and (min-width: 901px) {
   .intro-roles.intro-roles-cinematic {
-    gap: 10px;
-    padding: 18px;
+    gap: var(--space-2) var(--space-5);
+    padding: var(--space-3) var(--space-4);
   }
 
   .intro-roles-cinematic .destination-grid {
-    gap: 7px;
+    gap: var(--space-2);
   }
 
   .intro-roles-cinematic .destination-card {
-    min-height: 66px;
-    padding: 10px 13px;
+    min-height: 78px;
+    padding: 10px 12px;
+  }
+
+  .intro-roles-cinematic .destination-copy span {
+    -webkit-line-clamp: 1;
   }
 
   .intro-roles-cinematic .intro-roles-sub {
-    margin-top: 3px;
-  }
-
-  .intro-roles-cinematic .intro-footnote {
-    margin-top: 0;
-    font-size: 10.5px;
+    margin-top: 2px;
   }
 }
 
@@ -543,6 +615,17 @@ button:disabled {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 22px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 }
 
@@ -558,7 +641,7 @@ button:disabled {
 }
 
 .intro-roles-cinematic .intro-roles-sub {
-  margin-top: 6px;
+  margin-top: var(--space-1);
 }
 
 .intro-kicker,
@@ -586,7 +669,7 @@ button:disabled {
 }
 
 .intro-roles-cinematic .destination-grid {
-  margin-top: 18px;
+  margin-top: 0;
 }
 
 .intro-footnote {
@@ -854,6 +937,51 @@ button:disabled {
   max-width: 500px;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* The static/reduced-motion fallback has no camera breathing room. Keep its
+   copy clear of the bottom dock on laptop and short desktop viewports. */
+@media (min-width: 761px) and (max-height: 820px) {
+  .static-intro .static-intro-copy {
+    margin-top: 13vh;
+  }
+
+  .static-intro .intro-hi {
+    font-size: clamp(96px, 15.5vw, 190px);
+  }
+
+  .static-intro .static-intro-copy h2 {
+    font-size: clamp(26px, 3.5vw, 46px);
+  }
+
+  .static-intro .intro-lede {
+    max-width: 460px;
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 761px) and (max-height: 620px) {
+  .static-intro .static-intro-copy {
+    margin-top: 76px;
+  }
+
+  .static-intro .intro-eyebrow {
+    display: none;
+  }
+
+  .static-intro .intro-hi {
+    font-size: clamp(76px, 11vw, 120px);
+    line-height: 0.78;
+  }
+
+  .static-intro .static-intro-copy h2 {
+    margin-top: 10px;
+    font-size: clamp(22px, 2.6vw, 34px);
+  }
+
+  .static-intro .intro-lede {
+    display: none;
+  }
 }
 
 .intro-roles {
@@ -2186,7 +2314,7 @@ button:disabled {
 
 @media (max-width: 1100px) {
   .intro-roles.intro-roles-cinematic {
-    width: min(430px, 40vw);
+    width: calc(100vw - 40px);
   }
 
   .dashboard-hero {
@@ -2228,11 +2356,85 @@ button:disabled {
   }
 
   .intro-roles.intro-roles-cinematic {
-    top: 84px;
-    right: 20px;
-    bottom: auto;
-    width: min(430px, calc(100vw - 40px));
-    max-height: calc(100svh - 108px);
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    transform: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    width: auto;
+    max-height: calc(100svh - 96px);
+    padding: var(--space-4);
+    animation: panel-in var(--duration-panel) var(--ease-out) both;
+  }
+
+  .intro-roles-cinematic .intro-roles-head {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .intro-roles-cinematic .destination-grid {
+    display: grid;
+    flex: 0 1 auto;
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+    min-height: 0;
+    margin-top: var(--space-1);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+
+  .intro-roles-cinematic .destination-grid::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .intro-roles-cinematic .destination-grid::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .intro-roles-cinematic .destination-card {
+    grid-template-columns: 30px 1fr 28px;
+    grid-template-areas: none;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: 68px;
+    padding: var(--space-3);
+  }
+
+  .intro-roles-cinematic .destination-index {
+    grid-area: auto;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .intro-roles-cinematic .destination-copy {
+    grid-area: auto;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .intro-roles-cinematic .destination-arrow {
+    grid-area: auto;
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .intro-roles-cinematic .destination-copy span {
+    display: block;
+    overflow: hidden;
+    white-space: normal;
+    text-overflow: clip;
+    -webkit-line-clamp: unset;
+  }
+
+  .intro-roles-cinematic .intro-footnote {
+    flex: 0 0 auto;
   }
 
   .intro-tagline {
@@ -2312,13 +2514,13 @@ button:disabled {
     top: auto;
     left: 12px;
     right: 12px;
-    bottom: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
     width: auto;
-    max-height: min(60svh, 560px);
-    padding: 16px;
-    gap: 10px;
+    max-height: calc(100svh - 88px);
+    padding: var(--space-4);
+    gap: var(--space-2);
     overflow: hidden;
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
   }
 
   .intro-roles-cinematic .intro-roles-head h2 {
@@ -2516,12 +2718,23 @@ button:disabled {
     font-size: 11px;
   }
 
-  .destination-card {
-    grid-template-columns: 1fr 28px;
+  .intro-roles-cinematic .destination-card {
+    grid-template-columns: minmax(0, 1fr) 28px;
+    grid-template-areas: none;
   }
 
-  .destination-index {
+  .intro-roles-cinematic .destination-index {
     display: none;
+  }
+
+  .intro-roles-cinematic .destination-copy {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .intro-roles-cinematic .destination-arrow {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .destination-copy span {

@@ -655,7 +655,9 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 
 ### 6.6 UI
 
-- `/` plays a rigged Three.js character close-up (`HI.`), camera pullback, illuminated red/blue path, walk and role selection.
+- `/` plays a rigged Three.js character close-up (`HI.` for four seconds), camera pullback, illuminated path, turn, walk and role selection.
+- The three destination gates are hidden during the greeting so the portrait stays clean; they appear when the camera pulls back.
+- Desktop uses a shallow bottom role dock that keeps the character, path and all three gates visible. Phones use a bottom sheet with explicit card rows.
 - Returning visitors (`localStorage` key `jobhunt-intro-seen`) start at the role selection; **Skip intro** is always available during the sequence.
 - `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`, a portrait-based selector with identical destinations.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
@@ -676,13 +678,17 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 | Source | `https://grab3d.com/models/characters/man/` |
 | Local files | `web/public/models/student/` |
 | Mesh | 85,487 triangles; quantized; textures embedded as 1024px WebP |
-| Look | Bearded adult, dark hair, blue-black bomber jacket, jeans, sneakers, runtime 3D glasses |
-| Motion | Walk (1.0 s) + run clips; breathing idle generated from walk at t=0 |
+| Look | Bearded adult, flat warm-brown hair, flat navy bomber jacket, white knit top, jeans, sneakers; no runtime glasses |
+| Shading | Uniform matte `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.84`, no roughness/metallic maps, normal scale `0.5`, low environment intensity |
+| Motion | Walk (1.0 s) + run clips; breathing idle generated from walk at t=0; 1.8 m stride-matched walk; 0.55 s turn before travel |
+| Render | `compileAsync` before the reveal, DPR 1.5–2 on desktop and 1.25–1.75 on mobile, maximum texture anisotropy |
 | Not implemented | Facial blendshapes, eye rig, lip-sync, hair simulation, motion capture |
 
-The guide is deliberately a stylized prototype, not a finished character. Glasses are runtime
-geometry attached to the `Head` bone, so they follow head motion. Attribution is documented
-in `ATTRIBUTION.txt` and linked from the dashboard credits. The model path must stay under
+The guide is deliberately a stylized prototype, not a finished character. The basecolour
+atlas was cleaned (flat navy fabric, flat brown hair, bright texture flecks suppressed) and
+the material was made uniformly matte to remove specular fireflies. The earlier runtime
+glasses were removed so the face reads cleanly. Attribution is documented in
+`ATTRIBUTION.txt` and linked from the dashboard credits. The model path must stay under
 `web/public/models/student/`.
 
 ### 6.8 Environment variables
@@ -958,11 +964,11 @@ curl "https://<site>/api/jobs?role=genai&fresh=1"
 Front-end smoke checks used for this redesign (all must pass before deploying):
 
 ```text
-/                         → greeting, role panel, skip intro
+/                         → 4 s greeting, pullback, all 3 gates, role dock, skip intro
 /jobs/genai               → GenAI cards, filters, back/forward
 /jobs/data                → Data Engineering cards, URL filters
 /jobs/uiux                → UI/UX cards on a 390×844 viewport, no overflow
-reduced-motion            → static intro, no WebGL canvas
+reduced-motion            → static intro, no WebGL canvas, copy clear of the dock
 blocked WebGL             → static intro fallback
 /jobs/not-a-role          → redirect to /
 Alt+Shift+R on dashboard  → confirmation dialog; Escape closes; ignored in inputs
