@@ -190,41 +190,24 @@ button:disabled {
   position: fixed;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
   background:
-    radial-gradient(46% 56% at 38% 42%, rgba(255, 48, 79, 0.14), transparent 70%),
-    radial-gradient(50% 62% at 64% 38%, rgba(40, 123, 255, 0.16), transparent 72%),
+    linear-gradient(90deg, rgba(5, 6, 10, 0.5) 0%, rgba(5, 6, 10, 0.08) 48%, rgba(5, 6, 10, 0.62) 100%),
+    radial-gradient(54% 62% at 50% 40%, transparent 34%, rgba(5, 6, 10, 0.48) 100%),
+    url("/models/student/portrait.webp") center 32% / cover no-repeat,
     linear-gradient(180deg, #05060a 0%, #080a11 62%, #030407 100%);
-}
-
-.intro-poster::before {
-  content: "";
-  position: absolute;
-  left: 34%;
-  top: 18%;
-  width: 210px;
-  height: 260px;
-  border-radius: 48% 48% 38% 38%;
-  background: linear-gradient(180deg, #161a23, #090b10 78%);
-  filter: blur(1px);
-  box-shadow:
-    -24px 12px 60px rgba(255, 48, 79, 0.12),
-    26px 12px 60px rgba(40, 123, 255, 0.16);
-  opacity: 0.8;
 }
 
 .intro-poster::after {
   content: "";
   position: absolute;
-  left: 50%;
-  bottom: -14%;
-  width: 62vw;
-  height: 60vh;
-  transform: translateX(-50%) perspective(500px) rotateX(62deg);
-  transform-origin: bottom center;
+  inset: 0;
   background:
-    linear-gradient(90deg, transparent 48%, rgba(255, 48, 79, 0.3) 49.4%, rgba(255, 48, 79, 0.3) 50%, transparent 51%),
-    linear-gradient(180deg, transparent 0%, rgba(40, 123, 255, 0.18) 55%, transparent 100%);
-  opacity: 0.6;
+    radial-gradient(46% 52% at 30% 48%, rgba(255, 48, 79, 0.14), transparent 72%),
+    radial-gradient(46% 52% at 70% 48%, rgba(40, 123, 255, 0.16), transparent 72%);
+  mix-blend-mode: screen;
+  opacity: 0.75;
+  pointer-events: none;
 }
 
 .intro-vignette {
@@ -351,25 +334,11 @@ button:disabled {
     -0.035em 0 0 rgba(255, 48, 79, 0.5),
     0.035em 0 0 rgba(40, 123, 255, 0.5),
     0 0 90px rgba(255, 255, 255, 0.13);
-  animation: greeting-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   pointer-events: none;
 }
 
 .intro-greeting span {
   color: var(--red);
-}
-
-@keyframes greeting-in {
-  from {
-    opacity: 0;
-    letter-spacing: -0.18em;
-    filter: blur(12px);
-  }
-  to {
-    opacity: 1;
-    letter-spacing: -0.09em;
-    filter: blur(0);
-  }
 }
 
 .intro-tagline {
@@ -379,7 +348,6 @@ button:disabled {
   z-index: 10;
   max-width: min(720px, 78vw);
   transform: translateY(-50%);
-  animation: copy-in 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
   pointer-events: none;
 }
 
@@ -398,17 +366,6 @@ button:disabled {
   max-width: 440px;
   color: var(--muted);
   font-size: 14px;
-}
-
-@keyframes copy-in {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .intro-hint {
@@ -437,8 +394,9 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: rgba(5, 6, 10, 0.76);
-  backdrop-filter: blur(10px);
+  background:
+    radial-gradient(46% 52% at 50% 48%, rgba(5, 6, 10, 0.14), rgba(5, 6, 10, 0.72) 78%),
+    linear-gradient(180deg, rgba(5, 6, 10, 0.24), rgba(5, 6, 10, 0.62));
   animation: fade-in 0.2s ease both;
 }
 
@@ -499,20 +457,82 @@ button:disabled {
 
 .intro-roles.intro-roles-cinematic {
   position: fixed;
-  right: 4vw;
-  bottom: 7vh;
+  top: clamp(86px, 11vh, 112px);
+  right: clamp(18px, 4vw, 64px);
+  bottom: auto;
   z-index: 20;
-  width: min(440px, 37vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(448px, 35vw);
+  min-height: 0;
+  max-height: calc(100svh - clamp(86px, 11vh, 112px) - 24px);
   margin: 0;
-  padding: 22px;
-  padding-top: 22px;
+  padding: 24px;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background:
-    linear-gradient(180deg, rgba(21, 24, 33, 0.82), rgba(8, 9, 13, 0.74));
+    linear-gradient(180deg, rgba(21, 24, 33, 0.88), rgba(8, 9, 13, 0.8));
   box-shadow: var(--shadow);
   backdrop-filter: blur(22px);
   animation: panel-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.intro-roles-cinematic .intro-roles-head {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.intro-roles-cinematic .destination-grid {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: 4px;
+  padding-right: 4px;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.intro-roles-cinematic .destination-grid::-webkit-scrollbar {
+  width: 5px;
+}
+
+.intro-roles-cinematic .destination-grid::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.intro-roles-cinematic .intro-footnote {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+@media (max-height: 700px) {
+  .intro-roles.intro-roles-cinematic {
+    gap: 10px;
+    padding: 18px;
+  }
+
+  .intro-roles-cinematic .destination-grid {
+    gap: 7px;
+  }
+
+  .intro-roles-cinematic .destination-card {
+    min-height: 66px;
+    padding: 10px 13px;
+  }
+
+  .intro-roles-cinematic .intro-roles-sub {
+    margin-top: 3px;
+  }
+
+  .intro-roles-cinematic .intro-footnote {
+    margin-top: 0;
+    font-size: 10.5px;
+  }
 }
 
 @keyframes panel-in {
@@ -526,12 +546,7 @@ button:disabled {
   }
 }
 
-/* Fade the clipped bust shelf under the chin during the close-up. The same
-   soft bottom edge keeps the wide shot from ending on a hard canvas line. */
-.intro-canvas {
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 93%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 0%, #000 93%, transparent 100%);
-}
+/* The full-body character is no longer clipped, so keep the canvas edge clean. */
 
 .intro-roles-head h2,
 .intro-roles-sub {
@@ -600,7 +615,6 @@ button:disabled {
   bottom: 10vh;
   z-index: 20;
   max-width: min(640px, 84vw);
-  animation: copy-in 0.5s ease both;
 }
 
 .intro-depart h2 {
@@ -643,9 +657,11 @@ button:disabled {
   z-index: 40;
   display: grid;
   place-items: center;
-  background: #030407;
+  background:
+    radial-gradient(54% 54% at 50% 46%, color-mix(in srgb, var(--role-accent, #287bff) 18%, transparent), transparent 72%),
+    #04050a;
   text-align: center;
-  animation: fade-in 0.28s ease both;
+  animation: fade-in 0.22s ease both;
 }
 
 .intro-transition h2 {
@@ -691,8 +707,10 @@ button:disabled {
   z-index: 0;
   overflow: hidden;
   background:
-    radial-gradient(45% 55% at 38% 43%, rgba(255, 48, 79, 0.13), transparent 70%),
-    radial-gradient(50% 60% at 64% 38%, rgba(40, 123, 255, 0.16), transparent 72%),
+    linear-gradient(90deg, rgba(5, 6, 10, 0.18) 0%, rgba(5, 6, 10, 0.3) 44%, rgba(5, 6, 10, 0.82) 100%),
+    radial-gradient(45% 55% at 34% 43%, rgba(255, 48, 79, 0.12), transparent 70%),
+    radial-gradient(50% 60% at 64% 38%, rgba(40, 123, 255, 0.14), transparent 72%),
+    url("/models/student/portrait.webp") center 30% / cover no-repeat,
     linear-gradient(180deg, #05060a, #080a11 68%, #030407);
 }
 
@@ -797,7 +815,7 @@ button:disabled {
   position: relative;
   z-index: 2;
   margin-top: 18vh;
-  max-width: 760px;
+  max-width: min(640px, 52vw);
 }
 
 .intro-eyebrow {
@@ -914,6 +932,15 @@ button:disabled {
   border-color: color-mix(in srgb, var(--role-accent) 55%, transparent);
   background: rgba(255, 255, 255, 0.055);
   box-shadow: 0 18px 38px -26px var(--role-accent);
+}
+
+.destination-card:focus-visible {
+  outline: 2px solid var(--role-accent);
+  outline-offset: 2px;
+}
+
+.destination-card:disabled {
+  cursor: wait;
 }
 
 .destination-card:hover::before,
@@ -2159,7 +2186,7 @@ button:disabled {
 
 @media (max-width: 1100px) {
   .intro-roles.intro-roles-cinematic {
-    width: min(410px, 40vw);
+    width: min(430px, 40vw);
   }
 
   .dashboard-hero {
@@ -2201,9 +2228,11 @@ button:disabled {
   }
 
   .intro-roles.intro-roles-cinematic {
+    top: 84px;
     right: 20px;
-    bottom: 20px;
-    width: min(420px, calc(100vw - 40px));
+    bottom: auto;
+    width: min(430px, calc(100vw - 40px));
+    max-height: calc(100svh - 108px);
   }
 
   .intro-tagline {
@@ -2215,13 +2244,23 @@ button:disabled {
     left: 24px;
   }
 
-  .static-intro-copy {
-    margin-top: 16vh;
+  .static-intro {
+    padding-bottom: 62svh;
+    overflow-y: auto;
   }
 
-  .static-guide {
-    left: 56%;
-    opacity: 0.42;
+  .static-intro-copy {
+    margin-top: 104px;
+    max-width: calc(100vw - 40px);
+  }
+
+  .intro-roles.intro-roles-cinematic.static-roles {
+    top: auto;
+    left: 20px;
+    right: 20px;
+    bottom: 20px;
+    width: auto;
+    max-height: 55svh;
   }
 }
 
@@ -2249,43 +2288,50 @@ button:disabled {
     font-size: clamp(84px, 24vw, 130px);
   }
 
-  /* The licensed bust is clipped below the jaw. On portrait screens the cut
-     shelf fills the bottom of the close-up, so fade the canvas into the
-     poster before it reaches the frame edge. */
-  .intro-canvas {
-    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 82%);
-    mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 82%);
-  }
-
   .intro-tagline {
     left: 20px;
     right: 20px;
-    top: 34%;
+    top: auto;
+    bottom: 14vh;
     max-width: none;
+    transform: none;
   }
 
   .intro-tagline p {
-    font-size: clamp(38px, 12vw, 64px);
+    font-size: clamp(28px, 8.2vw, 44px);
+    line-height: 1;
   }
 
   .intro-tagline span {
-    max-width: 330px;
-    font-size: 12.5px;
+    max-width: 310px;
+    margin-top: 10px;
+    font-size: 12px;
   }
 
   .intro-roles.intro-roles-cinematic {
-    left: 14px;
-    right: 14px;
-    bottom: 14px;
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
     width: auto;
-    max-height: 52svh;
-    overflow-y: auto;
-    padding: 18px;
-    border-radius: 18px;
+    max-height: min(60svh, 560px);
+    padding: 16px;
+    gap: 10px;
+    overflow: hidden;
+    border-radius: 20px;
   }
 
-  .intro-roles-head h2 {
+  .intro-roles-cinematic .intro-roles-head h2 {
     font-size: 24px;
+  }
+
+  .intro-roles-cinematic .destination-copy span {
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .intro-roles-cinematic .intro-footnote {
+    font-size: 10.5px;
   }
 
   .intro-depart {
@@ -2299,30 +2345,31 @@ button:disabled {
   }
 
   .static-intro {
-    padding: 0 18px 24px;
+    padding: 0 18px 68svh;
+    overflow-y: auto;
   }
 
   .static-intro-copy {
-    margin-top: 14vh;
+    margin-top: 92px;
+    max-width: 100%;
   }
 
   .static-intro-copy h2 {
-    font-size: clamp(28px, 8vw, 42px);
+    max-width: 330px;
+    margin-top: 16px;
+    font-size: clamp(26px, 8vw, 38px);
   }
 
   .intro-hi {
-    font-size: clamp(100px, 30vw, 170px);
+    font-size: clamp(92px, 29vw, 150px);
   }
 
   .intro-lede {
-    max-width: 390px;
-    font-size: 13px;
+    display: none;
   }
 
-  .static-guide {
-    left: 64%;
-    bottom: 30vh;
-    opacity: 0.26;
+  .static-intro .intro-eyebrow {
+    margin-bottom: 14px;
   }
 
   .intro-roles {

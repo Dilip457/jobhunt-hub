@@ -76,7 +76,7 @@ jobhunt-hub/
    │  └─ api/{jobs,refresh,status}/route.ts
    ├─ components/                 # intro, dashboard, filters, cards
    ├─ lib/
-   ├─ public/models/              # CC BY 3.0 head study + attribution
+   ├─ public/models/              # CC0 rigged guide, poster + attribution
    └─ data/                       # seed JSON used before the first live scrape
 ```
 
@@ -222,7 +222,7 @@ The dashboard is one click away in every degraded mode:
 
 - **Skip intro** jumps straight to role selection.
 - `prefers-reduced-motion: reduce` renders a CSS-only intro with the same destinations.
-- WebGL failure, model failure or a slow load (9 s) falls back to the same static intro.
+- WebGL failure, model failure or a slow load (12 s) falls back to the same static intro.
 - Returning visitors skip the long sequence via `localStorage`.
 - Keyboard focus, mobile layout and browser back/forward work normally.
 
@@ -231,12 +231,13 @@ and filter parameters are preserved in the URL.
 
 ### The 3D guide is a prototype
 
-The close-up head is the **Lee Perry-Smith head study** by Infinite Realities, licensed
-**CC BY 3.0** and distributed with the three.js examples. The hoodie body, limbs and walk
-cycle are original procedural Three.js geometry. There is **no facial rig, lip-sync, hair
-system or motion capture**; only the camera and body move. The dashboard credits the asset,
-and the license text ships at
-[`web/public/models/lee-perry-smith/ATTRIBUTION.txt`](web/public/models/lee-perry-smith/ATTRIBUTION.txt).
+The guide is a **stylized, rigged CC0 “Casual Man” base by Grab3D**, optimized for the
+web. It was simplified from 244,257 to 85,487 triangles, its textures were reduced to
+1024px WebP, its jacket was recolored blue-black, and round 3D glasses were added at
+runtime. The character has **no facial blendshapes, eye rig or lip-sync**; a short breathing
+idle is generated from the walk clip’s neutral frame. This is a prototype, not a finished
+character. The dashboard credits the asset, and the full modification record ships at
+[`web/public/models/student/ATTRIBUTION.txt`](web/public/models/student/ATTRIBUTION.txt).
 
 ---
 

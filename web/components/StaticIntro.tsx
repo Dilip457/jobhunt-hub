@@ -18,10 +18,6 @@ export default function StaticIntro({ onSelect, loading = false, reduced = false
         <div className="static-orb static-orb-blue" />
         <div className="static-floor" />
         <div className="static-path" />
-        <div className="static-guide">
-          <span className="static-guide-head" />
-          <span className="static-guide-body" />
-        </div>
         <div className="static-grain" />
       </div>
 
@@ -56,13 +52,15 @@ export default function StaticIntro({ onSelect, loading = false, reduced = false
         </p>
       </section>
 
-      <section className="intro-roles" aria-labelledby="role-selector-title">
+      <section
+        className="intro-roles intro-roles-cinematic static-roles"
+        aria-labelledby="static-role-title"
+      >
         <div className="intro-roles-head">
-          <div>
-            <p className="intro-kicker">WHERE DO WE GO?</p>
-            <h2 id="role-selector-title">Choose your target role.</h2>
-          </div>
-          {loading ? <span className="intro-loading">Preparing your guide…</span> : null}
+          <p className="intro-kicker">WHERE DO WE GO?</p>
+          <h2 id="static-role-title">Choose your target role.</h2>
+          <p className="intro-roles-sub">I&apos;ll take you there.</p>
+          {loading ? <p className="intro-loading">Preparing your guide…</p> : null}
         </div>
 
         <RoleDestinations onSelect={onSelect} />

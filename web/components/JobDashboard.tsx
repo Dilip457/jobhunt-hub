@@ -492,16 +492,17 @@ export default function JobDashboard({ role }: Props) {
               </a>
             </p>
             <p className="credits-copy">
-              The cinematic guide head uses the Lee Perry-Smith head study (Infinite Realities,
-              CC BY 3.0). The body and motion are a custom Three.js prototype, not a final
-              production character.
+              The cinematic guide is a stylized CC0 “Casual Man” base by Grab3D, optimized and
+              modified for this site. It is a prototype, not a final production character.
             </p>
             <details className="credits-details">
               <summary>Asset license &amp; notes</summary>
               <p>
-                Head geometry and textures: Lee Perry-Smith / Infinite Realities, licensed under
-                Creative Commons Attribution 3.0. Source distributed with the three.js examples.
-                Facial animation is not rigged; only camera and body motion are animated.
+                Character base: “Casual Man” by Grab3D, released under CC0 1.0. Source:
+                grab3d.com. Changes: simplified mesh, 1024px WebP textures, blue-black jacket,
+                runtime glasses, and a generated breathing idle. The model has no facial
+                blendshapes or lip-sync rig; only camera, body and walk motion are animated.
+                Full attribution ships in <code>web/public/models/student/ATTRIBUTION.txt</code>.
               </p>
             </details>
           </div>

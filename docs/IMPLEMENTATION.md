@@ -84,8 +84,8 @@ jobhunt-hub/
 │  │  ├─ roles.ts                # role metadata
 │  │  ├─ types.ts                # RoleSlug, Job, RoleData, Manifest, RunState
 │  │  └─ utils.ts                # dates, score tiers, filters
-│  ├─ public/models/lee-perry-smith/
-│  │  └─ LeePerrySmith.glb, textures, ATTRIBUTION.txt
+│  ├─ public/models/student/
+│  │  └─ student.glb, portrait.webp, ATTRIBUTION.txt
 │  └─ data/                      # seed JSON used before the first live scrape
 ├─ docs/
 │  ├─ ARCHITECTURE.md
@@ -655,9 +655,9 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 
 ### 6.6 UI
 
-- `/` plays a Three.js greeting (`HI.`), camera pullback, illuminated red/blue path, character walk and role selection.
+- `/` plays a rigged Three.js character close-up (`HI.`), camera pullback, illuminated red/blue path, walk and role selection.
 - Returning visitors (`localStorage` key `jobhunt-intro-seen`) start at the role selection; **Skip intro** is always available during the sequence.
-- `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 9-second load timeout render `StaticIntro`, a CSS-only selector with identical destinations.
+- `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`, a portrait-based selector with identical destinations.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
 - Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
 - Job card: title, company, location, experience, posted date, first-seen date, snippet, source badge, score tier, Apply button.
@@ -666,22 +666,24 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 - `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
 - Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
 - No site footer; the contact link and credits stay inside the explainer card.
-- The explainer card states that the 3D guide is a prototype and credits the head study.
+- The explainer card states that the 3D guide is a stylized prototype and credits Grab3D.
 
 ### 6.7 3D assets and limitations
 
 | Item | Detail |
 |---|---|
-| Head | Lee Perry-Smith head study, Infinite Realities, **CC BY 3.0** |
-| Source | Distributed with the three.js examples |
-| Local files | `web/public/models/lee-perry-smith/` |
-| Head rendering | Bust clipped at world `y = 1.64`; textures loaded at runtime |
-| Body / motion | Original procedural Three.js hoodie, limbs and walk cycle |
-| Not implemented | Facial rig, lip-sync, hair system, motion capture |
+| Base | “Casual Man” by Grab3D, **CC0 1.0** |
+| Source | `https://grab3d.com/models/characters/man/` |
+| Local files | `web/public/models/student/` |
+| Mesh | 85,487 triangles; quantized; textures embedded as 1024px WebP |
+| Look | Bearded adult, dark hair, blue-black bomber jacket, jeans, sneakers, runtime 3D glasses |
+| Motion | Walk (1.0 s) + run clips; breathing idle generated from walk at t=0 |
+| Not implemented | Facial blendshapes, eye rig, lip-sync, hair simulation, motion capture |
 
-The close-up is an intentional prototype, not a finished character. Attribution ships in
-`ATTRIBUTION.txt` and is linked from the dashboard credits. `renderer.localClippingEnabled`
-must stay `true` for the bust clip to work, and the model path must remain under `web/public`.
+The guide is deliberately a stylized prototype, not a finished character. Glasses are runtime
+geometry attached to the `Head` bone, so they follow head motion. Attribution is documented
+in `ATTRIBUTION.txt` and linked from the dashboard credits. The model path must stay under
+`web/public/models/student/`.
 
 ### 6.8 Environment variables
 
@@ -978,7 +980,7 @@ Production verification (2026-10-21): 45/45 Playwright checks passed against the
 4. **Sequential matrix** — `max-parallel: 1` can be raised if runtime becomes a problem, at the cost of more concurrent load.
 5. **Parser maintenance** — portal HTML changes require selector updates.
 6. **Retention** — 21 days is a balance between freshness and board size; it is configurable via `--retention-days`.
-7. **3D guide** — the licensed head is a static bust with no facial rig; the body and walk are an original prototype. A production character would need rigging, facial animation, hair and motion capture.
+7. **3D guide** — the stylized CC0 character is rigged for body motion but has no facial blendshapes, eye rig or lip-sync. A production character would need facial animation, hair simulation and motion capture.
 
 ---
 

@@ -179,18 +179,19 @@ The cinematic intro is progressive enhancement, never a gate:
 
 | Condition | Behaviour |
 |---|---|
-| Normal visit | Three.js greeting (`HI.`), camera pullback, path, character walk, role selection |
+| Normal visit | Rigged 3D character close-up (`HI.`), camera pullback, path, walk, role selection |
 | Returning visitor (`localStorage` flag) | Starts at the role selection with the scene already framed |
 | **Skip intro** | Cancels timers and jumps straight to role selection |
-| `prefers-reduced-motion: reduce` | Static CSS intro with the same three destinations; no canvas |
-| WebGL unavailable, model fails, or 8 s load timeout | Static CSS intro fallback |
+| `prefers-reduced-motion: reduce` | Static portrait selector with the same three destinations; no canvas |
+| WebGL unavailable, model fails, or a 12 s load timeout | Static portrait selector fallback |
 | Very small screen | Responsive camera and a scrollable role panel |
 | Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |
 
-The 3D character is an honest prototype: a licensed head study (Lee Perry-Smith /
-Infinite Realities, CC BY 3.0, clipped bust) on a custom low-poly hoodie body. It has no
-facial rig, lip-sync or motion-captured animation. The dashboard states this and the full
-attribution ships in `web/public/models/lee-perry-smith/ATTRIBUTION.txt`.
+The 3D character is a stylized, rigged CC0 **“Casual Man”** base by Grab3D, simplified
+from 244,257 to 85,487 triangles, with 1024px WebP textures, a blue-black jacket, runtime
+glasses and a generated breathing idle. It has no facial blendshapes, eye rig, lip-sync or
+motion capture; the source ships only walk and run clips. The dashboard states this and the
+full modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 
 ### 4.6 GitHub API
 
@@ -490,7 +491,7 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 6. **Legacy `first_seen` values.** Pre-change jobs may show the portal posted date as “first seen” because no earlier scrape history was stored.
 7. **Retention is 21 days.** A job that disappears from the portals can remain on the board for up to 21 days.
 8. **Terms of service.** Scraping public pages may be restricted by individual portals; this project is intended for personal, non-commercial use.
-9. **The 3D guide is a prototype.** The licensed head bust is static; there is no facial rig, lip-sync, hair system or motion-captured walk. The body is deliberately low-poly and the close-up is staged to avoid uncanny detail the asset cannot support.
+9. **The 3D guide is a prototype.** The rigged character is a stylized CC0 base (a bearded adult in a technical bomber jacket) with no facial blendshapes, eye rig, lip-sync or motion capture. Its walk/run clips are the only shipped animation, and the close-up is staged to avoid uncanny detail the asset cannot support.
 10. **The cinematic is not required.** Reduced-motion, WebGL failure and model failure all fall back to a static selector; jobs are never blocked behind the animation.
 
 ---
@@ -509,7 +510,7 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 | **Earliest `first_seen` wins** | Distinguishes genuinely new jobs from re-scraped old ones |
 | **Role URLs instead of a query parameter** | Shareable destinations, pre-rendered pages and clean browser history |
 | **Cinematic intro as progressive enhancement** | A strong first impression without blocking reduced-motion, low-end or keyboard users |
-| **Licensed head + procedural body** | Honest prototype quality; no fabricated rigged character |
+| **Stylized CC0 rigged guide** | A real rigged character for the cinematic while keeping the asset license and prototype limits honest |
 | **Vercel skip for `data`** | The JSON-only branch has no `web/` app to build |
 
 ---
