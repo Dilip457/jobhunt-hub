@@ -522,4 +522,5 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 ## 14. Related documents
 
 - [Implementation guide](IMPLEMENTATION.md) — file-by-file details, commands, data contract, deployment, troubleshooting.
+- [Code map](CODE_MAP.md) — every action, flow, component and data item mapped to its file and code path.
 - [README](../README.md) — project overview and quick start.

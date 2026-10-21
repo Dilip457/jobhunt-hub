@@ -998,4 +998,5 @@ The refresh panel counts elapsed time from the current request rather than the p
 ## 12. Related documents
 
 - [Architecture](ARCHITECTURE.md) — system design, data flow, failure handling, decisions.
+- [Code map](CODE_MAP.md) — every action, flow, component and data item mapped to its file and code path.
 - [README](../README.md) — overview and quick start.
