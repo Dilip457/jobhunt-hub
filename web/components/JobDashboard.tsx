@@ -53,6 +53,7 @@ export default function JobDashboard({ role }: Props) {
   const [refreshOpen, setRefreshOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const refreshStartRef = useRef<number | null>(null);
 
   const pushToast = useCallback((kind: Toast["kind"], text: string) => {
     const id = Date.now() + Math.random();
@@ -196,9 +197,15 @@ export default function JobDashboard({ role }: Props) {
   useEffect(() => {
     if (!refreshOpen) {
       setElapsed(0);
+      refreshStartRef.current = null;
       return;
     }
-    const startedAt = status?.startedAt ? new Date(status.startedAt).getTime() : Date.now();
+    // Count from the moment refresh was requested, not from the previous run.
+    // status.startedAt can still point at yesterday's run until GitHub reports
+    // the queued run.
+    const startedAt =
+      refreshStartRef.current ??
+      (status?.startedAt ? new Date(status.startedAt).getTime() : Date.now());
     const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
     tick();
     const timer = window.setInterval(tick, 1000);
@@ -206,6 +213,7 @@ export default function JobDashboard({ role }: Props) {
   }, [refreshOpen, status?.startedAt]);
 
   async function triggerRefresh() {
+    refreshStartRef.current = Date.now();
     setRefreshOpen(true);
     try {
       const response = await fetch("/api/refresh", {
