@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const fresh = request.nextUrl.searchParams.get("fresh") === "1";
 
   try {
-    const data = await getRoleData(role, fresh);
+    const data = await getRoleData(role);
     return Response.json(data, {
       headers: {
         "Cache-Control": fresh
