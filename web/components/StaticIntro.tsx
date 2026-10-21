@@ -1,0 +1,80 @@
+"use client";
+
+import type { RoleSlug } from "@/lib/types";
+import { MailIcon, RouteIcon, SparkIcon } from "./Icons";
+import RoleDestinations from "./RoleDestinations";
+
+interface Props {
+  onSelect: (role: RoleSlug) => void;
+  loading?: boolean;
+  reduced?: boolean;
+}
+
+export default function StaticIntro({ onSelect, loading = false, reduced = false }: Props) {
+  return (
+    <main className={`static-intro ${reduced ? "is-reduced" : ""}`}>
+      <div className="static-intro-scene" aria-hidden>
+        <div className="static-orb static-orb-red" />
+        <div className="static-orb static-orb-blue" />
+        <div className="static-floor" />
+        <div className="static-path" />
+        <div className="static-guide">
+          <span className="static-guide-head" />
+          <span className="static-guide-body" />
+        </div>
+        <div className="static-grain" />
+      </div>
+
+      <header className="intro-topbar">
+        <span className="brand-lockup">
+          <span className="brand-mark">
+            <SparkIcon width={17} height={17} />
+          </span>
+          <span className="brand-copy">
+            <strong>JOBHUNT</strong>
+            <span>INDIA / 2026</span>
+          </span>
+        </span>
+        <span className="intro-status">
+          <span className="status-dot" />
+          Live job data
+        </span>
+      </header>
+
+      <section className="static-intro-copy">
+        <p className="intro-eyebrow">
+          <RouteIcon width={14} height={14} />
+          A guided job discovery
+        </p>
+        <h1 className="intro-hi">
+          HI<span>.</span>
+        </h1>
+        <h2>LET&apos;S FIND YOUR NEXT MOVE.</h2>
+        <p className="intro-lede">
+          Three destinations. Real openings across India. Choose the direction that fits
+          what you want to build next.
+        </p>
+      </section>
+
+      <section className="intro-roles" aria-labelledby="role-selector-title">
+        <div className="intro-roles-head">
+          <div>
+            <p className="intro-kicker">WHERE DO WE GO?</p>
+            <h2 id="role-selector-title">Choose your target role.</h2>
+          </div>
+          {loading ? <span className="intro-loading">Preparing your guide…</span> : null}
+        </div>
+
+        <RoleDestinations onSelect={onSelect} />
+
+        <p className="intro-footnote">
+          <MailIcon width={13} height={13} />
+          <span>
+            Real listings from Naukri, Foundit, Indeed, Shine &amp; LinkedIn. Need a new track or
+            found an issue? <a href="mailto:heyjarvis.03@gmail.com">heyjarvis.03@gmail.com</a>
+          </span>
+        </p>
+      </section>
+    </main>
+  );
+}

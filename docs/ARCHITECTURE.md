@@ -45,6 +45,7 @@ The scraper never runs on Vercel. The website never runs on the user's PC. Every
 - **Resilient publishing** — a failed or empty source must not blank the site.
 - **Transparent dates** — each card shows when the job was posted on the portal and when this site first scraped it.
 - **Single small data artifact** — JSON in the repo, no database.
+- **Accessible by default** — the cinematic intro is optional; skip, reduced-motion, keyboard and WebGL fallbacks all reach the jobs.
 
 ### Non-goals
 
@@ -108,7 +109,7 @@ flowchart LR
 
 | Layer | Runs on | Responsibility |
 |---|---|---|
-| **UI** | Vercel | Render jobs, filters, role dropdown, refresh panel |
+| **UI** | Vercel | Render the cinematic role selection and job dashboards, filters, refresh panel |
 | **API routes** | Vercel | Read JSON, dispatch workflow, poll run status |
 | **Scraping** | GitHub Actions | Collect jobs from portals and vendor repos |
 | **Publishing** | GitHub Actions | Merge, retain, write, force-push `data` |
@@ -163,13 +164,35 @@ The publisher is deliberately conservative:
 
 The `web/` directory is a Next.js 15 app deployed with **Root Directory = `web`**.
 
-- The dashboard is a client component with a role dropdown and filters.
+- `/` is the cinematic entry point: a Three.js close-up greeting, pullback, illuminated path and role selection.
+- `/jobs/genai`, `/jobs/data` and `/jobs/uiux` are static, shareable dashboards.
+- `/jobs/[role]` is pre-rendered for the three known roles; any other slug redirects to `/`.
+- The dashboard is a client component with filters, a role switcher and shareable query parameters.
 - `/api/jobs` reads a role's JSON from the `data` branch.
 - `/api/refresh` dispatches the GitHub Actions workflow.
 - `/api/status` reports the latest workflow run for the role.
 - The browser never talks to GitHub directly; all GitHub access is server-side.
 
-### 4.5 GitHub API
+### 4.5 Front-end experience and graceful degradation
+
+The cinematic intro is progressive enhancement, never a gate:
+
+| Condition | Behaviour |
+|---|---|
+| Normal visit | Three.js greeting (`HI.`), camera pullback, path, character walk, role selection |
+| Returning visitor (`localStorage` flag) | Starts at the role selection with the scene already framed |
+| **Skip intro** | Cancels timers and jumps straight to role selection |
+| `prefers-reduced-motion: reduce` | Static CSS intro with the same three destinations; no canvas |
+| WebGL unavailable, model fails, or 8 s load timeout | Static CSS intro fallback |
+| Very small screen | Responsive camera and a scrollable role panel |
+| Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |
+
+The 3D character is an honest prototype: a licensed head study (Lee Perry-Smith /
+Infinite Realities, CC BY 3.0, clipped bust) on a custom low-poly hoodie body. It has no
+facial rig, lip-sync or motion-captured animation. The dashboard states this and the full
+attribution ships in `web/public/models/lee-perry-smith/ATTRIBUTION.txt`.
+
+### 4.6 GitHub API
 
 Vercel uses a fine-grained PAT with:
 
@@ -356,8 +379,9 @@ After a publish, the site may take roughly **1–5 minutes** to show new data un
 ## 9. Manual refresh flow
 
 The refresh control is not rendered anywhere on the site. There is no separate admin URL
-and no role parameter in the homepage URL. On the main site, press **`Alt` + `Shift` + `R`**
-to open a confirmation dialog; only **Confirm refresh** dispatches the workflow.
+and no visible refresh button. On any dashboard, press **`Alt` + `Shift` + `R`**
+to open a confirmation dialog; only **Confirm refresh** dispatches the workflow. The
+shortcut is ignored while focus is inside a form field, and `Escape` closes the dialog.
 
 ```mermaid
 sequenceDiagram
@@ -382,9 +406,10 @@ sequenceDiagram
     UI->>UI: success → reload jobs with fresh=1
 ```
 
-The selected role is not appended to the homepage URL. `/` stays clean when switching
-roles; old `?role=...` links load once and are then cleaned. Filter parameters are still
-written for shareable filtered views.
+Each role has its own shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The
+homepage `/` stays clean; choosing a destination navigates to the role route. Filter
+parameters (`q`, `city`, `source`, `score`, `exp`, `days`, `sort`) are written to the role
+URL so a filtered view can be shared. Unknown role slugs redirect to `/`.
 
 ### Guards
 
@@ -465,6 +490,8 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 6. **Legacy `first_seen` values.** Pre-change jobs may show the portal posted date as “first seen” because no earlier scrape history was stored.
 7. **Retention is 21 days.** A job that disappears from the portals can remain on the board for up to 21 days.
 8. **Terms of service.** Scraping public pages may be restricted by individual portals; this project is intended for personal, non-commercial use.
+9. **The 3D guide is a prototype.** The licensed head bust is static; there is no facial rig, lip-sync, hair system or motion-captured walk. The body is deliberately low-poly and the close-up is staged to avoid uncanny detail the asset cannot support.
+10. **The cinematic is not required.** Reduced-motion, WebGL failure and model failure all fall back to a static selector; jobs are never blocked behind the animation.
 
 ---
 
@@ -480,6 +507,9 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 | **Separate WARP job** | Isolates the system-wide tunnel and its failures from the main scrape |
 | **Real Chrome for Naukri** | Naukri rejects the bundled headless shell |
 | **Earliest `first_seen` wins** | Distinguishes genuinely new jobs from re-scraped old ones |
+| **Role URLs instead of a query parameter** | Shareable destinations, pre-rendered pages and clean browser history |
+| **Cinematic intro as progressive enhancement** | A strong first impression without blocking reduced-motion, low-end or keyboard users |
+| **Licensed head + procedural body** | Honest prototype quality; no fabricated rigged character |
 | **Vercel skip for `data`** | The JSON-only branch has no `web/` app to build |
 
 ---

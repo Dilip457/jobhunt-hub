@@ -56,24 +56,36 @@ jobhunt-hub/
 ├─ vendor/                       # cloned at runtime, not committed
 ├─ web/                          # Next.js 15 app (Vercel Root Directory)
 │  ├─ app/
-│  │  ├─ page.tsx
+│  │  ├─ page.tsx                # cinematic intro (/)
+│  │  ├─ jobs/[role]/page.tsx    # pre-rendered dashboards
 │  │  ├─ globals.css
 │  │  └─ api/
 │  │     ├─ jobs/route.ts
 │  │     ├─ refresh/route.ts
 │  │     └─ status/route.ts
 │  ├─ components/
-│  │  ├─ Dashboard.tsx
+│  │  ├─ CinematicIntro.tsx      # Three.js scene, camera and transitions
+│  │  ├─ IntroPage.tsx           # dynamic loader for the cinematic
+│  │  ├─ StaticIntro.tsx         # reduced-motion / WebGL / load fallback
+│  │  ├─ RoleDestinations.tsx    # accessible destination cards
+│  │  ├─ JobDashboard.tsx        # route-driven dashboard
+│  │  ├─ RoleSwitcher.tsx
+│  │  ├─ Filters.tsx
 │  │  ├─ JobCard.tsx
+│  │  ├─ StatsBar.tsx
+│  │  ├─ ConfirmRefresh.tsx
 │  │  ├─ RefreshPanel.tsx
 │  │  └─ ...
 │  ├─ lib/
 │  │  ├─ github.ts               # GitHub Contents API + workflow dispatch/status
 │  │  ├─ service.ts              # role/manifest loading + seed fallback
 │  │  ├─ fallback.ts             # seed JSON fallback
+│  │  ├─ prefetch.ts             # dashboard prefetch during the intro transition
 │  │  ├─ roles.ts                # role metadata
 │  │  ├─ types.ts                # RoleSlug, Job, RoleData, Manifest, RunState
 │  │  └─ utils.ts                # dates, score tiers, filters
+│  ├─ public/models/lee-perry-smith/
+│  │  └─ LeePerrySmith.glb, textures, ATTRIBUTION.txt
 │  └─ data/                      # seed JSON used before the first live scrape
 ├─ docs/
 │  ├─ ARCHITECTURE.md
@@ -547,7 +559,11 @@ python automation/publish.py \
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/` | GET | Dashboard UI |
+| `/` | GET | Cinematic role selection |
+| `/jobs/genai` | GET | GenAI dashboard (pre-rendered) |
+| `/jobs/data` | GET | Data Engineering dashboard (pre-rendered) |
+| `/jobs/uiux` | GET | UI/UX dashboard (pre-rendered) |
+| `/jobs/<unknown>` | GET | Redirect to `/` |
 | `/api/jobs?role=<role>` | GET | Return `RoleData` JSON |
 | `/api/jobs?role=<role>&fresh=1` | GET | Same, bypassing caches |
 | `/api/refresh` | POST | Dispatch the GitHub Actions workflow |
@@ -631,25 +647,43 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 6. Dispatch `workflow_dispatch` with `{ ref: "main", inputs: { role } }`.
 7. Return `202`.
 
-`Dashboard.tsx` polls `/api/status` every 8 seconds while queued/running. On `success`, it reloads jobs with `fresh=1` and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
+`JobDashboard.tsx` polls `/api/status` every 8 seconds while queued/running. On `success`, it reloads jobs with `fresh=1` and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
 
-The public UI does **not** render a refresh button, and there is no admin URL. On the main site, press **`Alt` + `Shift` + `R`** to open the confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. The shortcut is ignored while typing in an input, textarea, select or contenteditable element.
+The public UI does **not** render a refresh button, and there is no admin URL. On any dashboard, press **`Alt` + `Shift` + `R`** to open the confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. The shortcut is ignored while typing in an input, textarea, select or contenteditable element, and `Escape` cancels.
 
-The selected role is **not** written to the URL. `/` stays clean when switching roles. Old `?role=...` links are read once, then the role parameter is removed from the address bar. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are still written for shareable filtered views.
+Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepage `/` stays a clean introduction, choosing a destination navigates to its route, and browser back/forward works naturally. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are written to the role URL for shareable filtered views.
 
 ### 6.6 UI
 
-- Role dropdown: GenAI / Data Engineer / UI/UX.
-- The selected role is local state only; the homepage URL stays `/` (filter params may be added).
-- Filters: search, city, source, experience bucket, minimum score, sort.
-- Job card: title, company, location, experience, posted date, snippet, source badge, score tier, Apply button.
+- `/` plays a Three.js greeting (`HI.`), camera pullback, illuminated red/blue path, character walk and role selection.
+- Returning visitors (`localStorage` key `jobhunt-intro-seen`) start at the role selection; **Skip intro** is always available during the sequence.
+- `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 9-second load timeout render `StaticIntro`, a CSS-only selector with identical destinations.
+- Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
+- Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
+- Job card: title, company, location, experience, posted date, first-seen date, snippet, source badge, score tier, Apply button.
 - Job card date line: `Posted <relative> · First seen <relative>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
 - `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
-- Contact link in the “Being built in the open” card: `mailto:heyjarvis.03@gmail.com`.
-- No site footer; the contact link stays inside the explainer card.
+- Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
+- No site footer; the contact link and credits stay inside the explainer card.
+- The explainer card states that the 3D guide is a prototype and credits the head study.
 
-### 6.7 Environment variables
+### 6.7 3D assets and limitations
+
+| Item | Detail |
+|---|---|
+| Head | Lee Perry-Smith head study, Infinite Realities, **CC BY 3.0** |
+| Source | Distributed with the three.js examples |
+| Local files | `web/public/models/lee-perry-smith/` |
+| Head rendering | Bust clipped at world `y = 1.64`; textures loaded at runtime |
+| Body / motion | Original procedural Three.js hoodie, limbs and walk cycle |
+| Not implemented | Facial rig, lip-sync, hair system, motion capture |
+
+The close-up is an intentional prototype, not a finished character. Attribution ships in
+`ATTRIBUTION.txt` and is linked from the dashboard credits. `renderer.localClippingEnabled`
+must stay `true` for the bust clip to work, and the model path must remain under `web/public`.
+
+### 6.8 Environment variables
 
 Set these in **Vercel → Settings → Environment Variables**:
 
@@ -838,7 +872,7 @@ Optional API keys go in **Settings → Secrets and variables → Actions**.
 2. Set **Root Directory** to `web`.
 3. Framework preset: **Next.js**.
 4. Build command: `npm run build`.
-5. Add the environment variables from section 6.7.
+5. Add the environment variables from section 6.8.
 6. Deploy.
 
 The production branch is `main`. The `data` branch is skipped by its own `vercel.json`.
@@ -862,7 +896,10 @@ The production branch is `main`. The `data` branch is skipped by its own `vercel
 ### 9.4 Verification URLs
 
 ```text
-https://jobhunt-hub-web.vercel.app/
+https://jobhunt-hub-web.vercel.app/                  (cinematic intro)
+https://jobhunt-hub-web.vercel.app/jobs/genai        (GenAI dashboard)
+https://jobhunt-hub-web.vercel.app/jobs/data         (Data Engineering dashboard)
+https://jobhunt-hub-web.vercel.app/jobs/uiux         (UI/UX dashboard)
 https://jobhunt-hub-web.vercel.app/api/jobs?role=genai
 https://jobhunt-hub-web.vercel.app/api/jobs?role=genai&fresh=1
 https://jobhunt-hub-web.vercel.app/api/status?role=genai
@@ -916,6 +953,19 @@ curl https://raw.githubusercontent.com/<owner>/<repo>/data/manifest.json
 curl "https://<site>/api/jobs?role=genai&fresh=1"
 ```
 
+Front-end smoke checks used for this redesign (all must pass before deploying):
+
+```text
+/                         → greeting, role panel, skip intro
+/jobs/genai               → GenAI cards, filters, back/forward
+/jobs/data                → Data Engineering cards, URL filters
+/jobs/uiux                → UI/UX cards on a 390×844 viewport, no overflow
+reduced-motion            → static intro, no WebGL canvas
+blocked WebGL             → static intro fallback
+/jobs/not-a-role          → redirect to /
+Alt+Shift+R on dashboard  → confirmation dialog; Escape closes; ignored in inputs
+```
+
 ---
 
 ## 11. Current constraints and future work
@@ -926,6 +976,7 @@ curl "https://<site>/api/jobs?role=genai&fresh=1"
 4. **Sequential matrix** — `max-parallel: 1` can be raised if runtime becomes a problem, at the cost of more concurrent load.
 5. **Parser maintenance** — portal HTML changes require selector updates.
 6. **Retention** — 21 days is a balance between freshness and board size; it is configurable via `--retention-days`.
+7. **3D guide** — the licensed head is a static bust with no facial rig; the body and walk are an original prototype. A production character would need rigging, facial animation, hair and motion capture.
 
 ---
 

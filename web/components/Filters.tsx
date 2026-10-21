@@ -2,7 +2,7 @@
 
 import type { CityCount, ExperienceBucket } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { FilterIcon, SearchIcon } from "./Icons";
+import { CloseIcon, FilterIcon, SearchIcon } from "./Icons";
 
 interface Props {
   query: string;
@@ -52,21 +52,28 @@ export default function Filters({
   total,
 }: Props) {
   return (
-    <section className="filters" aria-label="Filters">
-      <div className="search-box">
-        <SearchIcon width={17} height={17} className="search-icon" />
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search role, company, skill or location…"
-          aria-label="Search jobs"
-        />
-        {query ? (
-          <button type="button" className="search-clear" onClick={() => setQuery("")} aria-label="Clear search">
-            ×
-          </button>
-        ) : null}
+    <section className="filters" aria-label="Job filters">
+      <div className="filters-top">
+        <div className="search-box">
+          <SearchIcon width={17} height={17} className="search-icon" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search role, company, skill or location…"
+            aria-label="Search jobs"
+          />
+          {query ? (
+            <button type="button" className="search-clear" onClick={() => setQuery("")} aria-label="Clear search">
+              <CloseIcon width={14} height={14} />
+            </button>
+          ) : null}
+        </div>
+
+        <div className="filter-result" aria-live="polite">
+          <strong>{shown}</strong>
+          <span>of {total} jobs</span>
+        </div>
       </div>
 
       <div className="filter-row">
@@ -150,12 +157,8 @@ export default function Filters({
         </button>
 
         <button type="button" className="reset-btn" onClick={onReset}>
-          Reset
+          Reset filters
         </button>
-      </div>
-
-      <div className="filter-summary">
-        Showing <strong>{shown}</strong> of <strong>{total}</strong> roles
       </div>
     </section>
   );

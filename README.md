@@ -36,7 +36,8 @@ GitHub Actions (07:00 IST or manual — runs entirely in the cloud, no PC needed
             │
             ▼
 Vercel — Next.js
-  ├─ role dropdown + filters
+  ├─ /                    cinematic role selection (Three.js)
+  ├─ /jobs/genai|data|uiux shareable dashboards + filters
   ├─ /api/jobs       reads the data branch (60s cache)
   ├─ /api/refresh    dispatches the workflow
   └─ /api/status     polls the GitHub Actions run
@@ -69,11 +70,13 @@ jobhunt-hub/
 │  └─ uiux.json
 └─ web/                           # Next.js 15 app (Vercel root)
    ├─ app/
-   │  ├─ page.tsx
+   │  ├─ page.tsx                 # cinematic intro
+   │  ├─ jobs/[role]/page.tsx     # /jobs/genai · /jobs/data · /jobs/uiux
    │  ├─ globals.css
    │  └─ api/{jobs,refresh,status}/route.ts
-   ├─ components/
+   ├─ components/                 # intro, dashboard, filters, cards
    ├─ lib/
+   ├─ public/models/              # CC BY 3.0 head study + attribution
    └─ data/                       # seed JSON used before the first live scrape
 ```
 
@@ -206,6 +209,37 @@ catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `
 
 ---
 
+## The experience
+
+`/` is a cinematic entry point, not a gate:
+
+1. A close-up of the guide says **“HI.”** against red/blue rim light.
+2. The camera pulls back to reveal an illuminated path and three gates.
+3. The guide walks to the selector; the role panel offers GenAI, Data Engineering and UI/UX.
+4. Choosing a destination animates the walk and opens `/jobs/<role>`.
+
+The dashboard is one click away in every degraded mode:
+
+- **Skip intro** jumps straight to role selection.
+- `prefers-reduced-motion: reduce` renders a CSS-only intro with the same destinations.
+- WebGL failure, model failure or a slow load (9 s) falls back to the same static intro.
+- Returning visitors skip the long sequence via `localStorage`.
+- Keyboard focus, mobile layout and browser back/forward work normally.
+
+Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` —
+and filter parameters are preserved in the URL.
+
+### The 3D guide is a prototype
+
+The close-up head is the **Lee Perry-Smith head study** by Infinite Realities, licensed
+**CC BY 3.0** and distributed with the three.js examples. The hoodie body, limbs and walk
+cycle are original procedural Three.js geometry. There is **no facial rig, lip-sync, hair
+system or motion capture**; only the camera and body move. The dashboard credits the asset,
+and the license text ships at
+[`web/public/models/lee-perry-smith/ATTRIBUTION.txt`](web/public/models/lee-perry-smith/ATTRIBUTION.txt).
+
+---
+
 ## Deploy to Vercel
 
 1. **Create a public GitHub repo** and push this folder.
@@ -252,7 +286,7 @@ The refresh control is **not rendered anywhere on the site**, so a visitor canno
 
 To run a manual scrape, open the main site and press **`Alt` + `Shift` + `R`**. This opens the confirmation dialog:
 
-1. Open the normal site: `https://jobhunt-hub-web.vercel.app/`
+1. Open any dashboard, e.g. `https://jobhunt-hub-web.vercel.app/jobs/data`.
 2. Press **`Alt` + `Shift` + `R`**.
 3. Confirm in the dialog.
 4. `POST /api/refresh` checks for an active run and a 25-minute cooldown, then calls the GitHub `workflow_dispatch` API.
@@ -270,12 +304,12 @@ Protections:
 - Refresh triggers the **cloud** pass (scrapers + official APIs). Everything runs on
   GitHub's servers; no PC is involved.
 
-### Clean homepage URL
+### Shareable role URLs
 
-The selected role is **not** written to the URL. The homepage stays at `/` even after
-switching between GenAI, Data Engineer and UI/UX. Old `?role=...` links still work once,
-then the role parameter is removed from the address bar. Filter parameters such as
-`?q=python&city=Bangalore` are still written so a filtered view can be shared.
+Each destination has a real route: `/jobs/genai`, `/jobs/data` and `/jobs/uiux`. The
+homepage stays at `/`; choosing a role navigates to its route, so links and browser
+history work normally. Filter parameters such as `?q=python&city=Bangalore` are written to
+the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 
 Hiding the control is a UX guard, not an authentication boundary: the API route is still
 reachable. The cooldown and one-run concurrency limit keep accidental or repeated use

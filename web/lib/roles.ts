@@ -6,8 +6,8 @@ export const ROLES: RoleMeta[] = [
     label: "GenAI",
     fullLabel: "GenAI / AI Engineering",
     description: "LLM, RAG, agentic AI & machine learning roles",
-    accent: "#8b5cf6",
-    accentSoft: "rgba(139, 92, 246, 0.16)",
+    accent: "#FF304F",
+    accentSoft: "rgba(255, 48, 79, 0.16)",
     blurb: "Generative AI, LLM, RAG and applied ML roles across India.",
   },
   {
@@ -15,8 +15,8 @@ export const ROLES: RoleMeta[] = [
     label: "Data Engineer",
     fullLabel: "Data Engineering",
     description: "PySpark, Databricks, ETL & cloud data platforms",
-    accent: "#22d3ee",
-    accentSoft: "rgba(34, 211, 238, 0.16)",
+    accent: "#287BFF",
+    accentSoft: "rgba(40, 123, 255, 0.16)",
     blurb: "Data engineering, pipelines, lakehouse and analytics roles.",
   },
   {
@@ -24,8 +24,8 @@ export const ROLES: RoleMeta[] = [
     label: "UI/UX",
     fullLabel: "UI / UX Design",
     description: "Product, UX, UI & interaction design roles",
-    accent: "#f472b6",
-    accentSoft: "rgba(244, 114, 182, 0.16)",
+    accent: "#FFFFFF",
+    accentSoft: "rgba(255, 255, 255, 0.12)",
     blurb: "Product design, UX research and interaction design roles.",
   },
 ];

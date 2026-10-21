@@ -1,11 +1,15 @@
+"use client";
+
+import type { CSSProperties } from "react";
 import type { Job } from "@/lib/types";
-import { dateAgo, experienceLabel, formatDate, initials, scoreTier, sourceColor } from "@/lib/utils";
-import { BuildingIcon, CalendarIcon, ExternalIcon, MapPinIcon } from "./Icons";
+import { dateAgo, experienceLabel, initials, scoreTier, sourceColor } from "@/lib/utils";
+import { BuildingIcon, ExternalIcon, MapPinIcon } from "./Icons";
 import ScoreRing from "./ScoreRing";
 
 interface Props {
   job: Job;
   showScore: boolean;
+  index?: number;
 }
 
 function avatarHue(value: string): number {
@@ -14,27 +18,41 @@ function avatarHue(value: string): number {
   return hash;
 }
 
-export default function JobCard({ job, showScore }: Props) {
+export default function JobCard({ job, showScore, index = 0 }: Props) {
   const tier = scoreTier(job.score);
   const hue = avatarHue(job.company || job.title);
+  const sourceTone = sourceColor(job.source);
+  const posted = job.posted_date ? `Posted ${dateAgo(job.posted_date)}` : null;
+  const seen = job.first_seen ? `First seen ${dateAgo(job.first_seen)}` : null;
 
   return (
-    <article className="job-card">
+    <article
+      className="job-card"
+      style={
+        {
+          "--card-delay": `${Math.min(index, 10) * 38}ms`,
+          "--source-color": sourceTone,
+          "--avatar-a": `hsl(${hue} 58% 38%)`,
+          "--avatar-b": `hsl(${(hue + 38) % 360} 50% 24%)`,
+        } as CSSProperties
+      }
+    >
       <div className="job-card-top">
-        <span
-          className="job-avatar"
-          style={{
-            background: `linear-gradient(135deg, hsl(${hue} 60% 42%), hsl(${(hue + 40) % 360} 55% 30%))`,
-          }}
-          aria-hidden
-        >
+        <span className="job-avatar" aria-hidden>
           {initials(job.company)}
         </span>
 
         <div className="job-heading">
+          <div className="job-card-kicker">
+            <span className="source-badge">
+              <span className="source-dot" />
+              {job.source}
+            </span>
+            {job.is_new ? <span className="new-badge">NEW</span> : null}
+          </div>
           <h3 className="job-title">{job.title}</h3>
           <p className="job-company">
-            <BuildingIcon width={14} height={14} />
+            <BuildingIcon width={13} height={13} />
             <span>{job.company}</span>
           </p>
         </div>
@@ -44,45 +62,39 @@ export default function JobCard({ job, showScore }: Props) {
 
       <div className="job-meta">
         <span>
-          <MapPinIcon width={14} height={14} />
+          <MapPinIcon width={13} height={13} />
           {job.location}
         </span>
         <span>{experienceLabel(job)}</span>
-        {job.posted_date ? (
-          <span>
-            <CalendarIcon width={14} height={14} />
-            {formatDate(job.posted_date)}
-          </span>
-        ) : null}
       </div>
 
       {job.snippet ? <p className="job-snippet">{job.snippet}</p> : null}
 
       <div className="job-footer">
-        <div className="job-tags">
-          <span className="source-badge" style={{ borderColor: sourceColor(job.source) }}>
-            <span className="source-dot" style={{ background: sourceColor(job.source) }} />
-            {job.source}
-          </span>
-          {job.is_new ? <span className="new-badge">NEW</span> : null}
+        <div className="job-footer-meta">
           {showScore ? (
             <span className="tier-badge" style={{ color: tier.color }}>
               {tier.label}
             </span>
           ) : null}
+          <span className="job-seen">
+            {posted}
+            {posted && seen ? <span aria-hidden> · </span> : null}
+            {seen}
+          </span>
         </div>
 
-        <a className="apply-btn" href={job.apply_url || job.url} target="_blank" rel="noopener noreferrer">
-          Apply
+        <a
+          className="apply-btn"
+          href={job.apply_url || job.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`View ${job.title} at ${job.company}`}
+        >
+          View job
           <ExternalIcon width={14} height={14} />
         </a>
       </div>
-
-      <span className="job-seen">
-        {job.posted_date ? <span>Posted {dateAgo(job.posted_date)}</span> : null}
-        {job.posted_date && job.first_seen ? <span aria-hidden> · </span> : null}
-        {job.first_seen ? <span>First seen {dateAgo(job.first_seen)}</span> : null}
-      </span>
     </article>
   );
 }

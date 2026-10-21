@@ -14,7 +14,7 @@ export default function StatsBar({ data, role, status }: Props) {
 
   const items = [
     {
-      label: "Open roles",
+      label: "Open jobs",
       value: formatNumber(data.count),
       icon: <BriefcaseIcon width={16} height={16} />,
       accent: role.accent,
@@ -23,19 +23,19 @@ export default function StatsBar({ data, role, status }: Props) {
       label: "Companies",
       value: formatNumber(uniqueCompanies(data.jobs)),
       icon: <BuildingIcon width={16} height={16} />,
-      accent: "#38bdf8",
+      accent: "#287BFF",
     },
     {
       label: "Sources",
       value: formatNumber(sourceCount),
       icon: <GlobeIcon width={16} height={16} />,
-      accent: "#34d399",
+      accent: "#B8BECC",
     },
     {
       label: "Updated",
       value: timeAgo(lastRun),
       icon: <RefreshIcon width={16} height={16} />,
-      accent: "#fbbf24",
+      accent: "#FF304F",
     },
   ];
 
@@ -43,7 +43,7 @@ export default function StatsBar({ data, role, status }: Props) {
     <div className="stats">
       {items.map((item) => (
         <div className="stat-card" key={item.label}>
-          <span className="stat-icon" style={{ color: item.accent, background: `${item.accent}1f` }}>
+          <span className="stat-icon" style={{ color: item.accent, background: `${item.accent}18` }}>
             {item.icon}
           </span>
           <div>

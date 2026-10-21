@@ -1,5 +1,5 @@
-import Dashboard from "@/components/Dashboard";
+import IntroPage from "@/components/IntroPage";
 
 export default function HomePage() {
-  return <Dashboard />;
+  return <IntroPage />;
 }

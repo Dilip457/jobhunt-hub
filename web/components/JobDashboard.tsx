@@ -1,19 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_ROLE, ROLES, getRole } from "@/lib/roles";
-import { isRoleSlug, type Job, type RoleData, type RoleSlug, type RunState, type StatusResponse } from "@/lib/types";
-import {
-  cityCounts,
-  matchesExperience,
-  type ExperienceBucket,
-} from "@/lib/utils";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { getRole } from "@/lib/roles";
+import type { Job, RoleData, RoleSlug, RunState, StatusResponse } from "@/lib/types";
+import { cityCounts, matchesExperience, type ExperienceBucket } from "@/lib/utils";
+import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
 import Filters from "./Filters";
-import { AlertIcon, MailIcon, SparkIcon } from "./Icons";
+import { AlertIcon, MailIcon, RouteIcon, SparkIcon } from "./Icons";
 import ConfirmRefresh from "./ConfirmRefresh";
 import JobCard from "./JobCard";
 import RefreshPanel from "./RefreshPanel";
-import RoleSelect from "./RoleSelect";
+import RoleSwitcher from "./RoleSwitcher";
 import StatsBar from "./StatsBar";
 
 const PAGE_SIZE = 24;
@@ -24,8 +23,15 @@ interface Toast {
   text: string;
 }
 
-export default function Dashboard() {
-  const [role, setRole] = useState<RoleSlug>(DEFAULT_ROLE);
+interface Props {
+  role: RoleSlug;
+}
+
+export default function JobDashboard({ role }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const roleMeta = getRole(role);
+
   const [data, setData] = useState<RoleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +54,6 @@ export default function Dashboard() {
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const roleMeta = getRole(role);
-
   const pushToast = useCallback((kind: Toast["kind"], text: string) => {
     const id = Date.now() + Math.random();
     setToasts((current) => [...current, { id, kind, text }]);
@@ -58,11 +62,9 @@ export default function Dashboard() {
     }, 6500);
   }, []);
 
-  // ── Initial state from the URL ──────────────────────────────────────────────
+  // ── Initial filter state from the URL ──────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlRole = params.get("role") ?? "";
-    if (isRoleSlug(urlRole)) setRole(urlRole);
     setQuery(params.get("q") ?? "");
     setCity(params.get("city") ?? "all");
     setSource(params.get("source") ?? "all");
@@ -73,8 +75,7 @@ export default function Dashboard() {
     setSort(params.get("sort") ?? "score");
   }, []);
 
-  // Hidden admin shortcut: Alt+Shift+R opens the confirmation dialog. There is
-  // no visible refresh button and no separate admin URL.
+  // Hidden admin shortcut: no visible refresh control and no separate admin URL.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!event.altKey || !event.shiftKey || event.key.toLowerCase() !== "r") return;
@@ -91,34 +92,43 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [status, pushToast]);
 
-  // ── Load jobs for the selected role ─────────────────────────────────────────
+  // ── Load jobs for the route role ───────────────────────────────────────────
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     setLoading(true);
     setError(null);
+    setData((current) => (current?.role === role ? current : null));
+
     const fresh = freshRef.current ? "&fresh=1" : "";
     freshRef.current = false;
-
-    fetch(`/api/jobs?role=${role}${fresh}`, { signal: controller.signal })
-      .then((response) => {
+    const warm = fresh ? null : takePrefetchedRole(role);
+    const request =
+      warm ??
+      fetch(`/api/jobs?role=${role}${fresh}`).then((response) => {
         if (!response.ok) throw new Error("Could not load jobs");
         return response.json() as Promise<RoleData>;
-      })
-      .then((payload) => {
-        setData(payload);
-        setVisible(PAGE_SIZE);
-      })
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
       });
 
-    return () => controller.abort();
+    request
+      .then((payload) => {
+        if (!cancelled) {
+          setData(payload);
+          setVisible(PAGE_SIZE);
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [role, reloadKey]);
 
-  // ── Keep filter state shareable without putting the role in the URL ────────
+  // ── Keep filters shareable without a role parameter ────────────────────────
   useEffect(() => {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
@@ -129,10 +139,11 @@ export default function Dashboard() {
     if (dateRange !== "all") params.set("days", dateRange);
     if (sort !== "score") params.set("sort", sort);
     const next = params.toString();
-    window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
-  }, [query, city, source, score, experience, dateRange, sort]);
+    const base = pathname || `/jobs/${role}`;
+    window.history.replaceState(null, "", next ? `${base}?${next}` : base);
+  }, [city, dateRange, experience, pathname, query, role, score, sort, source]);
 
-  // ── Poll GitHub Actions while a scrape runs ─────────────────────────────────
+  // ── Status + polling ───────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
     fetch(`/api/status?role=${role}`)
@@ -141,7 +152,7 @@ export default function Dashboard() {
         if (active) setStatus(payload);
       })
       .catch(() => {
-        /* ignore */
+        /* status is optional */
       });
     return () => {
       active = false;
@@ -155,7 +166,7 @@ export default function Dashboard() {
         const response = await fetch(`/api/status?role=${role}`);
         setStatus((await response.json()) as StatusResponse);
       } catch {
-        /* ignore */
+        /* keep the last known state */
       }
     }, 8000);
     return () => window.clearInterval(timer);
@@ -182,7 +193,6 @@ export default function Dashboard() {
     previousState.current = status.state;
   }, [status, pushToast]);
 
-  // ── Elapsed timer while the modal is open ───────────────────────────────────
   useEffect(() => {
     if (!refreshOpen) {
       setElapsed(0);
@@ -231,7 +241,13 @@ export default function Dashboard() {
     setConfirmOpen(false);
   }, [role]);
 
-  // ── Derived job list ────────────────────────────────────────────────────────
+  function switchRole(next: RoleSlug) {
+    if (next === role) return;
+    void prefetchRole(next);
+    router.push(`/jobs/${next}`);
+  }
+
+  // ── Derived list ───────────────────────────────────────────────────────────
   const jobs = useMemo<Job[]>(() => data?.jobs ?? [], [data]);
   const cities = useMemo(() => cityCounts(jobs), [jobs]);
   const sources = useMemo(() => Object.keys(data?.sources ?? {}).sort(), [data]);
@@ -242,7 +258,8 @@ export default function Dashboard() {
 
     const list = jobs.filter((job) => {
       if (needle) {
-        const haystack = `${job.title} ${job.company} ${job.location} ${job.source} ${job.snippet ?? ""}`.toLowerCase();
+        const haystack =
+          `${job.title} ${job.company} ${job.location} ${job.source} ${job.snippet ?? ""}`.toLowerCase();
         if (!haystack.includes(needle)) return false;
       }
       if (city !== "all" && job.location !== city) return false;
@@ -280,37 +297,70 @@ export default function Dashboard() {
     setSort("score");
   }
 
-  return (
-    <div className="app">
-      <header className="site-header">
-        <div className="shell header-inner">
-          <a className="brand" href="/">
-            <span className="brand-mark">
-              <SparkIcon width={18} height={18} />
-            </span>
-            <span className="brand-text">
-              <strong>JobHunt</strong>
-              <span>India</span>
-            </span>
-          </a>
+  const liveCount = data ? data.count : 0;
 
-          <div className="header-actions">
-            <RoleSelect value={role} onChange={setRole} />
+  return (
+    <div className="dashboard">
+      <div className="dashboard-ambient" aria-hidden>
+        <span className="dashboard-glow dashboard-glow-red" />
+        <span className="dashboard-glow dashboard-glow-blue" />
+        <span className="dashboard-grid" />
+      </div>
+
+      <header className="dashboard-header">
+        <div className="shell dashboard-header-inner">
+          <Link className="brand-lockup" href="/" aria-label="JobHunt India home">
+            <span className="brand-mark">
+              <SparkIcon width={17} height={17} />
+            </span>
+            <span className="brand-copy">
+              <strong>JOBHUNT</strong>
+              <span>INDIA / 2026</span>
+            </span>
+          </Link>
+
+          <RoleSwitcher role={role} onChange={switchRole} />
+
+          <div className="dashboard-header-actions">
+            <span className="live-pill">
+              <span className="status-dot" />
+              Live
+            </span>
+            <Link className="journey-link" href="/">
+              <RouteIcon width={15} height={15} />
+              Journey
+            </Link>
           </div>
         </div>
       </header>
 
-      <main className="shell">
-        <section className="hero">
-          <div className="hero-copy">
-            <span className="hero-tag">
-              <span className="pulse" />
-              Updated daily across India
-            </span>
-            <h1>
-              Find your next <span style={{ color: roleMeta.accent }}>{roleMeta.label}</span> role
-            </h1>
-            <p>{roleMeta.blurb} Curated from LinkedIn, Naukri, Indeed, Foundit, Shine and SimplyHired — filtered by city, experience and match score.</p>
+      <main className="shell dashboard-main">
+        <section className="dashboard-hero">
+          <div className="dashboard-hero-copy">
+            <p className="eyebrow">
+              <span className="eyebrow-line" />
+              Destination reached · {roleMeta.label}
+            </p>
+            <h1>{roleMeta.fullLabel}</h1>
+            <p className="hero-lede">
+              {roleMeta.blurb} Curated from Naukri, Foundit, Indeed, Shine and LinkedIn, with
+              deduplicated links and a transparent match signal.
+            </p>
+            <div className="hero-actions">
+              <a className="primary-btn" href="#jobs">
+                Explore {liveCount ? liveCount.toLocaleString("en-IN") : "live"} jobs
+              </a>
+              <Link className="ghost-btn" href="/">
+                Change destination
+              </Link>
+            </div>
+          </div>
+
+          <div className="dashboard-hero-art" aria-hidden>
+            <span className="hero-art-orbit hero-art-orbit-a" />
+            <span className="hero-art-orbit hero-art-orbit-b" />
+            <span className="hero-art-core" />
+            <span className="hero-art-label">NEXT / MOVE</span>
           </div>
         </section>
 
@@ -325,6 +375,8 @@ export default function Dashboard() {
         ) : null}
 
         {data ? <StatsBar data={data} role={roleMeta} status={status} /> : null}
+
+        <div id="jobs" className="dashboard-jobs-anchor" />
 
         <Filters
           query={query}
@@ -350,6 +402,10 @@ export default function Dashboard() {
           total={jobs.length}
         />
 
+        <div className="sr-only" aria-live="polite">
+          {loading ? "Loading jobs" : `${filtered.length} jobs match the current filters`}
+        </div>
+
         {error ? (
           <div className="state-box">
             <AlertIcon width={22} height={22} />
@@ -360,7 +416,7 @@ export default function Dashboard() {
             </button>
           </div>
         ) : loading && !data ? (
-          <div className="job-grid">
+          <div className="job-grid job-grid-loading" aria-hidden>
             {Array.from({ length: 6 }).map((_, index) => (
               <div className="job-card skeleton" key={index} />
             ))}
@@ -368,23 +424,37 @@ export default function Dashboard() {
         ) : shownJobs.length === 0 ? (
           <div className="state-box">
             <SparkIcon width={22} height={22} />
-            <h3>No roles match these filters</h3>
-            <p>Try a different city, clear the search, or widen the date range.</p>
-            <button type="button" className="primary-btn" onClick={resetFilters}>
-              Reset filters
-            </button>
+            <h3>No matching jobs found for this role yet.</h3>
+            <p>Change the role, broaden the search, or clear the filters to see more.</p>
+            <div className="state-actions">
+              <button type="button" className="primary-btn" onClick={resetFilters}>
+                Clear filters
+              </button>
+              <Link className="ghost-btn" href="/">
+                Change role
+              </Link>
+            </div>
           </div>
         ) : (
           <>
             <div className={`job-grid ${loading ? "is-loading" : ""}`}>
-              {shownJobs.map((job) => (
-                <JobCard key={`${job.source}-${job.id}`} job={job} showScore={showScores} />
+              {shownJobs.map((job, index) => (
+                <JobCard
+                  key={`${job.source}-${job.id}`}
+                  job={job}
+                  showScore={showScores}
+                  index={index}
+                />
               ))}
             </div>
 
             {visible < filtered.length ? (
               <div className="load-more">
-                <button type="button" className="ghost-btn" onClick={() => setVisible((count) => count + PAGE_SIZE)}>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => setVisible((count) => count + PAGE_SIZE)}
+                >
                   Load {Math.min(PAGE_SIZE, filtered.length - visible)} more
                 </button>
               </div>
@@ -392,42 +462,40 @@ export default function Dashboard() {
           </>
         )}
 
-        <section className="explainer">
-          <div className="explainer-card">
-            <h3>How this works</h3>
+        <section className="dashboard-info">
+          <div className="info-card">
+            <p className="info-kicker">THE PIPELINE</p>
+            <h2>Real listings. Real links. No mock data.</h2>
             <ol>
               <li>A GitHub Action scrapes public job listings every morning at 7 AM IST.</li>
-              <li>Each listing is scored against a reference profile and de-duplicated.</li>
-              <li>Results are published as JSON, which this portal reads.</li>
-              <li>New results appear automatically once a scrape publishes — no account needed.</li>
+              <li>Each listing is scored, de-duplicated and linked to its original posting.</li>
+              <li>Results are published as JSON; this dashboard reads the published data.</li>
+              <li>Filters and role changes never trigger a scrape or spend a workflow run.</li>
             </ol>
           </div>
-          <div className="explainer-card">
-            <h3>Being built in the open</h3>
+
+          <div className="info-card info-card-accent">
+            <p className="info-kicker">CONTACT / CREDITS</p>
+            <h2>Built in the open.</h2>
             <p>
-              Three role tracks — GenAI, Data Engineering and UI/UX — share one pipeline. Data is
-              linked back to the original posting; we never republish full descriptions.
+              Feature request, bug, or issue?{" "}
+              <a href="mailto:heyjarvis.03@gmail.com">
+                <MailIcon width={13} height={13} /> heyjarvis.03@gmail.com
+              </a>
             </p>
-            <div className="explainer-links">
-              {ROLES.map((item) => (
-                <button
-                  key={item.slug}
-                  type="button"
-                  className="role-chip"
-                  style={{ borderColor: item.accent, color: item.accent }}
-                  onClick={() => setRole(item.slug)}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <p className="explainer-contact">
-              <MailIcon width={14} height={14} />
-              <span>
-                Feature request, bug, or issue?{" "}
-                <a href="mailto:heyjarvis.03@gmail.com">heyjarvis.03@gmail.com</a>
-              </span>
+            <p className="credits-copy">
+              The cinematic guide head uses the Lee Perry-Smith head study (Infinite Realities,
+              CC BY 3.0). The body and motion are a custom Three.js prototype, not a final
+              production character.
             </p>
+            <details className="credits-details">
+              <summary>Asset license &amp; notes</summary>
+              <p>
+                Head geometry and textures: Lee Perry-Smith / Infinite Realities, licensed under
+                Creative Commons Attribution 3.0. Source distributed with the three.js examples.
+                Facial animation is not rigged; only camera and body motion are animated.
+              </p>
+            </details>
           </div>
         </section>
       </main>
