@@ -217,9 +217,9 @@ button:disabled {
   z-index: 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(5, 6, 10, 0.5) 0%, rgba(5, 6, 10, 0.08) 48%, rgba(5, 6, 10, 0.62) 100%),
-    radial-gradient(54% 62% at 50% 40%, transparent 34%, rgba(5, 6, 10, 0.48) 100%),
-    url("/models/student/portrait.webp") center 32% / cover no-repeat,
+    linear-gradient(90deg, rgba(5, 6, 10, 0.58) 0%, rgba(5, 6, 10, 0.12) 48%, rgba(5, 6, 10, 0.6) 100%),
+    radial-gradient(54% 62% at 50% 40%, transparent 34%, rgba(5, 6, 10, 0.42) 100%),
+    url("/models/student/scene.webp") center 56% / cover no-repeat,
     linear-gradient(180deg, #05060a 0%, #080a11 62%, #030407 100%);
 }
 
@@ -401,6 +401,81 @@ button:disabled {
   margin: 0;
   color: var(--dim);
   font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* First paint / bundle boot. No HI and no role cards here: the greeting and
+   selector are separate beats and must never appear together. */
+
+.intro-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(52% 58% at 42% 44%, rgba(41, 61, 92, 0.18), transparent 72%),
+    linear-gradient(180deg, #05060a 0%, #080a11 58%, #030407 100%);
+  color: var(--white);
+}
+
+.intro-boot-glow {
+  position: absolute;
+  width: 48vw;
+  height: 48vw;
+  max-width: 680px;
+  max-height: 680px;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+.intro-boot-glow-red {
+  left: -17vw;
+  top: 22vh;
+  background: var(--red);
+}
+
+.intro-boot-glow-blue {
+  right: -17vw;
+  bottom: -6vh;
+  background: var(--blue);
+}
+
+.intro-boot-floor {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  bottom: -8%;
+  height: 44vh;
+  opacity: 0.34;
+  background:
+    linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.76)),
+    repeating-linear-gradient(90deg, transparent 0 89px, rgba(255, 255, 255, 0.04) 90px),
+    repeating-linear-gradient(0deg, transparent 0 59px, rgba(255, 255, 255, 0.035) 60px);
+  transform: perspective(620px) rotateX(58deg);
+  transform-origin: bottom center;
+  pointer-events: none;
+}
+
+.intro-boot-center {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.intro-boot-center p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -790,11 +865,20 @@ button:disabled {
   z-index: 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(5, 6, 10, 0.18) 0%, rgba(5, 6, 10, 0.3) 44%, rgba(5, 6, 10, 0.82) 100%),
-    radial-gradient(45% 55% at 34% 43%, rgba(255, 48, 79, 0.12), transparent 70%),
-    radial-gradient(50% 60% at 64% 38%, rgba(40, 123, 255, 0.14), transparent 72%),
-    url("/models/student/portrait.webp") center 30% / cover no-repeat,
+    linear-gradient(90deg, rgba(5, 6, 10, 0.88) 0%, rgba(5, 6, 10, 0.68) 36%, rgba(5, 6, 10, 0.18) 66%, rgba(5, 6, 10, 0.52) 100%),
+    radial-gradient(45% 55% at 34% 43%, rgba(255, 48, 79, 0.1), transparent 70%),
+    radial-gradient(50% 60% at 64% 38%, rgba(40, 123, 255, 0.12), transparent 72%),
+    url("/models/student/scene.webp") center 58% / cover no-repeat,
     linear-gradient(180deg, #05060a, #080a11 68%, #030407);
+}
+
+/* Mobile crops the wide scene from the left so the guide stays in frame with
+   the copy; the desktop version keeps the full three-gate stage centred. */
+@media (max-width: 760px) {
+  .intro-poster,
+  .static-intro-scene {
+    background-position: 25% 58%;
+  }
 }
 
 .static-orb {

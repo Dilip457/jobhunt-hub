@@ -179,11 +179,11 @@ The cinematic intro is progressive enhancement, never a gate:
 
 | Condition | Behaviour |
 |---|---|
-| Normal visit | Four-second rigged 3D character close-up (`HI.`), camera pullback, path, turn, walk, role selection |
-| Returning visitor (`localStorage` flag) | Starts at the role selection with the scene already framed |
+| Normal visit | Clean boot, then a four-second rigged 3D character close-up (`HI.`), camera pullback, path, turn, walk, role selection |
+| Returning visitor | The greeting still plays; **Skip intro** jumps straight to role selection |
 | **Skip intro** | Cancels timers and jumps straight to role selection |
-| `prefers-reduced-motion: reduce` | Static portrait selector with the same three destinations; no canvas |
-| WebGL unavailable, model fails, or a 12 s load timeout | Static portrait selector fallback |
+| `prefers-reduced-motion: reduce` | Static wide-scene selector: four-second `HI.` first, then the same three destinations; no canvas |
+| WebGL unavailable, model fails, or a 12 s load timeout | The same static wide-scene fallback; the greeting is shown before the role cards |
 | Very small screen | Responsive camera and a bottom-sheet role selector |
 | Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |
 
@@ -192,7 +192,8 @@ from 244,257 to 85,487 triangles, with 1024px WebP textures, flat navy fabric, f
 hair, a cleaned basecolour and a generated breathing idle. The material is uniformly matte
 (no roughness/metallic maps) to remove specular flecks, and the earlier runtime glasses are
 gone. The destination gates stay hidden during the close-up and fade into the world with
-the pullback. The character has no facial blendshapes, eye rig, lip-sync or motion capture;
+the pullback. The loading boot and static fallback use a wide scene poster (`scene.webp`),
+not a full-screen face crop. The character has no facial blendshapes, eye rig, lip-sync or motion capture;
 the source ships only walk and run clips. The dashboard states this and the full
 modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 

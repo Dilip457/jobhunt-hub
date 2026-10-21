@@ -213,17 +213,18 @@ catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `
 
 `/` is a cinematic entry point, not a gate:
 
-1. A four-second close-up of the guide says **“HI.”** against red/blue rim light.
-2. The camera pulls back to reveal an illuminated path and three gates.
-3. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering and UI/UX (a bottom sheet on phones).
-4. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
+1. A clean boot screen loads the scene; no role cards are shown during this step.
+2. A four-second close-up of the guide says **“HI.”** against red/blue rim light. Role cards are still hidden.
+3. The camera pulls back to reveal an illuminated path and three gates.
+4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering and UI/UX (a bottom sheet on phones).
+5. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 
 The dashboard is one click away in every degraded mode:
 
 - **Skip intro** jumps straight to role selection.
-- `prefers-reduced-motion: reduce` renders a CSS-only intro with the same destinations.
-- WebGL failure, model failure or a slow load (12 s) falls back to the same static intro.
-- Returning visitors skip the long sequence via `localStorage`.
+- `prefers-reduced-motion: reduce` renders a static wide-scene intro: `HI.` first, then the same destinations after four seconds.
+- WebGL failure, model failure or a slow load (12 s) falls back to the same static intro, again without showing the greeting and role cards together.
+- Every full page load plays the greeting; use **Skip intro** if you want to go straight to the roles.
 - Keyboard focus, mobile layout and browser back/forward work normally.
 
 Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` —

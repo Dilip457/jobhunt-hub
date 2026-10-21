@@ -85,7 +85,7 @@ jobhunt-hub/
 │  │  ├─ types.ts                # RoleSlug, Job, RoleData, Manifest, RunState
 │  │  └─ utils.ts                # dates, score tiers, filters
 │  ├─ public/models/student/
-│  │  └─ student.glb, portrait.webp, ATTRIBUTION.txt
+│  │  └─ student.glb, scene.webp, portrait.webp, ATTRIBUTION.txt
 │  └─ data/                      # seed JSON used before the first live scrape
 ├─ docs/
 │  ├─ ARCHITECTURE.md
@@ -656,10 +656,11 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 ### 6.6 UI
 
 - `/` plays a rigged Three.js character close-up (`HI.` for four seconds), camera pullback, illuminated path, turn, walk and role selection.
-- The three destination gates are hidden during the greeting so the portrait stays clean; they appear when the camera pulls back.
+- The greeting owns the screen: no role cards are rendered while `HI.` is visible. The three destination gates are hidden during the close-up and appear with the pullback.
+- The first paint before the cinematic bundle is a clean `IntroBoot` (brand, loader, no headline and no role cards). The boot is also used while the GLB is loading, so a slow connection cannot turn the greeting into a selector.
+- Every full page load runs the greeting sequence. Returning visitors use **Skip intro** to jump straight to role selection; there is no localStorage shortcut that bypasses the greeting.
 - Desktop uses a shallow bottom role dock that keeps the character, path and all three gates visible. Phones use a bottom sheet with explicit card rows.
-- Returning visitors (`localStorage` key `jobhunt-intro-seen`) start at the role selection; **Skip intro** is always available during the sequence.
-- `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`, a portrait-based selector with identical destinations.
+- `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`: the same wide scene poster, a four-second `HI.` beat first, then the identical destinations. It never shows the greeting and role cards together.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
 - Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
 - Job card: title, company, location, experience, posted date, first-seen date, snippet, source badge, score tier, Apply button.
@@ -677,6 +678,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 | Base | “Casual Man” by Grab3D, **CC0 1.0** |
 | Source | `https://grab3d.com/models/characters/man/` |
 | Local files | `web/public/models/student/` |
+| Posters | `scene.webp` is the wide selector still used by the boot/static background; `portrait.webp` is a close-up reference render |
 | Mesh | 85,487 triangles; quantized; textures embedded as 1024px WebP |
 | Look | Bearded adult, flat warm-brown hair, flat navy bomber jacket, white knit top, jeans, sneakers; no runtime glasses |
 | Shading | Uniform matte `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.84`, no roughness/metallic maps, normal scale `0.5`, low environment intensity |

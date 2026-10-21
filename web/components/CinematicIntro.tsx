@@ -14,7 +14,6 @@ import StaticIntro from "./StaticIntro";
 
 type Phase = "loading" | "greeting" | "reveal" | "approach" | "selecting" | "departing" | "transition";
 
-const SEEN_KEY = "jobhunt-intro-seen";
 const MODEL_URL = "/models/student/student.glb";
 
 const SELECTOR_Z = -3.4;
@@ -194,15 +193,11 @@ export default function CinematicIntro({ onComplete }: Props) {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   });
-  const [seen] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem(SEEN_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [phase, setPhase] = useState<Phase>(seen ? "selecting" : "loading");
+  // Always start at the boot/loading frame. A returning-visitor shortcut used
+  // to jump straight to the selector before the scene was ready, which showed
+  // the poster close-up and role cards at the same time. The greeting now runs
+  // once per page load; “Skip intro” remains available for returning visitors.
+  const [phase, setPhase] = useState<Phase>("loading");
   const [selected, setSelected] = useState<RoleSlug | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -224,32 +219,22 @@ export default function CinematicIntro({ onComplete }: Props) {
 
   useEffect(() => clearTimers, [clearTimers]);
 
-  const markSeen = useCallback(() => {
-    try {
-      window.localStorage.setItem(SEEN_KEY, "1");
-    } catch {
-      // localStorage can be unavailable in private modes.
-    }
-  }, []);
-
   const complete = useCallback(
     (role: RoleSlug) => {
       if (completeRef.current) return;
       completeRef.current = true;
-      markSeen();
       void prefetchRole(role);
       if (onComplete) onComplete(role);
       else router.push(`/jobs/${role}`);
     },
-    [markSeen, onComplete, router],
+    [onComplete, router],
   );
 
   const skipToRoles = useCallback(() => {
     clearTimers();
-    markSeen();
     setPhase("selecting");
     controllerRef.current?.jumpToSelecting();
-  }, [clearTimers, markSeen]);
+  }, [clearTimers]);
 
   const skipJourney = useCallback(() => {
     if (selected) {
@@ -1035,11 +1020,10 @@ export default function CinematicIntro({ onComplete }: Props) {
 
   const handleStaticSelect = useCallback(
     (role: RoleSlug) => {
-      markSeen();
       void prefetchRole(role);
       router.push(`/jobs/${role}`);
     },
-    [markSeen, router],
+    [router],
   );
 
   if (reduced || failed) {
@@ -1093,10 +1077,6 @@ export default function CinematicIntro({ onComplete }: Props) {
           </div>
           <p>Preparing your guide…</p>
           <span className="loader-line" aria-hidden />
-          <button type="button" className="skip-intro" onClick={skipToRoles}>
-            Skip intro
-            <ArrowRightIcon width={14} height={14} />
-          </button>
         </div>
       ) : null}
 
