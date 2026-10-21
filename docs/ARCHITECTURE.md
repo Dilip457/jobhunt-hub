@@ -367,12 +367,12 @@ Posted 3 days ago · First seen today
 
 | Layer | Behaviour |
 |---|---|
-| Next.js data cache | `revalidate: 60` seconds |
+| GitHub read for role jobs | `no-store` (always reads the `data` branch) |
 | CDN response | `s-maxage=60, stale-while-revalidate=300` |
-| `?fresh=1` | Bypasses caches (`no-store`) |
+| `?fresh=1` | Bypasses the CDN (`no-store`) |
 | `/api/status` | `no-store` |
 
-After a publish, the site may take roughly **1–5 minutes** to show new data unless `fresh=1` is used.
+After a publish, the edge may serve the previous response for up to about **5 minutes**; `?fresh=1` bypasses it. The origin does not cache role JSON, so a publish cannot stay invisible behind the Next.js data cache.
 
 ---
 

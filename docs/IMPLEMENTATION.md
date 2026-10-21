@@ -604,10 +604,10 @@ This makes the app work even before the first scrape.
 
 | Layer | Setting |
 |---|---|
-| `getRoleData` (normal) | `revalidate: 60`, tags `jobs`, `jobs:<role>` |
+| `getRoleData` | `no-store` (fresh read on every API cache miss) |
 | `getManifest` | `revalidate: 60`, tag `jobs` |
 | `/api/jobs` response | `public, s-maxage=60, stale-while-revalidate=300` |
-| `/api/jobs?fresh=1` | `no-store` |
+| `/api/jobs?fresh=1` | `no-store` (bypasses CDN cache) |
 | `/api/status` | `no-store` |
 | `/api/refresh` | `force-dynamic` |
 
