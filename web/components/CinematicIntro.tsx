@@ -841,10 +841,11 @@ export default function CinematicIntro({ onComplete }: Props) {
           state.walkBlend = 0;
         } else if (next === "selecting") {
           character.position.set(0, 0, SELECTOR_Z);
-          if (jump) {
-            character.rotation.y = faceCameraAngle;
-            state.walkBlend = 0;
-          }
+          character.rotation.y = faceCameraAngle;
+          state.walkBlend = 0;
+          camera.position.copy(selectorPosition);
+          currentLook.copy(selectorLook);
+          camera.lookAt(currentLook);
         } else if (next === "departing" && previous !== "departing") {
           character.position.set(0, 0, SELECTOR_Z);
           state.walkBlend = 0;
@@ -895,7 +896,7 @@ export default function CinematicIntro({ onComplete }: Props) {
           character.rotation.y = lerpAngle(faceCameraAngle, targetAngle, turn);
         } else if (state.phase === "selecting") {
           character.position.set(0, 0, SELECTOR_Z);
-          character.rotation.y = dampAngle(character.rotation.y, faceCameraAngle, dt, 6.5);
+          character.rotation.y = faceCameraAngle;
         } else if (state.phase === "transition") {
           const destination = state.selected ? GATE_POSITIONS[state.selected] : GATE_POSITIONS.data;
           character.position.set(destination.x, 0, destination.z);
