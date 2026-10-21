@@ -966,7 +966,7 @@ blocked WebGL             → static intro fallback
 Alt+Shift+R on dashboard  → confirmation dialog; Escape closes; ignored in inputs
 ```
 
-Production verification (2026-10-21): 45/45 Playwright checks passed against the live Vercel deployment, including the cinematic intro, all three role dashboards, live API data, mobile 390×844, reduced motion, blocked WebGL, invalid-role redirect, skip intro, URL filters, browser back/forward, and no console/page errors. A real refresh dispatched from the hidden dialog completed successfully (run `39533659444`); Data Engineering rose from 1,076 to 1,187 jobs. The refresh panel now counts elapsed time from the current request rather than the previous run (`357b5ff`).
+Production verification (2026-10-21): 45/45 Playwright checks passed against the live Vercel deployment, including the cinematic intro, all three role dashboards, live API data, mobile 390×844, reduced motion, blocked WebGL, invalid-role redirect, skip intro, URL filters, browser back/forward, and no console/page errors. Real refreshes dispatched from the hidden dialog completed successfully (runs `39533659444`, `39538466669`, `39538470547`): GenAI 938 → 1,064, Data Engineering 1,076 → 1,187, UI/UX 1,130 → 1,242. The refresh panel now counts elapsed time from the current request rather than the previous run (`357b5ff`).
 
 ---
 
