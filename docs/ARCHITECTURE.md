@@ -293,7 +293,7 @@ sequenceDiagram
 ### Timing
 
 - Cron is **01:30 UTC**, which is **07:00 IST**.
-- GitHub can delay scheduled workflows by a few minutes under load.
+- GitHub cron is best-effort: scheduled runs can start minutes or occasionally hours late under load, and GitHub can disable schedules after prolonged repository inactivity. Recent scheduled runs have completed successfully; if a morning update is late, dispatch the workflow manually or use the hidden dashboard refresh.
 - Scraping is sequential per matrix, so a full run can take a while.
 - The publish job runs at the end, once the scrape and WARP jobs finish (or fail).
 

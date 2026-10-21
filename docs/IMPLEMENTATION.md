@@ -66,6 +66,7 @@ jobhunt-hub/
 │  ├─ components/
 │  │  ├─ CinematicIntro.tsx      # Three.js scene, camera and transitions
 │  │  ├─ IntroPage.tsx           # dynamic loader for the cinematic
+│  │  ├─ IntroBoot.tsx           # clean boot screen; no greeting or role cards
 │  │  ├─ StaticIntro.tsx         # reduced-motion / WebGL / load fallback
 │  │  ├─ RoleDestinations.tsx    # accessible destination cards
 │  │  ├─ JobDashboard.tsx        # route-driven dashboard
@@ -966,17 +967,19 @@ curl "https://<site>/api/jobs?role=genai&fresh=1"
 Front-end smoke checks used for this redesign (all must pass before deploying):
 
 ```text
-/                         → 4 s greeting, pullback, all 3 gates, role dock, skip intro
+/                         → clean boot, 4 s greeting with 0 cards, pullback, 3 gates, role dock, skip intro
 /jobs/genai               → GenAI cards, filters, back/forward
 /jobs/data                → Data Engineering cards, URL filters
 /jobs/uiux                → UI/UX cards on a 390×844 viewport, no overflow
-reduced-motion            → static intro, no WebGL canvas, copy clear of the dock
-blocked WebGL             → static intro fallback
+reduced-motion            → static intro: HI. with 0 cards, then 3 cards after 4 s; no WebGL canvas
+blocked WebGL             → same static intro fallback; never HI. and cards together
 /jobs/not-a-role          → redirect to /
 Alt+Shift+R on dashboard  → confirmation dialog; Escape closes; ignored in inputs
 ```
 
-Production verification (2026-10-21): 45/45 Playwright checks passed against the live Vercel deployment, including the cinematic intro, all three role dashboards, live API data, mobile 390×844, reduced motion, blocked WebGL, invalid-role redirect, skip intro, URL filters, browser back/forward, and no console/page errors. Real refreshes dispatched from the hidden dialog completed successfully (runs `39533659444`, `39538466669`, `39538470547`): GenAI 938 → 1,064, Data Engineering 1,076 → 1,187, UI/UX 1,130 → 1,242. The refresh panel now counts elapsed time from the current request rather than the previous run (`357b5ff`). The jobs API reads the `data` branch on every cache miss, so a published scrape is not hidden by the origin cache (`5264079`).
+Production verification (2026-10-21, `79e03f7`): 45/45 Playwright checks passed against the live Vercel deployment, including the cinematic intro, all three role dashboards, live API data, mobile 390×844, reduced motion, blocked WebGL, invalid-role redirect, skip intro, URL filters, browser back/forward, and no console/page errors. Greeting timing was re-checked at 1920×889 and 390×844: the boot renders no headline and no cards, `HI.` holds for at least four seconds with zero cards, and cards appear only in `phase-selecting`. The static reduced-motion fallback shows `HI.` with 0 cards, then 3 cards after 4 s. Live APIs returned GenAI **1,084**, Data Engineering **1,234** and UI/UX **1,280** (all `demo=false`); `/api/status` succeeded and an invalid role redirected to `/`. Production assets are present (`scene.webp` 87,822 B, `student.glb` 3,460,444 B, `portrait.webp` 39,640 B). The scheduled workflow run on 2026-10-21 (`06:15Z`) passed `prepare`, `scrape`, `warp` and `publish`.
+
+The refresh panel counts elapsed time from the current request rather than the previous run (`357b5ff`), and `/api/jobs` reads the `data` branch on every cache miss so a published scrape is not hidden by the origin cache (`5264079`).
 
 ---
 
