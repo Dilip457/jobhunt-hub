@@ -21,7 +21,7 @@ A public, daily-updated job portal for three role tracks — **GenAI**, **Data E
 ## How it works
 
 ```
-GitHub Actions (07:00 IST or manual — runs entirely in the cloud, no PC needed)
+GitHub Actions (03:00 IST or manual — runs entirely in the cloud, no PC needed)
   ├─ checkout each scraper repo
   ├─ patch config for pan-India search
   ├─ run pipeline → SQLite            (LinkedIn + company career pages)

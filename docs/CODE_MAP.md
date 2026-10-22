@@ -494,7 +494,7 @@ The current implementation is a **preloaded, per-role prototype score**, not a u
 | `warp` | `prepare` | Cloudflare WARP job for Indeed SEO + SimplyHired | `automation/portal_scrapers.py` |
 | `publish` | `prepare`, `scrape`, `warp` | Downloads all artifacts, merges and force-pushes `data` branch | `automation/publish.py` |
 
-Schedule: `30 1 * * *` UTC = 07:00 IST. Manual dispatch accepts `all | genai | data | uiux`.
+Schedule: `30 21 * * *` UTC = 03:00 IST. Manual dispatch accepts `all | genai | data | uiux`.
 
 ### 9.2 Role configuration and vendor mapping
 

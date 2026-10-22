@@ -107,7 +107,7 @@ File: `.github/workflows/scrape.yml`
 ```yaml
 on:
   schedule:
-    - cron: "30 1 * * *"      # 07:00 IST (01:30 UTC)
+    - cron: "30 21 * * *"     # 03:00 IST (21:30 UTC previous day)
   workflow_dispatch:
     inputs:
       role:

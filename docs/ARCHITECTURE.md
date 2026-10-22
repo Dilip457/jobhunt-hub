@@ -14,7 +14,7 @@ It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company car
 | Repository | <https://github.com/Dilip457/jobhunt-hub> |
 | Code branch | `main` |
 | Data branch | `data` |
-| Schedule | `30 1 * * *` UTC = **07:00 IST** daily |
+| Schedule | `30 21 * * *` UTC = **03:00 IST** daily |
 | Hosting | Vercel (UI + API), GitHub Actions (scraping + publishing) |
 | Database | None |
 | Cost | ₹0/month on free tiers |
@@ -265,7 +265,7 @@ sequenceDiagram
     participant Vercel as Vercel API
     participant User as Browser
 
-    Cron->>Prep: 01:30 UTC / 07:00 IST
+    Cron->>Prep: 21:30 UTC / 03:00 IST
     Prep->>Prep: build matrix (genai, data, uiux)
     Prep->>Scrape: matrix
     Prep->>Warp: matrix
@@ -292,8 +292,9 @@ sequenceDiagram
 
 ### Timing
 
-- Cron is **01:30 UTC**, which is **07:00 IST**.
-- GitHub cron is best-effort: scheduled runs can start minutes or occasionally hours late under load, and GitHub can disable schedules after prolonged repository inactivity. Recent scheduled runs have completed successfully; if a morning update is late, dispatch the workflow manually or use the hidden dashboard refresh.
+- Cron is **21:30 UTC**, which is **03:00 IST** (the previous UTC day).
+- The earlier start deliberately gives a buffer for GitHub's best-effort scheduler. A multi-hour delay can still leave the published data ready before the typical morning check.
+- GitHub cron is best-effort: scheduled runs can start minutes or occasionally hours late under load, and GitHub can disable schedules after prolonged repository inactivity. If a morning update is late, dispatch the workflow manually or use the hidden dashboard refresh.
 - Scraping is sequential per matrix, so a full run can take a while.
 - The publish job runs at the end, once the scrape and WARP jobs finish (or fail).
 
@@ -489,7 +490,7 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 
 1. **Indeed is unreliable from cloud IPs.** It frequently returns `403 Security Check` or `401 Authenticating`. The WARP job improves the odds but does not guarantee results. A residential IP or paid proxy would be required for reliability.
 2. **Scraping HTML is brittle.** A portal redesign can break a parser until it is updated.
-3. **GitHub cron is best-effort.** Scheduled runs can start late, and GitHub may disable schedules for inactive repositories.
+3. **GitHub cron is best-effort.** The schedule starts at 03:00 IST to absorb typical delays, but runs can still start late or be dropped, and GitHub may disable schedules for inactive repositories.
 4. **Sequential matrix.** `max-parallel: 1` keeps resource usage predictable but makes full runs slower.
 5. **Cache lag.** New data can take a few minutes to appear through the CDN.
 6. **Legacy `first_seen` values.** Pre-change jobs may show the portal posted date as “first seen” because no earlier scrape history was stored.
