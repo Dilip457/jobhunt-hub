@@ -1000,6 +1000,8 @@ Live verification after the push (2026-10-22, `0baecf8`): the deployment served 
 
 Outfit refresh (2026-10-22, local dev capture, pre-deployment commit): `npx tsc --noEmit` and `npm run build` pass. Local captures at 1280×800 and 2560×1440 show the blue bomber, blue jeans and a visible white V-neck t-shirt. The collar and t-shirt boundaries are per-vertex colour blends, so there is no pink material sawtooth and no torn-looking edge in close-up. The dock read `AUTO-ROTATE OFF` after a 3 s hold, and a pointer drag rotated the guide to the side and back. No page errors were reported. Local `/api/jobs` served the bundled fallback rather than live counts, so live counts are re-verified after deployment. The regenerated posters are `scene.webp` (74,924 B) and `portrait.webp` (38,112 B).
 
+Live verification after the outfit push (2026-10-22, `cc60e7c`): the deployment served the new `scene.webp` (74,924 B) and `portrait.webp` (38,112 B). Captures at 1280×800 and 1600×900, taken seven seconds after skipping the intro, show the blue bomber, blue jeans, white V-neck t-shirt and soft collar. The dock read `AUTO-ROTATE OFF` and no page errors were reported. `/api/jobs` returned GenAI **1,084**, Data Engineering **1,234** and UI/UX **1,280**, all `demo=false`; `/api/status` reported `configured=true`; `/`, `/jobs/genai`, `/jobs/data` and `/jobs/uiux` returned 200. A capture taken three seconds after skipping was still mid lighting ramp at 1600×900; the settled seven-second capture is the reference.
+
 The refresh panel counts elapsed time from the current request rather than the previous run (`357b5ff`), and `/api/jobs` reads the `data` branch on every cache miss so a published scrape is not hidden by the origin cache (`5264079`).
 
 ---
