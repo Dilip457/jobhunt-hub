@@ -17,7 +17,7 @@ Modifications made for JobHunt India:
   crop.
 - The source atlas has scrambled garment UV islands: jacket, knit top, hair and skin share
   texture space, so sampling it directly produced brown “tears” and dark flecks. The
-  runtime now splits the body geometry into clean materials: a blue bomber, blue jeans, a
+  runtime now splits the body geometry into clean materials: a blue bomber, navy jeans, a
   white V-neck t-shirt and a feathered skin tint around the neck. The neck and t-shirt
   boundaries are per-vertex colour blends rather than hard collar bands. Head, hair, beard,
   hands and white sneakers keep the original textured atlas.

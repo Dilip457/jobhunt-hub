@@ -253,19 +253,19 @@ const NECK_SEAM_BAND = { y0: 0.618, y1: 0.718, halfWidth: 0.07 };
 // close-up; blending the tint per vertex keeps the shirt edge soft while the
 // geometry still deforms with the rig. Raw-y bounds: a point at the sternum
 // widening to the neck.
-const TEE_V = { y0: 0.5, y1: 0.618, bottomHalfWidth: 0.012, topHalfWidth: 0.062 };
-const TEE_FEATHER = 0.012;
+const TEE_V = { y0: 0.45, y1: 0.618, bottomHalfWidth: 0.018, topHalfWidth: 0.09 };
+const TEE_FEATHER = 0.008;
 
 // The source atlas is not a coherent garment layout: jacket triangles sample
 // hair, skin and knit-top islands, which is what produced the brown seam
 // “tears” and the dark flecks on the white top. Rather than keep chasing UVs,
 // the body clothing gets clean stylized materials. Head, hands and shoes keep
 // the original textured material so the face, hair, beard and skin detail stay.
-// The upper body is rendered as a clean blue bomber with jeans in a lighter
-// denim blue. The neck seam is feathered with a vertex skin tint (NECK_SEAM_BAND)
-// so the collar reads as separate from the neck, and the jacket's V opening is
-// tinted white for the t-shirt (TEE_V). Both boundaries blend per vertex, so
-// they stay soft in close-up instead of following triangle edges.
+// The upper body is rendered as a clean blue bomber with navy jeans. The neck
+// seam is feathered with a vertex skin tint (NECK_SEAM_BAND) so the collar reads
+// as separate from the neck, and the jacket's V opening is tinted white for the
+// t-shirt (TEE_V). Both boundaries blend per vertex, so they stay soft in
+// close-up instead of following triangle edges.
 function installCleanClothing(model: THREE.Object3D): void {
   model.traverse((object) => {
     const mesh = object as THREE.Mesh;
@@ -307,6 +307,23 @@ function installCleanClothing(model: THREE.Object3D): void {
       }
     }
 
+    // Smooth white tee tint inside the V. The falloff is a few centimetres so
+    // the neckline reads as fabric in shadow, not a paint boundary.
+    const teeMasks = new Float32Array(position.count);
+    for (let vertex = 0; vertex < position.count; vertex += 1) {
+      const x = position.getX(vertex);
+      const y = position.getY(vertex);
+      const z = position.getZ(vertex);
+      const taper = clamp((y - TEE_V.y0) / (TEE_V.y1 - TEE_V.y0));
+      const halfWidth =
+        TEE_V.bottomHalfWidth + (TEE_V.topHalfWidth - TEE_V.bottomHalfWidth) * taper;
+      const across = smoothstep(clamp((halfWidth - Math.abs(x)) / TEE_FEATHER));
+      const top = smoothstep(clamp((TEE_V.y1 - y) / 0.008));
+      const bottom = smoothstep(clamp((y - TEE_V.y0) / 0.008));
+      const front = z > 0.003 ? 1 : 0;
+      teeMasks[vertex] = across * top * bottom * front;
+    }
+
     const groups: number[][] = [[], [], []];
     const original = source.array;
     const triangles = Math.floor(original.length / 3);
@@ -334,10 +351,8 @@ function installCleanClothing(model: THREE.Object3D): void {
     }
     if (groups[1].length + groups[2].length === 0) return;
 
-    // Smooth white tee tint inside the V. The falloff is a few centimetres so
-    // the neckline reads as fabric in shadow, not a paint boundary.
     const jacketColour = new THREE.Color(0x275285);
-    const teeColour = new THREE.Color(0xf1efe7);
+    const teeColour = new THREE.Color(0xffffff);
     const skinColour = new THREE.Color(0xd99479);
     const vertexColour = new THREE.Color();
     const colours = new Float32Array(position.count * 3);
@@ -345,14 +360,7 @@ function installCleanClothing(model: THREE.Object3D): void {
       const x = position.getX(vertex);
       const y = position.getY(vertex);
       const z = position.getZ(vertex);
-      const taper = clamp((y - TEE_V.y0) / (TEE_V.y1 - TEE_V.y0));
-      const halfWidth =
-        TEE_V.bottomHalfWidth + (TEE_V.topHalfWidth - TEE_V.bottomHalfWidth) * taper;
-      const across = smoothstep(clamp((halfWidth - Math.abs(x)) / TEE_FEATHER));
-      const top = smoothstep(clamp((TEE_V.y1 - y) / 0.008));
-      const bottom = smoothstep(clamp((y - TEE_V.y0) / 0.008));
-      const front = z > 0.003 ? 1 : 0;
-      const teeMask = across * top * bottom * front;
+      const teeMask = teeMasks[vertex];
 
       // The neck band replaces the old flat-skin material group. Painting the
       // collar vertices skin and feathering into the jacket removes the hard
@@ -396,10 +404,10 @@ function installCleanClothing(model: THREE.Object3D): void {
       dithering: true,
     });
     const pants = new THREE.MeshStandardMaterial({
-      color: 0x3f699c,
-      roughness: 0.92,
+      color: 0x1b2b4a,
+      roughness: 0.94,
       metalness: 0,
-      envMapIntensity: 0.3,
+      envMapIntensity: 0.25,
       side: THREE.DoubleSide,
       dithering: true,
     });
