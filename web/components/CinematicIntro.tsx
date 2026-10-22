@@ -421,7 +421,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       renderer.setPixelRatio(renderPixelRatio());
       renderer.setSize(window.innerWidth, window.innerHeight, false);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = isMobile ? 1.08 : 1.14;
+      renderer.toneMappingExposure = isMobile ? 1.12 : 1.26;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       // Desktop gets a soft cast shadow. Mobile keeps the cheaper painted
       // contact shadow so high-DPI phones do not pay for a second scene pass.
@@ -439,7 +439,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         const room = new RoomEnvironment();
         envTarget = pmrem.fromScene(room, 0.04);
         scene.environment = envTarget.texture;
-        scene.environmentIntensity = isMobile ? 0.26 : 0.36;
+        scene.environmentIntensity = isMobile ? 0.32 : 0.48;
         room.dispose?.();
         pmrem.dispose();
         pmrem = null;
@@ -447,10 +447,10 @@ export default function CinematicIntro({ onComplete }: Props) {
         // Environment reflections are a nice-to-have.
       }
 
-      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, isMobile ? 0.54 : 0.62));
+      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, isMobile ? 0.58 : 0.68));
       // Neutral key + soft fill keep the skin clean. The red/blue accents are
       // now behind the character as rim lights instead of tinting the face.
-      const key = new THREE.DirectionalLight(0xfff2e8, 2.05);
+      const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 2.05 : 2.25);
       key.position.set(-2.5, 4.5, 4.5);
       if (!isMobile) {
         key.castShadow = true;
@@ -463,18 +463,18 @@ export default function CinematicIntro({ onComplete }: Props) {
         key.shadow.camera.far = 26;
         key.shadow.bias = -0.0004;
         key.shadow.normalBias = 0.02;
-        key.shadow.radius = 4;
+        key.shadow.radius = 3.5;
         key.shadow.camera.updateProjectionMatrix();
       }
       scene.add(key);
       scene.add(key.target);
-      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.38 : 0.52);
+      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.48 : 0.72);
       frontFill.position.set(0, 2.1, 5.2);
       scene.add(frontFill);
-      const rim = new THREE.DirectionalLight(0x6f9bff, 0.85);
+      const rim = new THREE.DirectionalLight(0x6f9bff, 0.95);
       rim.position.set(2.2, 3.2, -3.8);
       scene.add(rim);
-      const fill = new THREE.DirectionalLight(0xffe4d8, 0.7);
+      const fill = new THREE.DirectionalLight(0xffe4d8, 0.8);
       fill.position.set(2.2, 2.4, 3.8);
       scene.add(fill);
       const redLight = new THREE.PointLight(0xff304f, 7, 8, 2);
@@ -483,8 +483,12 @@ export default function CinematicIntro({ onComplete }: Props) {
       const blueLight = new THREE.PointLight(0x287bff, 7, 8, 2);
       blueLight.position.set(3.2, 1.5, -1.8);
       scene.add(blueLight);
-      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 1.1 : 1.38, 3.2, 2);
-      faceFill.position.set(0.25, 1.86, 1.2);
+      // This fill follows the guide so the face stays readable in both the
+      // close greeting and the selection stage. A fixed world-space fill was
+      // left behind when the character walked to the selector, which made the
+      // face look muddy at exactly the point users need to inspect it.
+      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 1.25 : 1.65, 4.2, 2);
+      faceFill.position.set(0.28, 1.72, 1.55);
       scene.add(faceFill);
 
       const floorMaterial = new THREE.MeshStandardMaterial({
@@ -786,13 +790,13 @@ export default function CinematicIntro({ onComplete }: Props) {
           // patches that aliased into white “paint flecks” on the hair and
           // jacket. Keep the uniform matte surface, but lift it slightly so
           // fabric, hair and skin keep their form under the key light.
-          standard.envMapIntensity = 0.52;
+          standard.envMapIntensity = 0.68;
           standard.metalness = 0;
           standard.metalnessMap = null;
-          standard.roughness = 0.72;
+          standard.roughness = 0.66;
           standard.roughnessMap = null;
           standard.dithering = true;
-          if (standard.normalMap) standard.normalScale.set(0.6, 0.6);
+          if (standard.normalMap) standard.normalScale.set(0.72, 0.72);
           Object.entries(standard).forEach(([key, value]) => {
             if (!(value instanceof THREE.Texture)) return;
             value.anisotropy = anisotropy;
@@ -850,15 +854,24 @@ export default function CinematicIntro({ onComplete }: Props) {
         speed: 0,
       };
 
-      const closePosition = new THREE.Vector3(0, 1.6, isMobile ? 1.12 : 0.98);
-      const closeLook = new THREE.Vector3(0, 1.585, 0);
+      const closePosition = new THREE.Vector3(0, 1.56, isMobile ? 1.7 : 1.52);
+      const closeLook = new THREE.Vector3(0, 1.43, 0);
       const widePosition = new THREE.Vector3(0.35, isMobile ? 2.1 : 2.0, isMobile ? 7.4 : 6.6);
       const wideLook = new THREE.Vector3(0.05, 1.0, -2.2);
-      // The selection camera is a wide stage shot: character on the left,
-      // all three gates visible, role dock below. This is the layout change
-      // that stops the dock from covering the last two destinations.
-      const selectorPosition = new THREE.Vector3(isMobile ? 1.25 : 2.35, isMobile ? 2.5 : 2.35, isMobile ? 4.1 : 4.7);
-      const selectorLook = new THREE.Vector3(isMobile ? 0.25 : 1.2, isMobile ? 0.35 : 0.55, SELECTOR_Z - 0.8);
+      // The selection camera is a closer stage shot: the guide is large enough
+      // to read the face and fabric without losing the three destinations.
+      // Previous framing left the character at roughly 300px tall on a 900px
+      // viewport, which made even the 1K atlas look soft.
+      const selectorPosition = new THREE.Vector3(
+        isMobile ? 1.25 : 1.45,
+        isMobile ? 2.5 : 1.92,
+        isMobile ? 4.1 : 1.0,
+      );
+      const selectorLook = new THREE.Vector3(
+        isMobile ? 0.25 : 0.75,
+        isMobile ? 0.35 : 0.52,
+        isMobile ? SELECTOR_Z - 0.8 : SELECTOR_Z - 0.4,
+      );
       const faceCameraAngle = Math.atan2(selectorPosition.x, selectorPosition.z - SELECTOR_Z);
 
       const desiredPosition = widePosition.clone();
@@ -1060,6 +1073,11 @@ export default function CinematicIntro({ onComplete }: Props) {
 
         shadow.position.x = character.position.x;
         shadow.position.z = character.position.z;
+        faceFill.position.set(
+          character.position.x + 0.28,
+          character.position.y + 1.72,
+          character.position.z + 1.55,
+        );
 
         const pathProgress = character.position.z;
         markers.forEach((marker) => {

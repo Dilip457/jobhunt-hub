@@ -681,20 +681,23 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 | Source | `https://grab3d.com/models/characters/man/` |
 | Local files | `web/public/models/student/` |
 | Posters | `scene.webp` is the wide selector still used by the boot/static background; `portrait.webp` is a close-up reference render |
-| Mesh | 85,487 triangles; quantized; textures embedded as 1024px WebP |
+| Mesh | 85,487 triangles; quantized; embedded WebP textures: 2048px basecolour, 1024px normal and metallic-roughness |
 | Look | Bearded adult, flat warm-brown hair, flat navy bomber jacket, white knit top, jeans, sneakers; no runtime glasses |
-| Shading | One atlas `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.72`, no roughness/metallic maps, normal scale `0.6`, environment intensity `0.52`, dithering; jacket/sweater/hair/skin cannot be tuned separately without re-authoring the atlas |
+| Shading | One atlas `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.66`, no roughness/metallic maps, normal scale `0.72`, environment intensity `0.68`, dithering; jacket/sweater/hair/skin cannot be tuned separately without re-authoring the atlas |
 | Motion | Walk (1.0 s) + run clips; breathing idle averages four walk poses to remove the stride, then layers a 5.6 s chest/head cycle; 1.8 m stride-matched walk; 0.55 s turn before travel |
 | Rotation | `student-turntable` group inside the character root; pointer drag + auto-rotate only in `selecting`; turntable yaw is independent of skeleton animation and resets smoothly before walking |
-| Render | `compileAsync` before the reveal, DPR 1.75–2 on desktop and 1.35–1.8 on mobile, up to 16x anisotropic filtering, mipmapped linear filtering, ACES exposure `1.14` desktop / `1.08` mobile, soft `PCFSoftShadowMap` on desktop plus a contact-shadow fallback |
+| Framing | The selector camera is a close stage shot: the full guide is about 60% of a 900px viewport, with the head below the top bar and the shoes above the bottom dock; the face fill follows the character so the face stays readable after the walk |
+| Render | `compileAsync` before the reveal, DPR 1.75–2 on desktop and 1.35–1.8 on mobile, up to 16x anisotropic filtering, mipmapped linear filtering, ACES exposure `1.26` desktop / `1.12` mobile, soft `PCFSoftShadowMap` on desktop plus a contact-shadow fallback |
 | Not implemented | Facial blendshapes, eye rig, lip-sync, hair simulation, motion capture |
 
 The guide is deliberately a stylized prototype, not a finished character. The basecolour
 atlas was cleaned (flat navy fabric, flat brown hair, bright texture flecks suppressed) and
-the material was made uniformly matte to remove specular fireflies. The earlier runtime
-glasses were removed so the face reads cleanly. Attribution is documented in
-`ATTRIBUTION.txt` and linked from the dashboard credits. The model path must stay under
-`web/public/models/student/`.
+the material was made uniformly matte to remove specular fireflies. The basecolour is
+embedded at 2048px so the closer selector framing has enough facial and fabric detail; the
+supporting normal and metallic-roughness maps stay at 1024px to keep the GLB under 4 MB.
+The earlier runtime glasses were removed so the face reads cleanly. Attribution is
+documented in `ATTRIBUTION.txt` and linked from the dashboard credits. The model path must
+stay under `web/public/models/student/`.
 
 ### 6.8 Environment variables
 
@@ -979,7 +982,9 @@ blocked WebGL             → same static intro fallback; never HI. and cards to
 Alt+Shift+R on dashboard  → confirmation dialog; Escape closes; ignored in inputs
 ```
 
-Production verification (2026-10-21, `79e03f7`): 45/45 Playwright checks passed against the live Vercel deployment, including the cinematic intro, all three role dashboards, live API data, mobile 390×844, reduced motion, blocked WebGL, invalid-role redirect, skip intro, URL filters, browser back/forward, and no console/page errors. Greeting timing was re-checked at 1920×889 and 390×844: the boot renders no headline and no cards, `HI.` holds for at least four seconds with zero cards, and cards appear only in `phase-selecting`. The static reduced-motion fallback shows `HI.` with 0 cards, then 3 cards after 4 s. Live APIs returned GenAI **1,084**, Data Engineering **1,234** and UI/UX **1,280** (all `demo=false`); `/api/status` succeeded and an invalid role redirected to `/`. Production assets are present (`scene.webp` 87,822 B, `student.glb` 3,460,444 B, `portrait.webp` 39,640 B). The scheduled workflow run on 2026-10-21 (`06:15Z`) passed `prepare`, `scrape`, `warp` and `publish`.
+Production verification (2026-10-21, `79e03f7`): 45/45 Playwright checks passed against the live Vercel deployment, including the cinematic intro, all three role dashboards, live API data, mobile 390×844, reduced motion, blocked WebGL, invalid-role redirect, skip intro, URL filters, browser back/forward, and no console/page errors. Greeting timing was re-checked at 1920×889 and 390×844: the boot renders no headline and no cards, `HI.` holds for at least four seconds with zero cards, and cards appear only in `phase-selecting`. The static reduced-motion fallback shows `HI.` with 0 cards, then 3 cards after 4 s. Live APIs returned GenAI **1,084**, Data Engineering **1,234** and UI/UX **1,280** (all `demo=false`); `/api/status` succeeded and an invalid role redirected to `/`. At the time of that check, production assets were present (`scene.webp` 87,822 B, `student.glb` 3,460,444 B, `portrait.webp` 39,640 B). The scheduled workflow run on 2026-10-21 (`06:15Z`) passed `prepare`, `scrape`, `warp` and `publish`.
+
+Closer-framing and 2K verification (2026-10-22): `npm run build` passes. A local production build was checked at 1600×900 and 390×844: the selector reaches `phase-selecting` with three role cards, the auto-rotate toggle is present, the full guide is about 60% of the desktop viewport height, and the shoes stay above the bottom dock. The WebGL framebuffer was read back directly and contains the clean 3D scene at 2800×1575; no runtime page errors occurred apart from the existing favicon 404. The shipped `student.glb` is 3,922,652 B with a 2048px basecolour and 1024px normal/roughness maps.
 
 The refresh panel counts elapsed time from the current request rather than the previous run (`357b5ff`), and `/api/jobs` reads the `data` branch on every cache miss so a published scrape is not hidden by the origin cache (`5264079`).
 

@@ -2,6 +2,8 @@
 
 A public, daily-updated job portal for three role tracks — **GenAI**, **Data Engineering** and **UI/UX** — built from three existing Python scrapers.
 
+**Live:** <https://jobhunt-hub-web.vercel.app>
+
 - **UI:** Next.js on Vercel
 - **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired) + LinkedIn, plus optional keyless boards (no PC required)
 - **Data:** compact JSON on an orphan `data` branch
@@ -235,17 +237,21 @@ and filter parameters are preserved in the URL.
 ### The 3D guide is a prototype
 
 The guide is a **stylized, rigged CC0 “Casual Man” base by Grab3D**, optimized for the
-web. It was simplified from 244,257 to 85,487 triangles and its textures were reduced to
-1024px WebP. The basecolour was cleaned to remove bright texture flecks: the jacket and
-jeans use a flat navy fabric treatment, the hair uses a flat warm brown, and the material
-is uniformly matte (`metalness: 0`, high roughness, no roughness/metalness maps). The
-exported mesh uses a single 1024px texture atlas, so jacket, sweater, hair and skin share
-one material and cannot be tuned independently without re-authoring the asset. Runtime
-quality comes from 16x anisotropic filtering, mipmapped linear filtering, ACES tone
-mapping, a soft front fill and a desktop cast shadow. The character has **no facial
-blendshapes, eye rig or lip-sync**; the breathing idle averages four walk poses to remove
-the stride, then adds a 5.6-second chest/head cycle. This is a prototype, not a finished
-character. The dashboard credits the asset, and the full modification record ships at
+web. It was simplified from 244,257 to 85,487 triangles. The basecolour atlas is 2048px
+and the normal and metallic-roughness maps are 1024px, all WebP. The basecolour was
+cleaned to remove bright texture flecks: the jacket and jeans use a flat navy fabric
+treatment, the hair uses a flat warm brown, and the material is uniformly matte
+(`metalness: 0`, roughness `0.66`, no roughness/metalness maps). The exported mesh uses a
+single texture atlas, so jacket, sweater, hair and skin share one material and cannot be
+tuned independently without re-authoring the asset.
+
+Runtime quality comes from the closer selector framing (the guide fills roughly 60% of a
+900px viewport instead of about 300px), 16x anisotropic filtering, mipmapped linear
+filtering, ACES tone mapping, a character-following face fill and a desktop cast shadow.
+The character has **no facial blendshapes, eye rig or lip-sync**; the breathing idle
+averages four walk poses to remove the stride, then adds a 5.6-second chest/head cycle.
+This is a prototype, not a finished character. The dashboard credits the asset, and the
+full modification record ships at
 [`web/public/models/student/ATTRIBUTION.txt`](web/public/models/student/ATTRIBUTION.txt).
 
 ---

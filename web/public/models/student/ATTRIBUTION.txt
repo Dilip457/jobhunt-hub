@@ -10,15 +10,17 @@ Downloaded: 2026-10-21
 
 Modifications made for JobHunt India:
 - Mesh simplified from 244,257 to 85,487 triangles with glTF Transform for web delivery.
-- Textures resized to 1024px, encoded as WebP and embedded in the GLB. `scene.webp` is a
-  wide render of the modified asset used by the loading/static background; `portrait.webp`
-  is a close-up reference render. Neither is a raw source-photo crop.
+- Basecolour atlas embedded at 2048px; normal and metallic-roughness maps at 1024px, all
+  encoded as WebP. `scene.webp` is a wide render of the modified asset used by the
+  loading/static background; `portrait.webp` is a close-up reference render. Neither is a
+  raw source-photo crop.
 - Basecolour atlas cleaned for the cinematic: the jacket/denim were recoloured to a flat
   navy fabric, the hair to a flat warm brown, and small bright/orange texture flecks were
   suppressed. The white knit top, skin, beard and shoe details are retained. The loading
   screen is a brand/loader boot; role cards are not shown while the greeting is visible.
-- Material switched to a uniform matte finish (metalness 0, roughness 0.84, no
-  roughness/metallic maps, reduced normal strength) to remove specular fireflies.
+- Material switched to a uniform matte finish (metalness 0, roughness 0.66 at runtime, no
+  roughness/metallic maps, reduced normal strength) to remove specular fireflies while
+  keeping fabric and skin form under the key light.
 - Non-essential runtime geometry (the earlier 3D glasses) removed so the face reads cleanly.
 - A breathing idle clip generated from a neutral walk pose at runtime.
 - The walk clip is speed-matched to the 1.8 m travel cycle so the feet do not slide.

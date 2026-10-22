@@ -224,7 +224,7 @@ jobhunt-hub/
 
 | Asset | Path | Used by |
 |---|---|---|
-| 3D character | `web/public/models/student/student.glb` | `CinematicIntro.tsx` `MODEL_URL`; preloaded in `layout.tsx` |
+| 3D character | `web/public/models/student/student.glb` (2048px basecolour, 1024px supporting maps) | `CinematicIntro.tsx` `MODEL_URL`; preloaded in `layout.tsx` |
 | Wide scene poster | `web/public/models/student/scene.webp` | `.intro-poster` and `.static-intro-scene` in `globals.css` |
 | Portrait reference | `web/public/models/student/portrait.webp` | Reference render only; not used as the loading background |
 | Attribution | `web/public/models/student/ATTRIBUTION.txt` | Asset license, modifications and prototype limitations |
