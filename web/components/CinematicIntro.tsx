@@ -8,7 +8,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { getRole } from "@/lib/roles";
 import type { RoleSlug } from "@/lib/types";
 import { prefetchRole } from "@/lib/prefetch";
-import { ArrowRightIcon, PlayIcon, SparkIcon } from "./Icons";
+import { ArrowRightIcon, PlayIcon, RefreshIcon, SparkIcon } from "./Icons";
 import RoleDestinations from "./RoleDestinations";
 import StaticIntro from "./StaticIntro";
 
@@ -27,6 +27,10 @@ const TRAVEL_RAMP = 0.45;
 const TURN_DELAY = 0.55;
 const GREETING_MS = 4000;
 const REVEAL_SECONDS = 2.8;
+const AUTO_ROTATE_SPEED = 0.18;
+const AUTO_ROTATE_DELAY = 2.8;
+const DRAG_SENSITIVITY = 0.0065;
+const MAX_TURN_VELOCITY = 2.4;
 // The runway is a real surface. The character stands on top of it rather
 // than intersecting the markers.
 const GROUND_Y = 0.014;
@@ -52,8 +56,8 @@ function renderPixelRatio(): number {
   const dpr = window.devicePixelRatio || 1;
   // Supersample 1x displays instead of accepting a soft canvas. Cap mobile
   // separately so high-density phones do not render a 4K frame buffer.
-  if (window.innerWidth < 760) return Math.min(1.75, Math.max(1.25, dpr));
-  return Math.min(2, Math.max(1.5, dpr));
+  if (window.innerWidth < 760) return Math.min(1.8, Math.max(1.35, dpr));
+  return Math.min(2, Math.max(1.75, dpr));
 }
 
 function smoothstep(value: number): number {
@@ -113,53 +117,119 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
   const sampleMixer = new THREE.AnimationMixer(root);
   const sampleAction = sampleMixer.clipAction(walkClip);
   sampleAction.play();
-  sampleMixer.setTime(0);
 
-  const frames = [
-    { time: 0, breath: 0, sway: 0 },
-    { time: 1.6, breath: 1, sway: 1 },
-    { time: 3.2, breath: 0, sway: 0 },
-  ];
+  // Average four evenly spaced walk poses to cancel the stride and arm swing.
+  // Sampling a single walk frame left the character frozen mid-step whenever
+  // the idle action took over.
+  const bones: THREE.Bone[] = [];
+  root.traverse((object) => {
+    const bone = object as THREE.Bone;
+    if (bone.isBone) bones.push(bone);
+  });
+  const sampleTimes = [0, 0.25, 0.5, 0.75].map((progress) => progress * walkClip.duration);
+  const baseQuaternions = new Map<string, THREE.Quaternion>();
+  const basePositions = new Map<string, THREE.Vector3>();
+  const sampleQuat = new THREE.Quaternion();
+  sampleTimes.forEach((sampleTime) => {
+    sampleMixer.setTime(sampleTime);
+    bones.forEach((bone) => {
+      const accumulated = baseQuaternions.get(bone.name);
+      if (!accumulated) {
+        baseQuaternions.set(bone.name, bone.quaternion.clone());
+      } else {
+        if (accumulated.dot(bone.quaternion) < 0) {
+          sampleQuat.set(
+            -bone.quaternion.x,
+            -bone.quaternion.y,
+            -bone.quaternion.z,
+            -bone.quaternion.w,
+          );
+        } else {
+          sampleQuat.copy(bone.quaternion);
+        }
+        accumulated.set(
+          accumulated.x + sampleQuat.x,
+          accumulated.y + sampleQuat.y,
+          accumulated.z + sampleQuat.z,
+          accumulated.w + sampleQuat.w,
+        );
+      }
+
+      const position = basePositions.get(bone.name);
+      if (!position) {
+        basePositions.set(bone.name, bone.position.clone());
+      } else {
+        position.add(bone.position);
+      }
+    });
+  });
+  baseQuaternions.forEach((quaternion) => quaternion.normalize());
+  basePositions.forEach((position) => position.multiplyScalar(1 / sampleTimes.length));
+
+  // A five-beat breathing cycle reads more naturally than the old three-frame
+  // clip. The first and last frames are identical so the loop has no seam.
+  const duration = 5.6;
+  const frames = [0, 1.4, 2.8, 4.2, duration];
   const tracks: THREE.KeyframeTrack[] = [];
   const breathAxis = new THREE.Euler();
   const breathQuat = new THREE.Quaternion();
 
-  root.traverse((object) => {
-    const bone = object as THREE.Bone;
-    if (!bone.isBone) return;
-    const base = bone.quaternion.clone();
+  function breathAt(time: number) {
+    const phase = (time / duration) * Math.PI * 2;
+    return {
+      breath: 0.5 - 0.5 * Math.cos(phase),
+      sway: Math.sin(phase),
+    };
+  }
+
+  bones.forEach((bone) => {
+    const base = baseQuaternions.get(bone.name);
+    if (!base) return;
     const values: number[] = [];
-    for (const frame of frames) {
+    for (const time of frames) {
+      const { breath, sway } = breathAt(time);
       const q = base.clone();
-      if (bone.name === "Spine01" || bone.name === "Spine02" || bone.name === "Spine") {
-        breathAxis.set(frame.breath * 0.012, frame.sway * 0.003, 0);
+      if (bone.name === "Spine") {
+        breathAxis.set(breath * 0.01, 0, sway * 0.004);
         breathQuat.setFromEuler(breathAxis);
         q.multiply(breathQuat);
-      } else if (bone.name === "neck" || bone.name === "Head") {
-        breathAxis.set(frame.sway * 0.004, frame.sway * 0.012, 0);
+      } else if (bone.name === "Spine01") {
+        breathAxis.set(breath * 0.014, 0, sway * 0.003);
+        breathQuat.setFromEuler(breathAxis);
+        q.multiply(breathQuat);
+      } else if (bone.name === "Spine02") {
+        breathAxis.set(breath * 0.016, 0, sway * 0.002);
+        breathQuat.setFromEuler(breathAxis);
+        q.multiply(breathQuat);
+      } else if (bone.name === "neck") {
+        breathAxis.set(-breath * 0.004, sway * 0.006, 0);
+        breathQuat.setFromEuler(breathAxis);
+        q.multiply(breathQuat);
+      } else if (bone.name === "Head") {
+        breathAxis.set(-breath * 0.003, sway * 0.009, 0);
         breathQuat.setFromEuler(breathAxis);
         q.multiply(breathQuat);
       }
       values.push(q.x, q.y, q.z, q.w);
     }
-    tracks.push(new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, [0, 1.6, 3.2], values));
+    tracks.push(
+      new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, frames, values),
+    );
   });
 
   const hips = root.getObjectByName("Hips");
   if (hips) {
-    const base = hips.position.clone();
-    tracks.push(
-      new THREE.VectorKeyframeTrack(
-        "Hips.position",
-        [0, 1.6, 3.2],
-        [base.x, base.y, base.z, base.x, base.y + 0.002, base.z, base.x, base.y, base.z],
-      ),
-    );
+    const base = basePositions.get(hips.name) ?? hips.position.clone();
+    const values = frames.flatMap((time) => {
+      const { breath, sway } = breathAt(time);
+      return [base.x + sway * 0.0012, base.y + breath * 0.003, base.z];
+    });
+    tracks.push(new THREE.VectorKeyframeTrack("Hips.position", frames, values));
   }
 
   sampleAction.stop();
   sampleMixer.uncacheRoot(root);
-  return new THREE.AnimationClip("student-idle", 3.2, tracks);
+  return new THREE.AnimationClip("student-idle", duration, tracks);
 }
 
 interface SceneController {
@@ -201,6 +271,12 @@ export default function CinematicIntro({ onComplete }: Props) {
   const [selected, setSelected] = useState<RoleSlug | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(true);
+  const autoRotateRef = useRef(true);
+
+  useEffect(() => {
+    autoRotateRef.current = autoRotate;
+  }, [autoRotate]);
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -323,6 +399,10 @@ export default function CinematicIntro({ onComplete }: Props) {
     async function init() {
       const canvas = canvasRef.current;
       if (!canvas) return;
+      const canvasEl = canvas;
+
+      const isMobile = window.innerWidth < 760;
+      THREE.ColorManagement.enabled = true;
 
       try {
         renderer = new THREE.WebGLRenderer({
@@ -338,12 +418,15 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       if (disposed) return;
 
-      const isMobile = window.innerWidth < 760;
       renderer.setPixelRatio(renderPixelRatio());
       renderer.setSize(window.innerWidth, window.innerHeight, false);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.02;
+      renderer.toneMappingExposure = isMobile ? 1.08 : 1.14;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
+      // Desktop gets a soft cast shadow. Mobile keeps the cheaper painted
+      // contact shadow so high-DPI phones do not pay for a second scene pass.
+      renderer.shadowMap.enabled = !isMobile;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x05060a);
@@ -356,7 +439,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         const room = new RoomEnvironment();
         envTarget = pmrem.fromScene(room, 0.04);
         scene.environment = envTarget.texture;
-        scene.environmentIntensity = isMobile ? 0.22 : 0.3;
+        scene.environmentIntensity = isMobile ? 0.26 : 0.36;
         room.dispose?.();
         pmrem.dispose();
         pmrem = null;
@@ -364,16 +447,34 @@ export default function CinematicIntro({ onComplete }: Props) {
         // Environment reflections are a nice-to-have.
       }
 
-      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, 0.5));
+      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, isMobile ? 0.54 : 0.62));
       // Neutral key + soft fill keep the skin clean. The red/blue accents are
       // now behind the character as rim lights instead of tinting the face.
-      const key = new THREE.DirectionalLight(0xfff2e8, 1.8);
+      const key = new THREE.DirectionalLight(0xfff2e8, 2.05);
       key.position.set(-2.5, 4.5, 4.5);
+      if (!isMobile) {
+        key.castShadow = true;
+        key.shadow.mapSize.set(2048, 2048);
+        key.shadow.camera.left = -12;
+        key.shadow.camera.right = 12;
+        key.shadow.camera.top = 12;
+        key.shadow.camera.bottom = -4;
+        key.shadow.camera.near = 0.5;
+        key.shadow.camera.far = 26;
+        key.shadow.bias = -0.0004;
+        key.shadow.normalBias = 0.02;
+        key.shadow.radius = 4;
+        key.shadow.camera.updateProjectionMatrix();
+      }
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x6f9bff, 0.9);
+      scene.add(key.target);
+      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.38 : 0.52);
+      frontFill.position.set(0, 2.1, 5.2);
+      scene.add(frontFill);
+      const rim = new THREE.DirectionalLight(0x6f9bff, 0.85);
       rim.position.set(2.2, 3.2, -3.8);
       scene.add(rim);
-      const fill = new THREE.DirectionalLight(0xffe4d8, 0.62);
+      const fill = new THREE.DirectionalLight(0xffe4d8, 0.7);
       fill.position.set(2.2, 2.4, 3.8);
       scene.add(fill);
       const redLight = new THREE.PointLight(0xff304f, 7, 8, 2);
@@ -382,7 +483,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       const blueLight = new THREE.PointLight(0x287bff, 7, 8, 2);
       blueLight.position.set(3.2, 1.5, -1.8);
       scene.add(blueLight);
-      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 1.0 : 1.25, 3.2, 2);
+      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 1.1 : 1.38, 3.2, 2);
       faceFill.position.set(0.25, 1.86, 1.2);
       scene.add(faceFill);
 
@@ -390,10 +491,11 @@ export default function CinematicIntro({ onComplete }: Props) {
         color: 0x04050a,
         roughness: 0.78,
         metalness: 0.12,
-        envMapIntensity: 0.3,
+        envMapIntensity: 0.36,
       });
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMaterial);
       floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = !isMobile;
       scene.add(floor);
 
       const grid = new THREE.GridHelper(90, 90, 0x1b2a45, 0x0c111c);
@@ -415,6 +517,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       // shoe soles and the emissive markers.
       const runway = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.012, 20), pathMaterial);
       runway.position.set(0, 0, -8.2);
+      runway.receiveShadow = !isMobile;
       path.add(runway);
 
       const curbMaterial = new THREE.MeshStandardMaterial({
@@ -641,12 +744,12 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       const shadowTexture = makeShadowTexture();
       const shadow = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.7, 1.7),
+        new THREE.PlaneGeometry(1.78, 1.78),
         new THREE.MeshBasicMaterial({
           map: shadowTexture,
           transparent: true,
           depthWrite: false,
-          opacity: 0.8,
+          opacity: isMobile ? 0.72 : 0.48,
         }),
       );
       shadow.rotation.x = -Math.PI / 2;
@@ -668,35 +771,58 @@ export default function CinematicIntro({ onComplete }: Props) {
         if (!disposed) setFailed(true);
         return;
       }
-      const anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
       model.traverse((object) => {
         const mesh = object as THREE.Mesh;
         if (!mesh.isMesh) return;
         mesh.frustumCulled = false;
+        mesh.castShadow = !isMobile;
+        mesh.receiveShadow = !isMobile;
         const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         materials.forEach((material) => {
           if (!material) return;
           const standard = material as THREE.MeshStandardMaterial;
           // The source roughness/metalness map contains tiny high-gloss
           // patches that aliased into white “paint flecks” on the hair and
-          // jacket. A uniform matte surface removes them and suits the
-          // stylised look; the colour texture keeps all of the detail.
-          standard.envMapIntensity = 0.32;
+          // jacket. Keep the uniform matte surface, but lift it slightly so
+          // fabric, hair and skin keep their form under the key light.
+          standard.envMapIntensity = 0.52;
           standard.metalness = 0;
           standard.metalnessMap = null;
-          standard.roughness = 0.84;
+          standard.roughness = 0.72;
           standard.roughnessMap = null;
-          if (standard.normalMap) standard.normalScale.set(0.5, 0.5);
-          [standard.map, standard.normalMap].forEach((texture) => {
-            if (texture) texture.anisotropy = anisotropy;
+          standard.dithering = true;
+          if (standard.normalMap) standard.normalScale.set(0.6, 0.6);
+          Object.entries(standard).forEach(([key, value]) => {
+            if (!(value instanceof THREE.Texture)) return;
+            value.anisotropy = anisotropy;
+            value.minFilter = THREE.LinearMipmapLinearFilter;
+            value.magFilter = THREE.LinearFilter;
+            value.generateMipmaps = true;
+            value.colorSpace =
+              key === "map" || key === "emissiveMap"
+                ? THREE.SRGBColorSpace
+                : THREE.NoColorSpace;
+            value.needsUpdate = true;
           });
           standard.needsUpdate = true;
         });
       });
 
+      // Centre the model on its own feet before adding the turntable. Animation
+      // still targets the skeleton; this root transform only affects framing.
+      const bounds = new THREE.Box3().setFromObject(model);
+      const centre = bounds.getCenter(new THREE.Vector3());
+      model.position.x -= centre.x;
+      model.position.z -= centre.z;
+      model.position.y -= bounds.min.y;
+
+      const turntable = new THREE.Group();
+      turntable.name = "student-turntable";
+      turntable.add(model);
       const character = new THREE.Group();
       character.position.y = GROUND_Y;
-      character.add(model);
+      character.add(turntable);
       scene.add(character);
 
       const walkClip =
@@ -741,6 +867,88 @@ export default function CinematicIntro({ onComplete }: Props) {
       const tempVector = new THREE.Vector3();
       const tempLook = new THREE.Vector3();
 
+      let turntableYaw = 0;
+      let turntableVelocity = 0;
+      let dragging = false;
+      let activePointerId: number | null = null;
+      let lastPointerX = 0;
+      let lastPointerTime = 0;
+      let lastInteractionTime = performance.now() / 1000;
+
+      function stopDragging() {
+        if (activePointerId !== null && canvasEl.hasPointerCapture(activePointerId)) {
+          canvasEl.releasePointerCapture(activePointerId);
+        }
+        activePointerId = null;
+        dragging = false;
+        canvasEl.classList.remove("is-dragging");
+      }
+
+      function onPointerDown(event: PointerEvent) {
+        if (state.phase !== "selecting") return;
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        if (dragging) return;
+
+        dragging = true;
+        activePointerId = event.pointerId;
+        lastPointerX = event.clientX;
+        lastPointerTime = performance.now() / 1000;
+        lastInteractionTime = lastPointerTime;
+        turntableVelocity = 0;
+        canvasEl.setPointerCapture(event.pointerId);
+        canvasEl.classList.add("is-dragging");
+        event.preventDefault();
+      }
+
+      function onPointerMove(event: PointerEvent) {
+        if (!dragging || event.pointerId !== activePointerId) return;
+        if (state.phase !== "selecting") {
+          stopDragging();
+          return;
+        }
+
+        const now = performance.now() / 1000;
+        const elapsed = Math.max(0.008, now - lastPointerTime);
+        const deltaX = event.clientX - lastPointerX;
+        turntableYaw += deltaX * DRAG_SENSITIVITY;
+        turntableVelocity = clamp(
+          (deltaX * DRAG_SENSITIVITY) / elapsed,
+          -MAX_TURN_VELOCITY,
+          MAX_TURN_VELOCITY,
+        );
+        lastPointerX = event.clientX;
+        lastPointerTime = now;
+        lastInteractionTime = now;
+        event.preventDefault();
+      }
+
+      function onPointerUp(event: PointerEvent) {
+        if (event.pointerId !== activePointerId) return;
+        lastInteractionTime = performance.now() / 1000;
+        stopDragging();
+        event.preventDefault();
+      }
+
+      function updateTurntable(dt: number, time: number) {
+        if (state.phase !== "selecting") {
+          if (dragging || activePointerId !== null) stopDragging();
+          turntableVelocity = 0;
+          turntableYaw = dampAngle(turntableYaw, 0, dt, 8);
+        } else {
+          if (!dragging) {
+            turntableYaw += turntableVelocity * dt;
+            turntableVelocity *= Math.exp(-dt * 5.5);
+            if (Math.abs(turntableVelocity) < 0.01) turntableVelocity = 0;
+            if (autoRotateRef.current && time - lastInteractionTime > AUTO_ROTATE_DELAY) {
+              turntableYaw += AUTO_ROTATE_SPEED * dt;
+            }
+          }
+          turntableYaw =
+            THREE.MathUtils.euclideanModulo(turntableYaw + Math.PI, Math.PI * 2) - Math.PI;
+        }
+        turntable.rotation.y = turntableYaw;
+      }
+
       function applyPhase(next: Phase, jump = false) {
         // React and the scene controller can both report the same transition.
         // Do not restart the phase clock on the duplicate call.
@@ -766,7 +974,10 @@ export default function CinematicIntro({ onComplete }: Props) {
           character.position.set(0, GROUND_Y, SELECTOR_Z);
           character.rotation.y = faceCameraAngle;
           state.walkBlend = 0;
+          lastInteractionTime = performance.now() / 1000;
           if (jump) {
+            turntableYaw = 0;
+            turntableVelocity = 0;
             camera.position.copy(selectorPosition);
             currentLook.copy(selectorLook);
             camera.lookAt(currentLook);
@@ -778,6 +989,10 @@ export default function CinematicIntro({ onComplete }: Props) {
           const destination = state.selected ? GATE_POSITIONS[state.selected] : GATE_POSITIONS.data;
           character.position.set(destination.x, DAIS_TOP, destination.z);
           state.walkBlend = 0;
+        }
+        if (next !== "selecting") {
+          stopDragging();
+          turntableVelocity = 0;
         }
         if (jump && next === "selecting") {
           desiredPosition.copy(selectorPosition);
@@ -945,6 +1160,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         const dt = Math.min(0.05, time - lastTime);
         lastTime = time;
         updateCharacter(dt);
+        updateTurntable(dt, time);
         updateCamera(dt, time);
         renderer?.render(scene as THREE.Scene, camera);
       }
@@ -967,12 +1183,23 @@ export default function CinematicIntro({ onComplete }: Props) {
       }
 
       window.addEventListener("resize", onResize);
+      window.addEventListener("blur", stopDragging);
       document.addEventListener("visibilitychange", onVisibility);
-      canvas.addEventListener("webglcontextlost", onContextLost);
+      canvasEl.addEventListener("webglcontextlost", onContextLost);
+      canvasEl.addEventListener("pointerdown", onPointerDown);
+      canvasEl.addEventListener("pointermove", onPointerMove);
+      canvasEl.addEventListener("pointerup", onPointerUp);
+      canvasEl.addEventListener("pointercancel", onPointerUp);
       cleanupListeners = () => {
+        stopDragging();
         window.removeEventListener("resize", onResize);
+        window.removeEventListener("blur", stopDragging);
         document.removeEventListener("visibilitychange", onVisibility);
-        canvas.removeEventListener("webglcontextlost", onContextLost);
+        canvasEl.removeEventListener("webglcontextlost", onContextLost);
+        canvasEl.removeEventListener("pointerdown", onPointerDown);
+        canvasEl.removeEventListener("pointermove", onPointerMove);
+        canvasEl.removeEventListener("pointerup", onPointerUp);
+        canvasEl.removeEventListener("pointercancel", onPointerUp);
       };
 
       controllerRef.current = {
@@ -1035,7 +1262,11 @@ export default function CinematicIntro({ onComplete }: Props) {
   return (
     <main className={`cinematic-intro phase-${phase}`}>
       <div className="intro-poster" aria-hidden />
-      <canvas ref={canvasRef} className={`intro-canvas ${ready ? "is-ready" : ""}`} aria-hidden />
+      <canvas
+        ref={canvasRef}
+        className={`intro-canvas ${ready ? "is-ready" : ""} ${phase === "selecting" ? "is-interactive" : ""}`}
+        aria-hidden
+      />
 
       <div className="intro-vignette" aria-hidden />
       <div className="intro-ambient intro-ambient-red" aria-hidden />
@@ -1103,11 +1334,21 @@ export default function CinematicIntro({ onComplete }: Props) {
             <p className="intro-kicker">WHERE DO WE GO?</p>
             <h2 id="cinematic-role-title">Choose your target role.</h2>
             <p className="intro-roles-sub">I&apos;ll take you there.</p>
+            <button
+              type="button"
+              className="intro-rotate-toggle"
+              aria-pressed={autoRotate}
+              aria-label="Toggle automatic character rotation"
+              onClick={() => setAutoRotate((current) => !current)}
+            >
+              <RefreshIcon width={12} height={12} />
+              {autoRotate ? "Auto-rotate on" : "Auto-rotate off"}
+            </button>
           </div>
           <RoleDestinations onSelect={handleSelect} selected={selected} />
           <p className="intro-footnote">
             <span className="status-dot" />
-            Real listings only · No mock jobs · Updated daily
+            Drag the guide to rotate · Real listings only · Updated daily
           </p>
         </section>
       ) : null}

@@ -211,6 +211,18 @@ button:disabled {
   opacity: 1;
 }
 
+/* The turntable only accepts pointer input after the character has reached
+   the selection stage, so it cannot interfere with the greeting or walk. */
+.intro-canvas.is-interactive {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.intro-canvas.is-interactive.is-dragging {
+  cursor: grabbing;
+}
+
 .intro-poster {
   position: fixed;
   inset: 0;
@@ -597,6 +609,44 @@ button:disabled {
 .intro-roles-cinematic .intro-roles-sub {
   margin-top: var(--space-1);
   font-size: var(--text-small);
+}
+
+.intro-rotate-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.intro-rotate-toggle svg {
+  flex: 0 0 auto;
+}
+
+.intro-rotate-toggle:hover,
+.intro-rotate-toggle[aria-pressed="true"] {
+  color: var(--white);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.intro-rotate-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .intro-roles-cinematic .destination-grid {

@@ -195,7 +195,7 @@ jobhunt-hub/
 |---|---|---|---|
 | Dynamic intro loader | `web/components/IntroPage.tsx` | `CinematicIntro` dynamic import, `IntroBoot` loading | Keeps the first paint free of HI and role cards |
 | Boot screen | `web/components/IntroBoot.tsx` | `IntroBoot` | Brand, loader, no headline, no role cards |
-| Cinematic scene | `web/components/CinematicIntro.tsx` | `CinematicIntro`, `Phase`, `SceneController`, `createIdleClip`, `travelProfile`, `travelDuration`, `applyPhase`, `updateCharacter`, `updateCamera` | Greeting, pullback, path, turn, walk, gates, selection, departure |
+| Cinematic scene | `web/components/CinematicIntro.tsx` | `CinematicIntro`, `Phase`, `SceneController`, `createIdleClip`, `travelProfile`, `travelDuration`, `applyPhase`, `updateCharacter`, `updateTurntable`, `updateCamera`, `onPointerDown`, `onPointerMove` | Greeting, pullback, path, turn, walk, gates, selection, turntable drag/auto-rotate, departure |
 | Static fallback | `web/components/StaticIntro.tsx` | `StaticIntro`, `STATIC_GREETING_MS` | `HI.` for 4 s, then the three destinations; no canvas |
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
@@ -241,7 +241,7 @@ All timing and phase logic is in `web/components/CinematicIntro.tsx`.
 | `greeting` | `HI.` close-up | `GREETING_MS = 4000` | `handleSceneReady()` → `setPhase("greeting")`; timer from `phase` |
 | `reveal` | Camera pullback; gates fade in; tagline | `REVEAL_SECONDS = 2.8` | `updateCamera()` `reveal` branch; gate visibility |
 | `approach` | Guide turns and walks to selector | `travelDuration(abs(SELECTOR_Z)) + 0.95` | `travelProfile()`, `updateCharacter()` |
-| `selecting` | Three role cards, gates lit | Stays until selection or skip | `RoleDestinations` rendered only in this phase |
+| `selecting` | Three role cards, gates lit; drag-to-rotate / auto-rotate toggle | Stays until selection or skip | `RoleDestinations`; `updateTurntable()`, `.intro-rotate-toggle` |
 | `departing` | Selected gate, walk toward it, “Destination locked” | `travelDuration(distance) + 0.24` | `handleSelect()` → `walkTo()` |
 | `transition` | Arrival sweep; prefetched jobs | Completes `850 ms` after departure | `complete()` → `prefetchRole()` + `router.push()` |
 
@@ -685,11 +685,12 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 |---|---|---|
 | Intro greeting length | `web/components/CinematicIntro.tsx` (`GREETING_MS`) | static fallback `STATIC_GREETING_MS` |
 | Pullback / walk timing | `CinematicIntro.tsx` (`REVEAL_SECONDS`, `WALK_SPEED`, `TURN_DELAY`, `SELECTOR_Z`) | `travelDuration()`, `travelProfile()` |
+| Character rotation | `CinematicIntro.tsx` (`AUTO_ROTATE_SPEED`, `AUTO_ROTATE_DELAY`, `DRAG_SENSITIVITY`, `updateTurntable()`) | `.intro-canvas.is-interactive`, `.intro-rotate-toggle`, `onPointer*` handlers |
 | Role card content | `web/lib/roles.ts` | `RoleDestinations.tsx`, dashboard labels |
-| Intro copy / phase UI | `CinematicIntro.tsx` render block | `web/app/globals.css` |
+| Intro copy / phase UI | `CinematicIntro.tsx` render block | `web/app/globals.css` (`.intro-canvas`, `.intro-rotate-toggle`) |
 | Boot screen | `web/components/IntroBoot.tsx` | `.intro-boot*` styles |
 | Static / reduced-motion fallback | `web/components/StaticIntro.tsx` | `.static-*` styles |
-| 3D model | `web/public/models/student/student.glb` | `MODEL_URL`, `layout.tsx` preload, `ATTRIBUTION.txt` |
+| 3D model | `web/public/models/student/student.glb` | `MODEL_URL`, turntable setup, `layout.tsx` preload, `ATTRIBUTION.txt` |
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |

@@ -661,6 +661,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 - The first paint before the cinematic bundle is a clean `IntroBoot` (brand, loader, no headline and no role cards). The boot is also used while the GLB is loading, so a slow connection cannot turn the greeting into a selector.
 - Every full page load runs the greeting sequence. Returning visitors use **Skip intro** to jump straight to role selection; there is no localStorage shortcut that bypasses the greeting.
 - Desktop uses a shallow bottom role dock that keeps the character, path and all three gates visible. Phones use a bottom sheet with explicit card rows.
+- In `selecting`, pointer drag on the canvas rotates a dedicated model turntable around the GLB’s vertical axis. `Auto-rotate` is on by default and toggled from the dock; a drag pauses it for 2.8 seconds. The camera, floor and lights do not move, and rotation is outside `AnimationMixer`, so walk/run animation is unaffected.
 - `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`: the same wide scene poster, a four-second `HI.` beat first, then the identical destinations. It never shows the greeting and role cards together.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
 - Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
@@ -682,9 +683,10 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 | Posters | `scene.webp` is the wide selector still used by the boot/static background; `portrait.webp` is a close-up reference render |
 | Mesh | 85,487 triangles; quantized; textures embedded as 1024px WebP |
 | Look | Bearded adult, flat warm-brown hair, flat navy bomber jacket, white knit top, jeans, sneakers; no runtime glasses |
-| Shading | Uniform matte `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.84`, no roughness/metallic maps, normal scale `0.5`, low environment intensity |
-| Motion | Walk (1.0 s) + run clips; breathing idle generated from walk at t=0; 1.8 m stride-matched walk; 0.55 s turn before travel |
-| Render | `compileAsync` before the reveal, DPR 1.5–2 on desktop and 1.25–1.75 on mobile, maximum texture anisotropy |
+| Shading | One atlas `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.72`, no roughness/metallic maps, normal scale `0.6`, environment intensity `0.52`, dithering; jacket/sweater/hair/skin cannot be tuned separately without re-authoring the atlas |
+| Motion | Walk (1.0 s) + run clips; breathing idle averages four walk poses to remove the stride, then layers a 5.6 s chest/head cycle; 1.8 m stride-matched walk; 0.55 s turn before travel |
+| Rotation | `student-turntable` group inside the character root; pointer drag + auto-rotate only in `selecting`; turntable yaw is independent of skeleton animation and resets smoothly before walking |
+| Render | `compileAsync` before the reveal, DPR 1.75–2 on desktop and 1.35–1.8 on mobile, up to 16x anisotropic filtering, mipmapped linear filtering, ACES exposure `1.14` desktop / `1.08` mobile, soft `PCFSoftShadowMap` on desktop plus a contact-shadow fallback |
 | Not implemented | Facial blendshapes, eye rig, lip-sync, hair simulation, motion capture |
 
 The guide is deliberately a stylized prototype, not a finished character. The basecolour

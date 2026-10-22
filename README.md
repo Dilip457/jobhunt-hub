@@ -218,7 +218,8 @@ catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `
 2. A four-second close-up of the guide says **“HI.”** against red/blue rim light. Role cards are still hidden.
 3. The camera pulls back to reveal an illuminated path and three gates.
 4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering and UI/UX (a bottom sheet on phones).
-5. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
+5. In role selection, drag the guide left or right to inspect the front, side and back. **Auto-rotate** is on by default and can be toggled off in the dock.
+6. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 
 The dashboard is one click away in every degraded mode:
 
@@ -238,8 +239,12 @@ web. It was simplified from 244,257 to 85,487 triangles and its textures were re
 1024px WebP. The basecolour was cleaned to remove bright texture flecks: the jacket and
 jeans use a flat navy fabric treatment, the hair uses a flat warm brown, and the material
 is uniformly matte (`metalness: 0`, high roughness, no roughness/metalness maps). The
-character has **no facial blendshapes, eye rig or lip-sync**; a short breathing idle is
-generated from the walk clip’s neutral frame. This is a prototype, not a finished
+exported mesh uses a single 1024px texture atlas, so jacket, sweater, hair and skin share
+one material and cannot be tuned independently without re-authoring the asset. Runtime
+quality comes from 16x anisotropic filtering, mipmapped linear filtering, ACES tone
+mapping, a soft front fill and a desktop cast shadow. The character has **no facial
+blendshapes, eye rig or lip-sync**; the breathing idle averages four walk poses to remove
+the stride, then adds a 5.6-second chest/head cycle. This is a prototype, not a finished
 character. The dashboard credits the asset, and the full modification record ships at
 [`web/public/models/student/ATTRIBUTION.txt`](web/public/models/student/ATTRIBUTION.txt).
 
