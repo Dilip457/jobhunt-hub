@@ -240,10 +240,11 @@ The guide is a **stylized, rigged CC0 “Casual Man” base by Grab3D**, optimiz
 web. It was simplified from 244,257 to 85,487 triangles. The basecolour atlas is 2048px
 and the normal and metallic-roughness maps are 1024px, all WebP. The source atlas has
 scrambled garment UV islands, so the runtime splits the body geometry into clean material
-groups: a flat navy bomber, darker navy trousers and a clean mock-neck underlayer. Head,
-hair, beard, hands and white sneakers keep the original textured material. A narrow navy
-collar band covers the low-poly neckline seam, and the textured material uses a matte
-finish (`metalness: 0`, roughness `0.86`, normal scale `0.38`, environment intensity
+groups: a blue bomber, blue jeans, a white V-neck t-shirt and a feathered skin tint around
+the neck. Head, hair, beard, hands and white sneakers keep the original textured material.
+The neck seam and t-shirt neckline are blended per vertex, so the collar sits below the
+neck with a soft transition instead of a hard triangle edge. The textured material uses a
+matte finish (`metalness: 0`, roughness `0.86`, normal scale `0.38`, environment intensity
 `0.42`). The face fill and key light were softened so the fair skin reads evenly rather
 than glowing.
 

@@ -682,8 +682,8 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 | Local files | `web/public/models/student/` |
 | Posters | `scene.webp` is the wide selector still used by the boot/static background; `portrait.webp` is a close-up reference render |
 | Mesh | 85,487 triangles; quantized; embedded WebP textures: 2048px basecolour, 1024px normal and metallic-roughness; shipped GLB 3,684,764 B |
-| Look | Bearded adult, warm-brown hair, clean navy bomber, darker navy trousers, clean mock-neck underlayer, white sneakers; no runtime glasses |
-| Shading | Runtime geometry split into three indexed material groups: original textured atlas (head, hair, hands, shoes), flat navy jacket/underlayer and darker navy trousers, plus a separate navy collar band. Textured material: `metalness: 0`, roughness `0.86`, normal scale `0.38`, environment intensity `0.42`; clothing materials are matte `MeshStandardMaterial` with dithering. The collar band covers the low-poly neckline seam. Clothing/face can now be tuned independently without re-authoring the atlas |
+| Look | Bearded adult, warm-brown hair, blue bomber over a white V-neck t-shirt, blue jeans, white sneakers; no runtime glasses |
+| Shading | Runtime geometry split into three indexed material groups: original textured atlas (head, hair, hands, shoes), a vertex-coloured clothing group (blue bomber plus the white t-shirt V and the feathered skin neck tint) and blue jeans. The tee and neck tint are per-vertex colour blends, not separate hard-edged material groups, so the collar and t-shirt boundaries stay soft in close-up. Textured material: `metalness: 0`, roughness `0.86`, normal scale `0.38`, environment intensity `0.42`; clothing materials are matte `MeshStandardMaterial` with dithering. Clothing/face can be tuned independently without re-authoring the atlas |
 | Motion | Walk (1.0 s) + run clips; breathing idle averages four walk poses to remove the stride, then layers a 5.6 s chest/head cycle; 1.8 m stride-matched walk; 0.55 s turn before travel |
 | Rotation | `student-turntable` group inside the character root; pointer drag in `selecting`; auto-rotate defaults **off** but can be enabled from the dock; turntable yaw is independent of skeleton animation and resets smoothly before walking |
 | Framing | The selector camera is a close stage shot: the full guide is about 60% of a 900px viewport, with the head below the top bar and the shoes above the bottom dock; the face fill follows the character so the face stays readable after the walk |
@@ -693,10 +693,11 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 The guide is deliberately a stylized prototype, not a finished character. The source
 atlas has scrambled garment UV islands: jacket, knit top, hair and skin shared one texture,
 which produced brown “tears” and dark flecks when the atlas was used directly. The runtime
-now replaces the jacket, trousers and knit top with clean material groups, keeps the atlas
-for the face, hair, hands and sneakers, and adds a narrow collar band over the low-poly
-neckline seam. Because the cleaned atlas is only sampled by those remaining textured
-triangles, residual garment-island artifacts in the atlas are not rendered. The basecolour is embedded at 2048px so the closer selector framing has
+now replaces the jacket, trousers and knit top with clean materials: a blue bomber, blue
+jeans, a white t-shirt V and a feathered skin tint at the collar. The tint and tee are
+vertex-colour blends, so the low-poly neckline seam no longer reads as a hard collar band.
+Because the cleaned atlas is only sampled by those remaining textured triangles, residual
+garment-island artifacts in the atlas are not rendered. The basecolour is embedded at 2048px so the closer selector framing has
 enough facial detail; the supporting normal and metallic-roughness maps stay at 1024px to
 keep the GLB under 4 MB. Lighting was softened (key `1.32` desktop / `1.25` mobile, face fill
 `0.6` / `0.5`, exposure `0.98` / `0.94`) so the fair skin is less bright and less contrasty.
@@ -996,6 +997,8 @@ The live deployment at <https://jobhunt-hub-web.vercel.app> was rechecked after 
 Clean-clothing pass (2026-10-22, local production capture): `npm run build` passes. A local production build was checked at 1600×900 and 390×844. The jacket renders as clean navy fabric with no brown seam tears or white knit-top flecks, the sneakers are white again, and the softened key/face fill gives a fair, lower-contrast face. The `AUTO-ROTATE OFF` toggle reports `aria-pressed=false`; a still captured 4 seconds later shows no auto-rotation, and a pointer drag rotates the turntable to the side/back. A departure capture at 0.5 s, 1.2 s and 2.5 s shows the clean jacket from behind during the walk, with no visible collar detachment. The local `/`, `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and `/api/status` routes all returned 200; local `/api/jobs?role=…` served the bundled fallback (`demo=true`, 14/14/396) rather than live counts. The shipped `student.glb` is 3,684,764 B with a 2048px basecolour and 1024px normal/roughness maps. The only console message was the existing favicon 404.
 
 Live verification after the push (2026-10-22, `0baecf8`): the deployment served the new `student.glb` (`Content-Length: 3,684,764`). The selector toggle read `AUTO-ROTATE OFF` with `aria-pressed=false`; a still captured 3.5 seconds later showed no auto-rotation, and a pointer drag turned the guide to the side/back. Desktop 1600×900 and mobile 390×844 captures showed the clean navy bomber, white sneakers and the lower-contrast face with no layout regression. The static/reduced-motion poster now serves the regenerated clean `scene.webp` (57,588 B), with `portrait.webp` at 25,482 B. `/api/jobs` returned GenAI **1,084**, Data Engineering **1,234** and UI/UX **1,280**, all `demo=false`; `/api/status` reported `configured=true`; `/`, `/jobs/genai`, `/jobs/data` and `/jobs/uiux` all returned 200. The only console message was the existing favicon 404.
+
+Outfit refresh (2026-10-22, local dev capture, pre-deployment commit): `npx tsc --noEmit` and `npm run build` pass. Local captures at 1280×800 and 2560×1440 show the blue bomber, blue jeans and a visible white V-neck t-shirt. The collar and t-shirt boundaries are per-vertex colour blends, so there is no pink material sawtooth and no torn-looking edge in close-up. The dock read `AUTO-ROTATE OFF` after a 3 s hold, and a pointer drag rotated the guide to the side and back. No page errors were reported. Local `/api/jobs` served the bundled fallback rather than live counts, so live counts are re-verified after deployment. The regenerated posters are `scene.webp` (74,924 B) and `portrait.webp` (38,112 B).
 
 The refresh panel counts elapsed time from the current request rather than the previous run (`357b5ff`), and `/api/jobs` reads the `data` branch on every cache miss so a published scrape is not hidden by the origin cache (`5264079`).
 

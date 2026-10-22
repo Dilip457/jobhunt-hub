@@ -232,36 +232,40 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
   return new THREE.AnimationClip("student-idle", duration, tracks);
 }
 
-// The GLB's neckline seam is low-poly and jagged once the scrambled atlas is
-// replaced by flat materials. A narrow navy band gives the bomber a clean
-// mock-neck underlayer and covers that seam without changing the rig.
-function addCollarBand(model: THREE.Object3D): void {
-  const geometry = new THREE.CylinderGeometry(0.075, 0.09, 0.08, 32, 1, true);
-  const band = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      color: 0x1c2638,
-      roughness: 0.9,
-      metalness: 0,
-      envMapIntensity: 0.35,
-      side: THREE.DoubleSide,
-      dithering: true,
-    }),
-  );
-  band.position.set(0, 1.44, 0.015);
-  band.castShadow = false;
-  band.receiveShadow = true;
-  band.name = "clean-bomber-collar";
-  model.add(band);
-}
+// Model geometry is stored in normalized units (-1..1) mapped onto 0..1.8 m,
+// so raw y converts to local/world y as (raw + 1) * 0.9 and raw x/z scale by
+// 0.9. The values in these helpers were measured directly from the GLB
+// position data so the shapes hug the real mesh instead of guessing.
+
+// The raw mesh has a 5-ish cm band around the neck base where the head skin
+// and the jacket collar interleave jaggedly (measured: red dips to raw y 0.633
+// while the collar peaks at 0.695). Any overlay tall enough to cover that band
+// reads as a turtleneck — the “jacket clubbed with neck” complaint. Instead,
+// the collar vertices in this band are tinted with the face skin tone
+// (#d99479) and feathered into the jacket, so the seam becomes a soft skin
+// transition into the collar below raw y 0.618 without a material-group edge.
+const NECK_SEAM_BAND = { y0: 0.618, y1: 0.718, halfWidth: 0.07 };
+
+// The jacket front only parts in a shallow V under the collar, so a separate
+// floating shirt mesh either hid behind the lapels or clipped through them.
+// Instead the jacket's own vertices are tinted white inside that V. A material
+// group split left a hard, triangular sawtooth edge that read as a tear in
+// close-up; blending the tint per vertex keeps the shirt edge soft while the
+// geometry still deforms with the rig. Raw-y bounds: a point at the sternum
+// widening to the neck.
+const TEE_V = { y0: 0.5, y1: 0.618, bottomHalfWidth: 0.012, topHalfWidth: 0.062 };
+const TEE_FEATHER = 0.012;
 
 // The source atlas is not a coherent garment layout: jacket triangles sample
 // hair, skin and knit-top islands, which is what produced the brown seam
 // “tears” and the dark flecks on the white top. Rather than keep chasing UVs,
 // the body clothing gets clean stylized materials. Head, hands and shoes keep
 // the original textured material so the face, hair, beard and skin detail stay.
-// The upper body is rendered as a clean navy bomber over a dark mock neck; the
-// neckline band hides the low-poly collar seam that the flat materials expose.
+// The upper body is rendered as a clean blue bomber with jeans in a lighter
+// denim blue. The neck seam is feathered with a vertex skin tint (NECK_SEAM_BAND)
+// so the collar reads as separate from the neck, and the jacket's V opening is
+// tinted white for the t-shirt (TEE_V). Both boundaries blend per vertex, so
+// they stay soft in close-up instead of following triangle edges.
 function installCleanClothing(model: THREE.Object3D): void {
   model.traverse((object) => {
     const mesh = object as THREE.Mesh;
@@ -330,6 +334,47 @@ function installCleanClothing(model: THREE.Object3D): void {
     }
     if (groups[1].length + groups[2].length === 0) return;
 
+    // Smooth white tee tint inside the V. The falloff is a few centimetres so
+    // the neckline reads as fabric in shadow, not a paint boundary.
+    const jacketColour = new THREE.Color(0x275285);
+    const teeColour = new THREE.Color(0xf1efe7);
+    const skinColour = new THREE.Color(0xd99479);
+    const vertexColour = new THREE.Color();
+    const colours = new Float32Array(position.count * 3);
+    for (let vertex = 0; vertex < position.count; vertex += 1) {
+      const x = position.getX(vertex);
+      const y = position.getY(vertex);
+      const z = position.getZ(vertex);
+      const taper = clamp((y - TEE_V.y0) / (TEE_V.y1 - TEE_V.y0));
+      const halfWidth =
+        TEE_V.bottomHalfWidth + (TEE_V.topHalfWidth - TEE_V.bottomHalfWidth) * taper;
+      const across = smoothstep(clamp((halfWidth - Math.abs(x)) / TEE_FEATHER));
+      const top = smoothstep(clamp((TEE_V.y1 - y) / 0.008));
+      const bottom = smoothstep(clamp((y - TEE_V.y0) / 0.008));
+      const front = z > 0.003 ? 1 : 0;
+      const teeMask = across * top * bottom * front;
+
+      // The neck band replaces the old flat-skin material group. Painting the
+      // collar vertices skin and feathering into the jacket removes the hard
+      // pink sawtooth that material boundaries left at the collar.
+      const skinAcross = smoothstep(
+        clamp((NECK_SEAM_BAND.halfWidth - Math.abs(x)) / 0.005),
+      );
+      const skinBottom = smoothstep(
+        clamp((y - (NECK_SEAM_BAND.y0 - 0.006)) / 0.006),
+      );
+      const skinTop = smoothstep(clamp((NECK_SEAM_BAND.y1 - y) / 0.006));
+      const skinFront = z > -0.005 ? 1 : 0;
+      const skinMask = skinAcross * skinBottom * skinTop * skinFront;
+
+      vertexColour
+        .copy(jacketColour)
+        .lerp(teeColour, teeMask)
+        .lerp(skinColour, skinMask);
+      vertexColour.toArray(colours, vertex * 3);
+    }
+    geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
+
     const index = new Uint32Array(original.length);
     let cursor = 0;
     const starts: number[] = [];
@@ -342,7 +387,8 @@ function installCleanClothing(model: THREE.Object3D): void {
     });
 
     const jacket = new THREE.MeshStandardMaterial({
-      color: 0x1c2638,
+      color: 0xffffff,
+      vertexColors: true,
       roughness: 0.88,
       metalness: 0,
       envMapIntensity: 0.35,
@@ -350,14 +396,13 @@ function installCleanClothing(model: THREE.Object3D): void {
       dithering: true,
     });
     const pants = new THREE.MeshStandardMaterial({
-      color: 0x18202f,
+      color: 0x3f699c,
       roughness: 0.92,
       metalness: 0,
       envMapIntensity: 0.3,
       side: THREE.DoubleSide,
       dithering: true,
     });
-
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
     geometry.clearGroups();
     groups.forEach((group, groupIndex) => {
@@ -568,7 +613,6 @@ export default function CinematicIntro({ onComplete }: Props) {
       scene.fog = new THREE.FogExp2(0x05060a, isMobile ? 0.034 : 0.029);
 
       const camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.04, 120);
-
       try {
         pmrem = new THREE.PMREMGenerator(renderer);
         const room = new RoomEnvironment();
@@ -949,7 +993,6 @@ export default function CinematicIntro({ onComplete }: Props) {
       });
 
       installCleanClothing(model);
-      addCollarBand(model);
 
       // Centre the model on its own feet before adding the turntable. Animation
       // still targets the skeleton; this root transform only affects framing.
