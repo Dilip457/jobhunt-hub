@@ -195,7 +195,7 @@ jobhunt-hub/
 |---|---|---|---|
 | Dynamic intro loader | `web/components/IntroPage.tsx` | `CinematicIntro` dynamic import, `IntroBoot` loading | Keeps the first paint free of HI and role cards |
 | Boot screen | `web/components/IntroBoot.tsx` | `IntroBoot` | Brand, loader, no headline, no role cards |
-| Cinematic scene | `web/components/CinematicIntro.tsx` | `CinematicIntro`, `Phase`, `SceneController`, `createIdleClip`, `travelProfile`, `travelDuration`, `applyPhase`, `updateCharacter`, `updateTurntable`, `updateCamera`, `onPointerDown`, `onPointerMove` | Greeting, pullback, path, turn, walk, gates, selection, turntable drag/auto-rotate, departure |
+| Cinematic scene | `web/components/CinematicIntro.tsx` | `CinematicIntro`, `Phase`, `SceneController`, `createIdleClip`, `installCleanClothing`, `addCollarBand`, `travelProfile`, `travelDuration`, `applyPhase`, `updateCharacter`, `updateTurntable`, `updateCamera`, `onPointerDown`, `onPointerMove` | Greeting, pullback, path, turn, walk, gates, clean clothing material split, collar band, selection, turntable drag/optional auto-rotate, departure |
 | Static fallback | `web/components/StaticIntro.tsx` | `StaticIntro`, `STATIC_GREETING_MS` | `HI.` for 4 s, then the three destinations; no canvas |
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
@@ -224,7 +224,7 @@ jobhunt-hub/
 
 | Asset | Path | Used by |
 |---|---|---|
-| 3D character | `web/public/models/student/student.glb` (2048px basecolour, 1024px supporting maps) | `CinematicIntro.tsx` `MODEL_URL`; preloaded in `layout.tsx` |
+| 3D character | `web/public/models/student/student.glb` (3,684,764 B; 2048px basecolour, 1024px supporting maps) | `CinematicIntro.tsx` `MODEL_URL`; preloaded in `layout.tsx`; textured head/hands/shoes plus runtime clean-clothing groups |
 | Wide scene poster | `web/public/models/student/scene.webp` | `.intro-poster` and `.static-intro-scene` in `globals.css` |
 | Portrait reference | `web/public/models/student/portrait.webp` | Reference render only; not used as the loading background |
 | Attribution | `web/public/models/student/ATTRIBUTION.txt` | Asset license, modifications and prototype limitations |
@@ -685,12 +685,13 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 |---|---|---|
 | Intro greeting length | `web/components/CinematicIntro.tsx` (`GREETING_MS`) | static fallback `STATIC_GREETING_MS` |
 | Pullback / walk timing | `CinematicIntro.tsx` (`REVEAL_SECONDS`, `WALK_SPEED`, `TURN_DELAY`, `SELECTOR_Z`) | `travelDuration()`, `travelProfile()` |
-| Character rotation | `CinematicIntro.tsx` (`AUTO_ROTATE_SPEED`, `AUTO_ROTATE_DELAY`, `DRAG_SENSITIVITY`, `updateTurntable()`) | `.intro-canvas.is-interactive`, `.intro-rotate-toggle`, `onPointer*` handlers |
+| Character rotation | `CinematicIntro.tsx` (`AUTO_ROTATE_SPEED`, `AUTO_ROTATE_DELAY`, `DRAG_SENSITIVITY`, `autoRotate`/`autoRotateRef`, `updateTurntable()`) | `.intro-canvas.is-interactive`, `.intro-rotate-toggle` (`aria-pressed` starts `false`), `onPointer*` handlers |
+| Character clothing / face materials | `CinematicIntro.tsx` (`installCleanClothing()`, `addCollarBand()`, jacket/pants material colours, textured material roughness/normal scale) | `student.glb`, `ATTRIBUTION.txt`, lighting values in the same component |
 | Role card content | `web/lib/roles.ts` | `RoleDestinations.tsx`, dashboard labels |
 | Intro copy / phase UI | `CinematicIntro.tsx` render block | `web/app/globals.css` (`.intro-canvas`, `.intro-rotate-toggle`) |
 | Boot screen | `web/components/IntroBoot.tsx` | `.intro-boot*` styles |
 | Static / reduced-motion fallback | `web/components/StaticIntro.tsx` | `.static-*` styles |
-| 3D model | `web/public/models/student/student.glb` | `MODEL_URL`, turntable setup, `layout.tsx` preload, `ATTRIBUTION.txt` |
+| 3D model | `web/public/models/student/student.glb` | `MODEL_URL`, `installCleanClothing()`, `addCollarBand()`, turntable setup, `layout.tsx` preload, `ATTRIBUTION.txt` |
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |

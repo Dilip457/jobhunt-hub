@@ -661,7 +661,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 - The first paint before the cinematic bundle is a clean `IntroBoot` (brand, loader, no headline and no role cards). The boot is also used while the GLB is loading, so a slow connection cannot turn the greeting into a selector.
 - Every full page load runs the greeting sequence. Returning visitors use **Skip intro** to jump straight to role selection; there is no localStorage shortcut that bypasses the greeting.
 - Desktop uses a shallow bottom role dock that keeps the character, path and all three gates visible. Phones use a bottom sheet with explicit card rows.
-- In `selecting`, pointer drag on the canvas rotates a dedicated model turntable around the GLB’s vertical axis. `Auto-rotate` is on by default and toggled from the dock; a drag pauses it for 2.8 seconds. The camera, floor and lights do not move, and rotation is outside `AnimationMixer`, so walk/run animation is unaffected.
+- In `selecting`, pointer drag on the canvas rotates a dedicated model turntable around the GLB’s vertical axis. `Auto-rotate` is **off by default** and can be enabled from the dock; a drag pauses it for 2.8 seconds. The camera, floor and lights do not move, and rotation is outside `AnimationMixer`, so walk/run animation is unaffected.
 - `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`: the same wide scene poster, a four-second `HI.` beat first, then the identical destinations. It never shows the greeting and role cards together.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
 - Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
@@ -681,20 +681,24 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 | Source | `https://grab3d.com/models/characters/man/` |
 | Local files | `web/public/models/student/` |
 | Posters | `scene.webp` is the wide selector still used by the boot/static background; `portrait.webp` is a close-up reference render |
-| Mesh | 85,487 triangles; quantized; embedded WebP textures: 2048px basecolour, 1024px normal and metallic-roughness |
-| Look | Bearded adult, flat warm-brown hair, flat navy bomber jacket, white knit top, jeans, sneakers; no runtime glasses |
-| Shading | One atlas `MeshStandardMaterial`: `metalness: 0`, `roughness: 0.66`, no roughness/metallic maps, normal scale `0.72`, environment intensity `0.68`, dithering; jacket/sweater/hair/skin cannot be tuned separately without re-authoring the atlas |
+| Mesh | 85,487 triangles; quantized; embedded WebP textures: 2048px basecolour, 1024px normal and metallic-roughness; shipped GLB 3,684,764 B |
+| Look | Bearded adult, warm-brown hair, clean navy bomber, darker navy trousers, clean mock-neck underlayer, white sneakers; no runtime glasses |
+| Shading | Runtime geometry split into three indexed material groups: original textured atlas (head, hair, hands, shoes), flat navy jacket/underlayer and darker navy trousers, plus a separate navy collar band. Textured material: `metalness: 0`, roughness `0.86`, normal scale `0.38`, environment intensity `0.42`; clothing materials are matte `MeshStandardMaterial` with dithering. The collar band covers the low-poly neckline seam. Clothing/face can now be tuned independently without re-authoring the atlas |
 | Motion | Walk (1.0 s) + run clips; breathing idle averages four walk poses to remove the stride, then layers a 5.6 s chest/head cycle; 1.8 m stride-matched walk; 0.55 s turn before travel |
-| Rotation | `student-turntable` group inside the character root; pointer drag + auto-rotate only in `selecting`; turntable yaw is independent of skeleton animation and resets smoothly before walking |
+| Rotation | `student-turntable` group inside the character root; pointer drag in `selecting`; auto-rotate defaults **off** but can be enabled from the dock; turntable yaw is independent of skeleton animation and resets smoothly before walking |
 | Framing | The selector camera is a close stage shot: the full guide is about 60% of a 900px viewport, with the head below the top bar and the shoes above the bottom dock; the face fill follows the character so the face stays readable after the walk |
-| Render | `compileAsync` before the reveal, DPR 1.75–2 on desktop and 1.35–1.8 on mobile, up to 16x anisotropic filtering, mipmapped linear filtering, ACES exposure `1.26` desktop / `1.12` mobile, soft `PCFSoftShadowMap` on desktop plus a contact-shadow fallback |
+| Render | `compileAsync` before the reveal, DPR 1.75–2 on desktop and 1.35–1.8 on mobile, up to 16x anisotropic filtering, mipmapped linear filtering, ACES exposure `0.98` desktop / `0.94` mobile, soft `PCFSoftShadowMap` on desktop plus a contact-shadow fallback |
 | Not implemented | Facial blendshapes, eye rig, lip-sync, hair simulation, motion capture |
 
-The guide is deliberately a stylized prototype, not a finished character. The basecolour
-atlas was cleaned (flat navy fabric, flat brown hair, bright texture flecks suppressed) and
-the material was made uniformly matte to remove specular fireflies. The basecolour is
-embedded at 2048px so the closer selector framing has enough facial and fabric detail; the
-supporting normal and metallic-roughness maps stay at 1024px to keep the GLB under 4 MB.
+The guide is deliberately a stylized prototype, not a finished character. The source
+atlas has scrambled garment UV islands: jacket, knit top, hair and skin shared one texture,
+which produced brown “tears” and dark flecks when the atlas was used directly. The runtime
+now replaces the jacket, trousers and knit top with clean material groups, keeps the atlas
+for the face, hair, hands and sneakers, and adds a narrow collar band over the low-poly
+neckline seam. The basecolour is embedded at 2048px so the closer selector framing has
+enough facial detail; the supporting normal and metallic-roughness maps stay at 1024px to
+keep the GLB under 4 MB. Lighting was softened (key `1.32` desktop / `1.25` mobile, face fill
+`0.6` / `0.5`, exposure `0.98` / `0.94`) so the fair skin is less bright and less contrasty.
 The earlier runtime glasses were removed so the face reads cleanly. Attribution is
 documented in `ATTRIBUTION.txt` and linked from the dashboard credits. The model path must
 stay under `web/public/models/student/`.
@@ -987,6 +991,8 @@ Production verification (2026-10-21, `79e03f7`): 45/45 Playwright checks passed 
 Closer-framing and 2K verification (2026-10-22, `3959580`): `npm run build` passes. A local production build was checked at 1600×900 and 390×844: the selector reaches `phase-selecting` with three role cards, the auto-rotate toggle is present, the full guide is about 60% of the desktop viewport height, and the shoes stay above the bottom dock. The WebGL framebuffer was read back directly and contains the clean 3D scene at 2800×1575; no runtime page errors occurred apart from the existing favicon 404. The shipped `student.glb` is 3,922,652 B with a 2048px basecolour and 1024px normal/roughness maps.
 
 The live deployment at <https://jobhunt-hub-web.vercel.app> was rechecked after the push: the page reached `phase-selecting` with three cards and auto-rotate on, and the browser loaded the new 3,922,652-byte GLB. `/api/jobs` still returned GenAI **1,084**, Data Engineering **1,234** and UI/UX **1,280** with `demo=false`; `/api/status` reported `configured=true` for all three roles, and `/jobs/genai`, `/jobs/data` and `/jobs/uiux` all returned 200.
+
+Clean-clothing pass (2026-10-22, local production capture): `npm run build` passes. A local production build was checked at 1600×900 and 390×844. The jacket renders as clean navy fabric with no brown seam tears or white knit-top flecks, the sneakers are white again, and the softened key/face fill gives a fair, lower-contrast face. The `AUTO-ROTATE OFF` toggle reports `aria-pressed=false`; a still captured 4 seconds later shows no auto-rotation, and a pointer drag rotates the turntable to the side/back. A departure capture at 0.5 s, 1.2 s and 2.5 s shows the clean jacket from behind during the walk, with no visible collar detachment. The local `/`, `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and `/api/status` routes all returned 200; local `/api/jobs?role=…` served the bundled fallback (`demo=true`, 14/14/396) rather than live counts. The shipped `student.glb` is 3,684,764 B with a 2048px basecolour and 1024px normal/roughness maps. The only console message was the existing favicon 404.
 
 The refresh panel counts elapsed time from the current request rather than the previous run (`357b5ff`), and `/api/jobs` reads the `data` branch on every cache miss so a published scrape is not hidden by the origin cache (`5264079`).
 

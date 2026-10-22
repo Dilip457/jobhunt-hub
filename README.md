@@ -220,7 +220,7 @@ catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `
 2. A four-second close-up of the guide says **“HI.”** against red/blue rim light. Role cards are still hidden.
 3. The camera pulls back to reveal an illuminated path and three gates.
 4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering and UI/UX (a bottom sheet on phones).
-5. In role selection, drag the guide left or right to inspect the front, side and back. **Auto-rotate** is on by default and can be toggled off in the dock.
+5. In role selection, drag the guide left or right to inspect the front, side and back. **Auto-rotate** is off by default and can be turned on from the dock; dragging always works.
 6. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 
 The dashboard is one click away in every degraded mode:
@@ -238,18 +238,21 @@ and filter parameters are preserved in the URL.
 
 The guide is a **stylized, rigged CC0 “Casual Man” base by Grab3D**, optimized for the
 web. It was simplified from 244,257 to 85,487 triangles. The basecolour atlas is 2048px
-and the normal and metallic-roughness maps are 1024px, all WebP. The basecolour was
-cleaned to remove bright texture flecks: the jacket and jeans use a flat navy fabric
-treatment, the hair uses a flat warm brown, and the material is uniformly matte
-(`metalness: 0`, roughness `0.66`, no roughness/metalness maps). The exported mesh uses a
-single texture atlas, so jacket, sweater, hair and skin share one material and cannot be
-tuned independently without re-authoring the asset.
+and the normal and metallic-roughness maps are 1024px, all WebP. The source atlas has
+scrambled garment UV islands, so the runtime splits the body geometry into clean material
+groups: a flat navy bomber, darker navy trousers and a clean mock-neck underlayer. Head,
+hair, beard, hands and white sneakers keep the original textured material. A narrow navy
+collar band covers the low-poly neckline seam, and the textured material uses a matte
+finish (`metalness: 0`, roughness `0.86`, normal scale `0.38`, environment intensity
+`0.42`). The face fill and key light were softened so the fair skin reads evenly rather
+than glowing.
 
 Runtime quality comes from the closer selector framing (the guide fills roughly 60% of a
 900px viewport instead of about 300px), 16x anisotropic filtering, mipmapped linear
 filtering, ACES tone mapping, a character-following face fill and a desktop cast shadow.
-The character has **no facial blendshapes, eye rig or lip-sync**; the breathing idle
-averages four walk poses to remove the stride, then adds a 5.6-second chest/head cycle.
+Auto-rotate starts **off**; manual drag is always available. The character has **no facial
+blendshapes, eye rig or lip-sync**; the breathing idle averages four walk poses to remove
+the stride, then adds a 5.6-second chest/head cycle.
 This is a prototype, not a finished character. The dashboard credits the asset, and the
 full modification record ships at
 [`web/public/models/student/ATTRIBUTION.txt`](web/public/models/student/ATTRIBUTION.txt).

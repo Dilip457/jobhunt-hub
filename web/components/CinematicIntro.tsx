@@ -232,6 +232,141 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
   return new THREE.AnimationClip("student-idle", duration, tracks);
 }
 
+// The GLB's neckline seam is low-poly and jagged once the scrambled atlas is
+// replaced by flat materials. A narrow navy band gives the bomber a clean
+// mock-neck underlayer and covers that seam without changing the rig.
+function addCollarBand(model: THREE.Object3D): void {
+  const geometry = new THREE.CylinderGeometry(0.075, 0.09, 0.08, 32, 1, true);
+  const band = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color: 0x1c2638,
+      roughness: 0.9,
+      metalness: 0,
+      envMapIntensity: 0.35,
+      side: THREE.DoubleSide,
+      dithering: true,
+    }),
+  );
+  band.position.set(0, 1.44, 0.015);
+  band.castShadow = false;
+  band.receiveShadow = true;
+  band.name = "clean-bomber-collar";
+  model.add(band);
+}
+
+// The source atlas is not a coherent garment layout: jacket triangles sample
+// hair, skin and knit-top islands, which is what produced the brown seam
+// “tears” and the dark flecks on the white top. Rather than keep chasing UVs,
+// the body clothing gets clean stylized materials. Head, hands and shoes keep
+// the original textured material so the face, hair, beard and skin detail stay.
+// The upper body is rendered as a clean navy bomber over a dark mock neck; the
+// neckline band hides the low-poly collar seam that the flat materials expose.
+function installCleanClothing(model: THREE.Object3D): void {
+  model.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const geometry = mesh.geometry as THREE.BufferGeometry;
+    const position = geometry.getAttribute("position");
+    const normal = geometry.getAttribute("normal");
+    const jointIndex = geometry.getAttribute("skinIndex");
+    const jointWeight = geometry.getAttribute("skinWeight");
+    const source = geometry.getIndex();
+    if (!position || !normal || !jointIndex || !jointWeight || !source) return;
+    const skinned = mesh as THREE.SkinnedMesh;
+    const bones = skinned.skeleton?.bones;
+    if (!bones?.length) return;
+
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const main = materials[0];
+    if (!main) return;
+
+    const boneNames = bones.map((bone: THREE.Bone) => bone.name.toLowerCase());
+    const vertexGroup = new Uint8Array(position.count);
+    for (let vertex = 0; vertex < position.count; vertex += 1) {
+      let bestJoint = 0;
+      let bestWeight = -1;
+      for (let slot = 0; slot < 4; slot += 1) {
+        const weight = jointWeight.getComponent(vertex, slot);
+        if (weight > bestWeight) {
+          bestWeight = weight;
+          bestJoint = jointIndex.getComponent(vertex, slot);
+        }
+      }
+      const name = boneNames[bestJoint] ?? "";
+      if (name === "head" || name === "neck" || name === "head_end" || name === "headfront") {
+        vertexGroup[vertex] = 1;
+      } else if (name.includes("hand")) {
+        vertexGroup[vertex] = 2;
+      } else if (name.includes("foot") || name.includes("toe")) {
+        vertexGroup[vertex] = 3;
+      }
+    }
+
+    const groups: number[][] = [[], [], []];
+    const original = source.array;
+    const triangles = Math.floor(original.length / 3);
+    for (let triangle = 0; triangle < triangles; triangle += 1) {
+      const a = original[triangle * 3];
+      const b = original[triangle * 3 + 1];
+      const c = original[triangle * 3 + 2];
+      const averageY = (position.getY(a) + position.getY(b) + position.getY(c)) / 3;
+      if (averageY < -0.86) {
+        // Keep the white sneakers on the original textured material. Some
+        // upper triangles are weighted to the leg bones rather than the foot
+        // bones, so bone groups alone are not enough here.
+        groups[0].push(a, b, c);
+        continue;
+      }
+      if (vertexGroup[a] !== 0 || vertexGroup[b] !== 0 || vertexGroup[c] !== 0) {
+        groups[0].push(a, b, c);
+        continue;
+      }
+      if (averageY < -0.01) {
+        groups[2].push(a, b, c);
+      } else {
+        groups[1].push(a, b, c);
+      }
+    }
+    if (groups[1].length + groups[2].length === 0) return;
+
+    const index = new Uint32Array(original.length);
+    let cursor = 0;
+    const starts: number[] = [];
+    const counts: number[] = [];
+    groups.forEach((group) => {
+      starts.push(cursor);
+      counts.push(group.length);
+      index.set(group, cursor);
+      cursor += group.length;
+    });
+
+    const jacket = new THREE.MeshStandardMaterial({
+      color: 0x1c2638,
+      roughness: 0.88,
+      metalness: 0,
+      envMapIntensity: 0.35,
+      side: THREE.DoubleSide,
+      dithering: true,
+    });
+    const pants = new THREE.MeshStandardMaterial({
+      color: 0x18202f,
+      roughness: 0.92,
+      metalness: 0,
+      envMapIntensity: 0.3,
+      side: THREE.DoubleSide,
+      dithering: true,
+    });
+
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    geometry.clearGroups();
+    groups.forEach((group, groupIndex) => {
+      if (group.length > 0) geometry.addGroup(starts[groupIndex], counts[groupIndex], groupIndex);
+    });
+    mesh.material = [main, jacket, pants];
+  });
+}
+
 interface SceneController {
   setPhase: (phase: Phase, jump?: boolean) => void;
   jumpToSelecting: () => void;
@@ -271,8 +406,8 @@ export default function CinematicIntro({ onComplete }: Props) {
   const [selected, setSelected] = useState<RoleSlug | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [autoRotate, setAutoRotate] = useState(true);
-  const autoRotateRef = useRef(true);
+  const [autoRotate, setAutoRotate] = useState(false);
+  const autoRotateRef = useRef(false);
 
   useEffect(() => {
     autoRotateRef.current = autoRotate;
@@ -421,7 +556,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       renderer.setPixelRatio(renderPixelRatio());
       renderer.setSize(window.innerWidth, window.innerHeight, false);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = isMobile ? 1.12 : 1.26;
+      renderer.toneMappingExposure = isMobile ? 0.94 : 0.98;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       // Desktop gets a soft cast shadow. Mobile keeps the cheaper painted
       // contact shadow so high-DPI phones do not pay for a second scene pass.
@@ -447,10 +582,10 @@ export default function CinematicIntro({ onComplete }: Props) {
         // Environment reflections are a nice-to-have.
       }
 
-      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, isMobile ? 0.58 : 0.68));
+      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, isMobile ? 0.78 : 0.9));
       // Neutral key + soft fill keep the skin clean. The red/blue accents are
       // now behind the character as rim lights instead of tinting the face.
-      const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 2.05 : 2.25);
+      const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 1.25 : 1.32);
       key.position.set(-2.5, 4.5, 4.5);
       if (!isMobile) {
         key.castShadow = true;
@@ -468,13 +603,13 @@ export default function CinematicIntro({ onComplete }: Props) {
       }
       scene.add(key);
       scene.add(key.target);
-      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.48 : 0.72);
+      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.8 : 0.98);
       frontFill.position.set(0, 2.1, 5.2);
       scene.add(frontFill);
       const rim = new THREE.DirectionalLight(0x6f9bff, 0.95);
       rim.position.set(2.2, 3.2, -3.8);
       scene.add(rim);
-      const fill = new THREE.DirectionalLight(0xffe4d8, 0.8);
+      const fill = new THREE.DirectionalLight(0xffe4d8, isMobile ? 0.85 : 1.02);
       fill.position.set(2.2, 2.4, 3.8);
       scene.add(fill);
       const redLight = new THREE.PointLight(0xff304f, 7, 8, 2);
@@ -487,7 +622,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       // close greeting and the selection stage. A fixed world-space fill was
       // left behind when the character walked to the selector, which made the
       // face look muddy at exactly the point users need to inspect it.
-      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 1.25 : 1.65, 4.2, 2);
+      const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 0.5 : 0.6, 4.2, 2);
       faceFill.position.set(0.28, 1.72, 1.55);
       scene.add(faceFill);
 
@@ -788,15 +923,15 @@ export default function CinematicIntro({ onComplete }: Props) {
           const standard = material as THREE.MeshStandardMaterial;
           // The source roughness/metalness map contains tiny high-gloss
           // patches that aliased into white “paint flecks” on the hair and
-          // jacket. Keep the uniform matte surface, but lift it slightly so
-          // fabric, hair and skin keep their form under the key light.
-          standard.envMapIntensity = 0.68;
+          // jacket. A higher uniform roughness plus reduced normal strength
+          // keeps the face and fabric matte instead of hard and contrasty.
+          standard.envMapIntensity = 0.42;
           standard.metalness = 0;
           standard.metalnessMap = null;
-          standard.roughness = 0.66;
+          standard.roughness = 0.86;
           standard.roughnessMap = null;
           standard.dithering = true;
-          if (standard.normalMap) standard.normalScale.set(0.72, 0.72);
+          if (standard.normalMap) standard.normalScale.set(0.38, 0.38);
           Object.entries(standard).forEach(([key, value]) => {
             if (!(value instanceof THREE.Texture)) return;
             value.anisotropy = anisotropy;
@@ -812,6 +947,9 @@ export default function CinematicIntro({ onComplete }: Props) {
           standard.needsUpdate = true;
         });
       });
+
+      installCleanClothing(model);
+      addCollarBand(model);
 
       // Centre the model on its own feet before adding the turntable. Animation
       // still targets the skeleton; this root transform only affects framing.
