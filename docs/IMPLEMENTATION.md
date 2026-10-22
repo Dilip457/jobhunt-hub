@@ -695,7 +695,8 @@ atlas has scrambled garment UV islands: jacket, knit top, hair and skin shared o
 which produced brown “tears” and dark flecks when the atlas was used directly. The runtime
 now replaces the jacket, trousers and knit top with clean material groups, keeps the atlas
 for the face, hair, hands and sneakers, and adds a narrow collar band over the low-poly
-neckline seam. The basecolour is embedded at 2048px so the closer selector framing has
+neckline seam. Because the cleaned atlas is only sampled by those remaining textured
+triangles, residual garment-island artifacts in the atlas are not rendered. The basecolour is embedded at 2048px so the closer selector framing has
 enough facial detail; the supporting normal and metallic-roughness maps stay at 1024px to
 keep the GLB under 4 MB. Lighting was softened (key `1.32` desktop / `1.25` mobile, face fill
 `0.6` / `0.5`, exposure `0.98` / `0.94`) so the fair skin is less bright and less contrasty.

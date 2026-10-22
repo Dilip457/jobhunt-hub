@@ -25,7 +25,9 @@ Modifications made for JobHunt India:
   environment intensity `0.42`. Clothing groups use matte `MeshStandardMaterial` with
   dithering.
 - The atlas was also cleaned of bright/orange flecks; the embedded 2048px basecolour is a
-  cleaned variant. Normal and roughness maps remain at 1024px.
+  cleaned variant. Normal and roughness maps remain at 1024px. The cleaned atlas is sampled
+  only by the head, hair, hands and shoe triangles; garment triangles use the flat
+  materials, so residual garment-island artifacts in the atlas are not rendered.
 - Non-essential runtime geometry (the earlier 3D glasses) removed so the face reads cleanly.
 - A breathing idle clip generated from a neutral walk pose at runtime.
 - The walk clip is speed-matched to the 1.8 m travel cycle so the feet do not slide.
