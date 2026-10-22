@@ -12,8 +12,9 @@ Modifications made for JobHunt India:
 - Mesh simplified from 244,257 to 85,487 triangles with glTF Transform for web delivery.
 - Basecolour atlas embedded at 2048px; normal and metallic-roughness maps at 1024px, all
   encoded as WebP. `scene.webp` is a wide render of the modified asset used by the
-  loading/static background; `portrait.webp` is a close-up reference render. Neither is a
-  raw source-photo crop.
+  loading/static background; `portrait.webp` is a close-up reference render. Both were
+  regenerated from the clean-clothing runtime on 2026-10-22. Neither is a raw source-photo
+  crop.
 - The source atlas has scrambled garment UV islands: jacket, knit top, hair and skin share
   texture space, so sampling it directly produced brown “tears” and dark flecks. The
   runtime now splits the body geometry into clean material groups: a flat navy bomber,
