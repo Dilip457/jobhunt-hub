@@ -21,8 +21,8 @@ Modifications made for JobHunt India:
   white t-shirt and a feathered skin tint around the neck. The neck boundary is a
   per-vertex colour blend; the t-shirt panel and the collar skin band are masked per fragment
   in the body shader, from the bind-pose position, so their edges stay crisp instead of
-  following the chest's coarse triangle size. The tee mask also runs on the jeans material,
-  because the shirt hem drops below the jacket onto the front of the hips. Head, hair, beard,
+  following the chest's coarse triangle size. The same masks run on every body material, so
+  the panel and collar stay seamless wherever the group split falls. Head, hair, beard,
   hands and white sneakers keep the original textured atlas.
 - Textured material finish: `metalness: 0`, roughness `0.86`, normal scale `0.38`,
   environment intensity `0.42`. Clothing groups use matte `MeshStandardMaterial` with

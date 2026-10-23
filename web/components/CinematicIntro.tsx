@@ -297,8 +297,8 @@ const SKIN_BAND = { y0: 0.605, y1: 0.72, halfWidth: 0.076 };
 
 // The jacket is modelled closed, so the t-shirt cannot be revealed by opening
 // it: the shirt is painted onto the jacket's own front surface instead, as a
-// full panel from the collar down to the hem, with its sides where the jacket's
-// front edges are. Raw-y bounds: hem to collar.
+// full panel from the collar down to the jacket hem, with its sides where the
+// jacket's front edges are. Raw-y bounds: hem to collar.
 //
 // The mask is evaluated per fragment, not per vertex. The chest is coarse — a
 // handful of very large triangles — so a per-vertex mask could only change at
@@ -307,7 +307,7 @@ const SKIN_BAND = { y0: 0.605, y1: 0.72, halfWidth: 0.076 };
 // painted”. Rebuilding the panel in the fragment shader, from the bind-pose
 // position, gives an edge that is crisp at any zoom while still deforming with
 // the rig, because the mask lives in bind space and rides the skin transform.
-const TEE_V = { y0: -0.065, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
+const TEE_V = { y0: 0.04, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
 // The t-shirt neckline rises from a shallow dip at the sternum up to the
 // shoulders instead of a flat cut straight across the chest.
 const TEE_NECK_DROP = 0.042;
@@ -510,9 +510,11 @@ function installCleanClothing(model: THREE.Object3D): void {
       side: THREE.DoubleSide,
       dithering: true,
     });
-    // The shirt hem drops below the jacket onto the front of the hips (the
-    // jeans group), and the skin collar band has to cover the neck's textured
-    // triangles as well, so the same fragment masks run on every body material.
+    // The masks are installed on every body material, not just the jacket. The
+    // collar band has to cover the neck's textured triangles, which land in the
+    // textured group, and the groups are split by a triangle's average y, so
+    // running the mask everywhere keeps the shirt panel and collar seamless
+    // across the split and lets the hem move without a code change.
     for (const material of [main, pants]) {
       material.onBeforeCompile = jacket.onBeforeCompile;
       material.customProgramCacheKey = () => "body-mask";
