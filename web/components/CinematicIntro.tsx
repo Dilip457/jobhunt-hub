@@ -115,18 +115,24 @@ function travelProfile(elapsed: number, distance: number) {
 
 // The stock walk clip plants the feet about 33 cm apart, which reads as a
 // waddle next to the reference footage. The legs are adducted — rotated inward
-// about the forward axis — to bring the feet under the body, ~12 cm apart.
-// The correction is baked into the clip's own keys, before createIdleClip
-// samples them, so the standing stance narrows to match.
-const LEG_ADDUCTION = -10 * (Math.PI / 180);
-function adductWalkClip(clip: THREE.AnimationClip): void {
+// about the forward axis — to bring the feet under the body. Walking wants the
+// feet tracking close together (~12 cm), but standing wants a settled male
+// stance (~22 cm), so the walk and the idle get different angles: the idle is
+// sampled from a lightly adducted copy of the clip.
+const WALK_ADDUCTION = -10 * (Math.PI / 180);
+const IDLE_ADDUCTION = -6 * (Math.PI / 180);
+// The relaxed standing hands come out of the clip with the palms facing
+// forward, which reads as a mannequin showing its palms. Twisting each wrist
+// about its own axis turns the palms to face the thighs, the way a man stands.
+const HAND_TWIST = 45 * (Math.PI / 180);
+function adductWalkClip(clip: THREE.AnimationClip, angle: number): void {
   const forward = new THREE.Vector3(0, 0, 1);
   const correction = new THREE.Quaternion();
   const quaternion = new THREE.Quaternion();
   for (const track of clip.tracks) {
     const match = /(Left|Right)UpLeg\.quaternion$/.exec(track.name);
     if (!match) continue;
-    correction.setFromAxisAngle(forward, (match[1] === "Left" ? 1 : -1) * LEG_ADDUCTION);
+    correction.setFromAxisAngle(forward, (match[1] === "Left" ? 1 : -1) * angle);
     for (let i = 0; i < track.values.length; i += 4) {
       quaternion.fromArray(track.values, i);
       quaternion.premultiply(correction);
@@ -150,6 +156,7 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
   });
   const sampleTimes = [0, 0.25, 0.5, 0.75].map((progress) => progress * walkClip.duration);
   const baseQuaternions = new Map<string, THREE.Quaternion>();
+  const firstQuaternions = new Map<string, THREE.Quaternion>();
   const basePositions = new Map<string, THREE.Vector3>();
   const sampleQuat = new THREE.Quaternion();
   sampleTimes.forEach((sampleTime) => {
@@ -158,6 +165,7 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
       const accumulated = baseQuaternions.get(bone.name);
       if (!accumulated) {
         baseQuaternions.set(bone.name, bone.quaternion.clone());
+        firstQuaternions.set(bone.name, bone.quaternion.clone());
       } else {
         if (accumulated.dot(bone.quaternion) < 0) {
           sampleQuat.set(
@@ -185,7 +193,23 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
       }
     });
   });
-  baseQuaternions.forEach((quaternion) => quaternion.normalize());
+  // The wrists and fingers pass through very different poses across the walk
+  // cycle, so averaging them collapses the hand into a splayed, palm-forward
+  // shape that reads as a mannequin's. They keep the first sampled pose — a
+  // relaxed hanging hand — while every other bone takes the average.
+  const handTwist = new THREE.Quaternion();
+  const handAxis = new THREE.Vector3(0, 1, 0);
+  baseQuaternions.forEach((quaternion, name) => {
+    if (/Hand/.test(name)) {
+      const first = firstQuaternions.get(name);
+      if (!first) return;
+      quaternion.copy(first);
+      handTwist.setFromAxisAngle(handAxis, name.startsWith("Left") ? HAND_TWIST : -HAND_TWIST);
+      quaternion.multiply(handTwist);
+    } else {
+      quaternion.normalize();
+    }
+  });
   basePositions.forEach((position) => position.multiplyScalar(1 / sampleTimes.length));
 
   // A five-beat breathing cycle reads more naturally than the old three-frame
@@ -283,7 +307,7 @@ const SKIN_BAND = { y0: 0.605, y1: 0.72, halfWidth: 0.076 };
 // painted”. Rebuilding the panel in the fragment shader, from the bind-pose
 // position, gives an edge that is crisp at any zoom while still deforming with
 // the rig, because the mask lives in bind space and rides the skin transform.
-const TEE_V = { y0: -0.030, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
+const TEE_V = { y0: -0.065, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
 // The t-shirt neckline rises from a shallow dip at the sternum up to the
 // shoulders instead of a flat cut straight across the chest.
 const TEE_NECK_DROP = 0.042;
@@ -1107,9 +1131,11 @@ export default function CinematicIntro({ onComplete }: Props) {
         return;
       }
 
-      adductWalkClip(walkClip);
+      const idleSource = walkClip.clone();
+      adductWalkClip(idleSource, IDLE_ADDUCTION);
+      adductWalkClip(walkClip, WALK_ADDUCTION);
 
-      const idleClip = createIdleClip(character, walkClip);
+      const idleClip = createIdleClip(character, idleSource);
       const mixer = new THREE.AnimationMixer(character);
       const walkAction = mixer.clipAction(walkClip);
       const idleAction = mixer.clipAction(idleClip);
