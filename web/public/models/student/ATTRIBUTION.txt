@@ -19,10 +19,11 @@ Modifications made for JobHunt India:
   texture space, so sampling it directly produced brown “tears” and dark flecks. The
   runtime now splits the body geometry into clean materials: a blue bomber, navy jeans, a
   white t-shirt and a feathered skin tint around the neck. The neck boundary is a
-  per-vertex colour blend; the t-shirt panel is masked per fragment in the jacket shader, from
-  the bind-pose position, so its edge stays crisp instead of following the chest's coarse
-  triangle size. Head, hair, beard, hands and white sneakers keep the original textured
-  atlas.
+  per-vertex colour blend; the t-shirt panel and the collar skin band are masked per fragment
+  in the body shader, from the bind-pose position, so their edges stay crisp instead of
+  following the chest's coarse triangle size. The tee mask also runs on the jeans material,
+  because the shirt hem drops below the jacket onto the front of the hips. Head, hair, beard,
+  hands and white sneakers keep the original textured atlas.
 - Textured material finish: `metalness: 0`, roughness `0.86`, normal scale `0.38`,
   environment intensity `0.42`. Clothing groups use matte `MeshStandardMaterial` with
   per-vertex colours and dithering.
@@ -33,6 +34,10 @@ Modifications made for JobHunt India:
 - Non-essential runtime geometry (the earlier 3D glasses) removed so the face reads cleanly.
 - A breathing idle clip generated from a neutral walk pose at runtime.
 - The walk clip is speed-matched to the 1.8 m travel cycle so the feet do not slide.
+- The stock walk plants the feet about 33 cm apart, which read as a waddle. The runtime
+  adducts both upper-leg tracks by 10 degrees (about the forward axis) so the feet pass
+  under the body about 12 cm apart, matching the reference footage, before the idle pose is
+  sampled from the clip.
 
 The source asset is a stylized character, not a photoreal scan. Visually it remains a
 bearded adult in a technical bomber jacket, not a hoodie. It has no facial blendshapes,

@@ -113,6 +113,28 @@ function travelProfile(elapsed: number, distance: number) {
   };
 }
 
+// The stock walk clip plants the feet about 33 cm apart, which reads as a
+// waddle next to the reference footage. The legs are adducted — rotated inward
+// about the forward axis — to bring the feet under the body, ~12 cm apart.
+// The correction is baked into the clip's own keys, before createIdleClip
+// samples them, so the standing stance narrows to match.
+const LEG_ADDUCTION = -10 * (Math.PI / 180);
+function adductWalkClip(clip: THREE.AnimationClip): void {
+  const forward = new THREE.Vector3(0, 0, 1);
+  const correction = new THREE.Quaternion();
+  const quaternion = new THREE.Quaternion();
+  for (const track of clip.tracks) {
+    const match = /(Left|Right)UpLeg\.quaternion$/.exec(track.name);
+    if (!match) continue;
+    correction.setFromAxisAngle(forward, (match[1] === "Left" ? 1 : -1) * LEG_ADDUCTION);
+    for (let i = 0; i < track.values.length; i += 4) {
+      quaternion.fromArray(track.values, i);
+      quaternion.premultiply(correction);
+      quaternion.toArray(track.values, i);
+    }
+  }
+}
+
 function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): THREE.AnimationClip {
   const sampleMixer = new THREE.AnimationMixer(root);
   const sampleAction = sampleMixer.clipAction(walkClip);
@@ -237,50 +259,53 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
 // 0.9. The values in these helpers were measured directly from the GLB
 // position data so the shapes hug the real mesh instead of guessing.
 
-// The raw mesh has a 5-ish cm band around the neck base where the head skin
-// and the jacket collar interleave jaggedly (measured: red dips to raw y 0.633
-// while the collar peaks at 0.695). Any overlay tall enough to cover that band
-// reads as a turtleneck — the “jacket clubbed with neck” complaint. Instead,
-// the collar vertices in this band are tinted with the face skin tone
-// (#d99479) and feathered into the jacket, so the seam becomes a soft skin
-// transition into the collar below raw y 0.618 without a material-group edge.
-const NECK_SEAM_BAND = { y0: 0.618, y1: 0.718, halfWidth: 0.07 };
+// The head, hair and neck keep the original textured material, but the neck's
+// bottom edge meets the jacket collar along a jagged, interleaved seam: the two
+// material groups weave in and out over roughly five centimetres, and the neck
+// triangles there sample dark islands of the scrambled atlas, so the seam read
+// as black spikes under the jaw. Neck and collar are both skin, so the seam is
+// hidden by painting the whole band with the flat skin tone (#d99479). That
+// paint is evaluated per fragment and applied to the textured material as well
+// as to the jacket, so it covers the dark spikes and the boundary between the
+// two materials disappears instead of stepping. The old per-vertex tint could
+// only change at the collar's coarse vertices and left a blotchy patch.
+const SKIN_BAND = { y0: 0.605, y1: 0.72, halfWidth: 0.076 };
 
-// The jacket front only parts in a shallow V under the collar, so a separate
-// floating shirt mesh either hid behind the lapels or clipped through them.
-// The tee is therefore painted onto the jacket's own front surface inside that
-// V. Raw-y bounds: a point at the sternum widening to the neck.
+// The jacket is modelled closed, so the t-shirt cannot be revealed by opening
+// it: the shirt is painted onto the jacket's own front surface instead, as a
+// full panel from the collar down to the hem, with its sides where the jacket's
+// front edges are. Raw-y bounds: hem to collar.
 //
-// The tint is evaluated per fragment, not per vertex. The chest is coarse — a
-// handful of very large triangles — so a per-vertex tint could only change at
+// The mask is evaluated per fragment, not per vertex. The chest is coarse — a
+// handful of very large triangles — so a per-vertex mask could only change at
 // those vertices, and the rasteriser then blended it linearly across each huge
 // triangle. The shirt came out as a soft, ragged starburst that read as “half
-// painted”. Rebuilding the same V in the fragment shader, from the bind-pose
+// painted”. Rebuilding the panel in the fragment shader, from the bind-pose
 // position, gives an edge that is crisp at any zoom while still deforming with
 // the rig, because the mask lives in bind space and rides the skin transform.
-const TEE_V = { y0: -0.01, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
+const TEE_V = { y0: -0.030, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
 // The t-shirt neckline rises from a shallow dip at the sternum up to the
 // shoulders instead of a flat cut straight across the chest.
 const TEE_NECK_DROP = 0.042;
-// The tee only faces the camera on the front of the torso, so the mask is
-// gated on the bind-pose normal. Without it the same x/y window also catches
-// the back and paints a matching white V between the shoulder blades, which
-// the character shows the moment it turns to walk toward the role gates. The
-// threshold sits at zero rather than higher: the jacket's front-facing folded
-// edges, which the open collar exposes at the sides of the V, have normals
-// only just past the surface, and cutting them off left blue gaps in the white.
-const TEE_FACING = { nz0: 0.0, nz1: 0.02 };
+// The shirt only faces the camera on the front of the torso, so the mask is
+// limited to the forward half of the bind-pose depth. Without it the same x/y
+// window also catches the back and paints a matching white panel between the
+// shoulder blades, which the character shows the moment it turns to walk
+// toward the role gates. The threshold sits at zero rather than higher so the
+// jacket's front-facing folded edges, exposed at the sides of the collar, still
+// read as shirt instead of leaving blue gaps in the white.
+const TEE_FACING = { z0: 0.0, z1: 0.02 };
 
 // The source atlas is not a coherent garment layout: jacket triangles sample
 // hair, skin and knit-top islands, which is what produced the brown seam
 // “tears” and the dark flecks on the white top. Rather than keep chasing UVs,
 // the body clothing gets clean stylized materials. Head, hands and shoes keep
 // the original textured material so the face, hair, beard and skin detail stay.
-// The upper body is rendered as a clean blue bomber with navy jeans. The neck
-// seam is feathered with a vertex skin tint (NECK_SEAM_BAND) so the collar reads
-// as separate from the neck, and the jacket's V opening is tinted white for the
-// t-shirt (TEE_V). Both boundaries blend per vertex, so they stay soft in
-// close-up instead of following triangle edges.
+// The upper body is rendered as a clean blue bomber with navy jeans. The white
+// t-shirt (TEE_V) and the skin collar band (SKIN_BAND) are both painted in the
+// fragment shader — on the textured material as well as on the jacket — so
+// their edges stay crisp at any zoom instead of following the coarse triangle
+// edges the way a per-vertex tint did.
 function installCleanClothing(model: THREE.Object3D): void {
   model.traverse((object) => {
     const mesh = object as THREE.Mesh;
@@ -350,30 +375,12 @@ function installCleanClothing(model: THREE.Object3D): void {
     if (groups[1].length + groups[2].length === 0) return;
 
     const jacketColour = new THREE.Color(0x275285);
-    const skinColour = new THREE.Color(0xd99479);
     const vertexColour = new THREE.Color();
     const colours = new Float32Array(position.count * 3);
     for (let vertex = 0; vertex < position.count; vertex += 1) {
-      const x = position.getX(vertex);
-      const y = position.getY(vertex);
-      const z = position.getZ(vertex);
-
-      // The neck band replaces the old flat-skin material group. Painting the
-      // collar vertices skin and feathering into the jacket removes the hard
-      // pink sawtooth that material boundaries left at the collar.
-      const skinAcross = smoothstep(
-        clamp((NECK_SEAM_BAND.halfWidth - Math.abs(x)) / 0.005),
-      );
-      const skinBottom = smoothstep(
-        clamp((y - (NECK_SEAM_BAND.y0 - 0.006)) / 0.006),
-      );
-      const skinTop = smoothstep(clamp((NECK_SEAM_BAND.y1 - y) / 0.006));
-      const skinFront = z > -0.005 ? 1 : 0;
-      const skinMask = skinAcross * skinBottom * skinTop * skinFront;
-
-      // The tee is painted in the fragment shader (below), so the vertex
-      // colours only carry the jacket base and the feathered skin collar.
-      vertexColour.copy(jacketColour).lerp(skinColour, skinMask);
+      // Jacket base only. The skin collar and the tee are both painted in the
+      // fragment shader below, so nothing here needs to know about them.
+      vertexColour.copy(jacketColour);
       vertexColour.toArray(colours, vertex * 3);
     }
     geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
@@ -412,20 +419,20 @@ function installCleanClothing(model: THREE.Object3D): void {
           TEE_V.topHalfWidth,
         ),
       },
-      uTeeFacing: { value: new THREE.Vector2(TEE_FACING.nz0, TEE_FACING.nz1) },
+      uTeeFacing: { value: new THREE.Vector2(TEE_FACING.z0, TEE_FACING.z1) },
       uTeeNeck: { value: TEE_NECK_DROP },
       uTeeColour: { value: new THREE.Color(0xffffff) },
+      uSkinBounds: {
+        value: new THREE.Vector3(SKIN_BAND.y0, SKIN_BAND.y1, SKIN_BAND.halfWidth),
+      },
+      uSkinColour: { value: new THREE.Color(0xd99479) },
     };
     jacket.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, teeUniforms);
       shader.vertexShader = shader.vertexShader
         .replace(
           "#include <common>",
-          "#include <common>\nvarying vec3 vTeePos;\nvarying vec3 vTeeNormal;",
-        )
-        .replace(
-          "#include <beginnormal_vertex>",
-          "#include <beginnormal_vertex>\n\tvTeeNormal = objectNormal;",
+          "#include <common>\nvarying vec3 vTeePos;",
         )
         .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvTeePos = position;");
       shader.fragmentShader = shader.fragmentShader
@@ -434,11 +441,12 @@ function installCleanClothing(model: THREE.Object3D): void {
           [
             "#include <common>",
             "varying vec3 vTeePos;",
-            "varying vec3 vTeeNormal;",
             "uniform vec4 uTeeBounds;",
             "uniform vec2 uTeeFacing;",
             "uniform float uTeeNeck;",
             "uniform vec3 uTeeColour;",
+            "uniform vec3 uSkinBounds;",
+            "uniform vec3 uSkinColour;",
           ].join("\n"),
         )
         .replace(
@@ -458,12 +466,18 @@ function installCleanClothing(model: THREE.Object3D): void {
             "\tfloat teeBottom = smoothstep(teeY0 - teeAAy, teeY0 + teeAAy, vTeePos.y);",
             "\tfloat teeFacing = smoothstep(uTeeFacing.x, uTeeFacing.x + uTeeFacing.y, vTeePos.z);",
             "\tfloat teeMask = teeAcross * teeTop * teeBottom * teeFacing;",
+            "\tfloat skinAcross = 1.0 - smoothstep(uSkinBounds.z - teeAAx, uSkinBounds.z + teeAAx, abs(vTeePos.x));",
+            "\tfloat skinBottom = smoothstep(uSkinBounds.x - teeAAy, uSkinBounds.x + teeAAy, vTeePos.y);",
+            "\tfloat skinTop = 1.0 - smoothstep(uSkinBounds.y - teeAAy, uSkinBounds.y + teeAAy, vTeePos.y);",
+            "\tfloat skinFront = smoothstep(-0.07, 0.0, vTeePos.z);",
+            "\tfloat skinMask = skinAcross * skinBottom * skinTop * skinFront;",
+            "\tdiffuseColor.rgb = mix(diffuseColor.rgb, uSkinColour, skinMask);",
             "\tdiffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour, teeMask);",
             "}",
           ].join("\n"),
         );
     };
-    jacket.customProgramCacheKey = () => "tee-v-mask";
+    jacket.customProgramCacheKey = () => "body-mask";
     const pants = new THREE.MeshStandardMaterial({
       color: 0x1b2b4a,
       roughness: 0.94,
@@ -472,6 +486,13 @@ function installCleanClothing(model: THREE.Object3D): void {
       side: THREE.DoubleSide,
       dithering: true,
     });
+    // The shirt hem drops below the jacket onto the front of the hips (the
+    // jeans group), and the skin collar band has to cover the neck's textured
+    // triangles as well, so the same fragment masks run on every body material.
+    for (const material of [main, pants]) {
+      material.onBeforeCompile = jacket.onBeforeCompile;
+      material.customProgramCacheKey = () => "body-mask";
+    }
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
     geometry.clearGroups();
     groups.forEach((group, groupIndex) => {
@@ -1085,6 +1106,8 @@ export default function CinematicIntro({ onComplete }: Props) {
         setFailed(true);
         return;
       }
+
+      adductWalkClip(walkClip);
 
       const idleClip = createIdleClip(character, walkClip);
       const mixer = new THREE.AnimationMixer(character);
