@@ -248,13 +248,28 @@ const NECK_SEAM_BAND = { y0: 0.618, y1: 0.718, halfWidth: 0.07 };
 
 // The jacket front only parts in a shallow V under the collar, so a separate
 // floating shirt mesh either hid behind the lapels or clipped through them.
-// Instead the jacket's own vertices are tinted white inside that V. A material
-// group split left a hard, triangular sawtooth edge that read as a tear in
-// close-up; blending the tint per vertex keeps the shirt edge soft while the
-// geometry still deforms with the rig. Raw-y bounds: a point at the sternum
-// widening to the neck.
-const TEE_V = { y0: 0.45, y1: 0.618, bottomHalfWidth: 0.018, topHalfWidth: 0.09 };
-const TEE_FEATHER = 0.008;
+// The tee is therefore painted onto the jacket's own front surface inside that
+// V. Raw-y bounds: a point at the sternum widening to the neck.
+//
+// The tint is evaluated per fragment, not per vertex. The chest is coarse — a
+// handful of very large triangles — so a per-vertex tint could only change at
+// those vertices, and the rasteriser then blended it linearly across each huge
+// triangle. The shirt came out as a soft, ragged starburst that read as “half
+// painted”. Rebuilding the same V in the fragment shader, from the bind-pose
+// position, gives an edge that is crisp at any zoom while still deforming with
+// the rig, because the mask lives in bind space and rides the skin transform.
+const TEE_V = { y0: -0.01, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
+// The t-shirt neckline rises from a shallow dip at the sternum up to the
+// shoulders instead of a flat cut straight across the chest.
+const TEE_NECK_DROP = 0.042;
+// The tee only faces the camera on the front of the torso, so the mask is
+// gated on the bind-pose normal. Without it the same x/y window also catches
+// the back and paints a matching white V between the shoulder blades, which
+// the character shows the moment it turns to walk toward the role gates. The
+// threshold sits at zero rather than higher: the jacket's front-facing folded
+// edges, which the open collar exposes at the sides of the V, have normals
+// only just past the surface, and cutting them off left blue gaps in the white.
+const TEE_FACING = { nz0: 0.0, nz1: 0.02 };
 
 // The source atlas is not a coherent garment layout: jacket triangles sample
 // hair, skin and knit-top islands, which is what produced the brown seam
@@ -307,23 +322,6 @@ function installCleanClothing(model: THREE.Object3D): void {
       }
     }
 
-    // Smooth white tee tint inside the V. The falloff is a few centimetres so
-    // the neckline reads as fabric in shadow, not a paint boundary.
-    const teeMasks = new Float32Array(position.count);
-    for (let vertex = 0; vertex < position.count; vertex += 1) {
-      const x = position.getX(vertex);
-      const y = position.getY(vertex);
-      const z = position.getZ(vertex);
-      const taper = clamp((y - TEE_V.y0) / (TEE_V.y1 - TEE_V.y0));
-      const halfWidth =
-        TEE_V.bottomHalfWidth + (TEE_V.topHalfWidth - TEE_V.bottomHalfWidth) * taper;
-      const across = smoothstep(clamp((halfWidth - Math.abs(x)) / TEE_FEATHER));
-      const top = smoothstep(clamp((TEE_V.y1 - y) / 0.008));
-      const bottom = smoothstep(clamp((y - TEE_V.y0) / 0.008));
-      const front = z > 0.003 ? 1 : 0;
-      teeMasks[vertex] = across * top * bottom * front;
-    }
-
     const groups: number[][] = [[], [], []];
     const original = source.array;
     const triangles = Math.floor(original.length / 3);
@@ -352,7 +350,6 @@ function installCleanClothing(model: THREE.Object3D): void {
     if (groups[1].length + groups[2].length === 0) return;
 
     const jacketColour = new THREE.Color(0x275285);
-    const teeColour = new THREE.Color(0xffffff);
     const skinColour = new THREE.Color(0xd99479);
     const vertexColour = new THREE.Color();
     const colours = new Float32Array(position.count * 3);
@@ -360,7 +357,6 @@ function installCleanClothing(model: THREE.Object3D): void {
       const x = position.getX(vertex);
       const y = position.getY(vertex);
       const z = position.getZ(vertex);
-      const teeMask = teeMasks[vertex];
 
       // The neck band replaces the old flat-skin material group. Painting the
       // collar vertices skin and feathering into the jacket removes the hard
@@ -375,10 +371,9 @@ function installCleanClothing(model: THREE.Object3D): void {
       const skinFront = z > -0.005 ? 1 : 0;
       const skinMask = skinAcross * skinBottom * skinTop * skinFront;
 
-      vertexColour
-        .copy(jacketColour)
-        .lerp(teeColour, teeMask)
-        .lerp(skinColour, skinMask);
+      // The tee is painted in the fragment shader (below), so the vertex
+      // colours only carry the jacket base and the feathered skin collar.
+      vertexColour.copy(jacketColour).lerp(skinColour, skinMask);
       vertexColour.toArray(colours, vertex * 3);
     }
     geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
@@ -403,6 +398,72 @@ function installCleanClothing(model: THREE.Object3D): void {
       side: THREE.DoubleSide,
       dithering: true,
     });
+    // The tee mask, evaluated per fragment. The bind-pose position and normal
+    // are carried to the fragment stage and the V is rebuilt there, so the
+    // neckline is antialiased against the real pixel footprint (fwidth) rather
+    // than against the mesh's triangle size. Nothing else about the material
+    // changes: the jacket base and skin collar still arrive as vertex colours.
+    const teeUniforms = {
+      uTeeBounds: {
+        value: new THREE.Vector4(
+          TEE_V.y0,
+          TEE_V.y1,
+          TEE_V.bottomHalfWidth,
+          TEE_V.topHalfWidth,
+        ),
+      },
+      uTeeFacing: { value: new THREE.Vector2(TEE_FACING.nz0, TEE_FACING.nz1) },
+      uTeeNeck: { value: TEE_NECK_DROP },
+      uTeeColour: { value: new THREE.Color(0xffffff) },
+    };
+    jacket.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, teeUniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          "#include <common>\nvarying vec3 vTeePos;\nvarying vec3 vTeeNormal;",
+        )
+        .replace(
+          "#include <beginnormal_vertex>",
+          "#include <beginnormal_vertex>\n\tvTeeNormal = objectNormal;",
+        )
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvTeePos = position;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          [
+            "#include <common>",
+            "varying vec3 vTeePos;",
+            "varying vec3 vTeeNormal;",
+            "uniform vec4 uTeeBounds;",
+            "uniform vec2 uTeeFacing;",
+            "uniform float uTeeNeck;",
+            "uniform vec3 uTeeColour;",
+          ].join("\n"),
+        )
+        .replace(
+          "#include <color_fragment>",
+          [
+            "#include <color_fragment>",
+            "{",
+            "\tfloat teeY0 = uTeeBounds.x;",
+            "\tfloat teeY1 = uTeeBounds.y;",
+            "\tfloat teeTaper = clamp((vTeePos.y - teeY0) / max(teeY1 - teeY0, 1e-4), 0.0, 1.0);",
+            "\tfloat teeHalf = mix(uTeeBounds.z, uTeeBounds.w, teeTaper);",
+            "\tfloat teeAAx = max(fwidth(vTeePos.x), 1e-4);",
+            "\tfloat teeAAy = max(fwidth(vTeePos.y), 1e-4);",
+            "\tfloat teeAcross = 1.0 - smoothstep(teeHalf - teeAAx, teeHalf + teeAAx, abs(vTeePos.x));",
+            "\tfloat teeNeck = teeY1 - uTeeNeck * (1.0 - clamp(abs(vTeePos.x) / max(teeHalf, 1e-4), 0.0, 1.0));",
+            "\tfloat teeTop = 1.0 - smoothstep(teeNeck - teeAAy, teeNeck + teeAAy, vTeePos.y);",
+            "\tfloat teeBottom = smoothstep(teeY0 - teeAAy, teeY0 + teeAAy, vTeePos.y);",
+            "\tfloat teeFacing = smoothstep(uTeeFacing.x, uTeeFacing.x + uTeeFacing.y, vTeePos.z);",
+            "\tfloat teeMask = teeAcross * teeTop * teeBottom * teeFacing;",
+            "\tdiffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour, teeMask);",
+            "}",
+          ].join("\n"),
+        );
+    };
+    jacket.customProgramCacheKey = () => "tee-v-mask";
     const pants = new THREE.MeshStandardMaterial({
       color: 0x1b2b4a,
       roughness: 0.94,

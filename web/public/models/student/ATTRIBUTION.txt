@@ -18,9 +18,11 @@ Modifications made for JobHunt India:
 - The source atlas has scrambled garment UV islands: jacket, knit top, hair and skin share
   texture space, so sampling it directly produced brown “tears” and dark flecks. The
   runtime now splits the body geometry into clean materials: a blue bomber, navy jeans, a
-  white V-neck t-shirt and a feathered skin tint around the neck. The neck and t-shirt
-  boundaries are per-vertex colour blends rather than hard collar bands. Head, hair, beard,
-  hands and white sneakers keep the original textured atlas.
+  white t-shirt and a feathered skin tint around the neck. The neck boundary is a
+  per-vertex colour blend; the t-shirt panel is masked per fragment in the jacket shader, from
+  the bind-pose position, so its edge stays crisp instead of following the chest's coarse
+  triangle size. Head, hair, beard, hands and white sneakers keep the original textured
+  atlas.
 - Textured material finish: `metalness: 0`, roughness `0.86`, normal scale `0.38`,
   environment intensity `0.42`. Clothing groups use matte `MeshStandardMaterial` with
   per-vertex colours and dithering.
@@ -34,7 +36,7 @@ Modifications made for JobHunt India:
 
 The source asset is a stylized character, not a photoreal scan. Visually it remains a
 bearded adult in a technical bomber jacket, not a hoodie. It has no facial blendshapes,
-eye rig, or lip-sync animation. The white t-shirt V and neck tint are clean
-material/vertex-colour treatments, not re-authored garment topology; the walk and run clips are
+eye rig, or lip-sync animation. The white t-shirt panel and neck tint are clean
+material and shader treatments, not re-authored garment topology; the walk and run clips are
 the only animation clips shipped in the GLB. This limitation is documented in
 docs/IMPLEMENTATION.md and is not disguised as a final facial-rigged asset.
