@@ -114,12 +114,14 @@ function travelProfile(elapsed: number, distance: number) {
 }
 
 // The stock walk clip plants the feet about 33 cm apart, which reads as a
-// waddle next to the reference footage. The legs are adducted — rotated inward
-// about the forward axis — to bring the feet under the body. Walking wants the
-// feet tracking close together (~12 cm), but standing wants a settled male
-// stance (~22 cm), so the walk and the idle get different angles: the idle is
-// sampled from a lightly adducted copy of the clip.
-const WALK_ADDUCTION = -10 * (Math.PI / 180);
+// waddle. The legs are adducted — rotated inward about the forward axis — to
+// bring the feet under the body. The angle is deliberately small: adduction
+// tilts the whole leg inward from the hip, so pushing it far enough to get the
+// feet really close (the first attempt used 10 degrees, ~12 cm) made the legs
+// converge and twist, which read as a curvy, feminine gait. Four degrees keeps
+// them parallel and vertical at ~25 cm, a straight, settled male walk. Standing
+// wants a touch narrower, so the idle is sampled from a 6 degree copy.
+const WALK_ADDUCTION = -4 * (Math.PI / 180);
 const IDLE_ADDUCTION = -6 * (Math.PI / 180);
 // The relaxed standing hands come out of the clip with the palms facing
 // forward, which reads as a mannequin showing its palms. Twisting each wrist

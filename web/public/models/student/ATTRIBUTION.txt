@@ -35,10 +35,11 @@ Modifications made for JobHunt India:
 - A breathing idle clip generated from a neutral walk pose at runtime.
 - The walk clip is speed-matched to the 1.8 m travel cycle so the feet do not slide.
 - The stock walk plants the feet about 33 cm apart, which read as a waddle. The runtime
-  adducts both upper-leg tracks about the forward axis so the feet pass under the body: 10
-  degrees for the walk (~12 cm apart, matching the reference footage) and 6 degrees for the
-  idle, which is sampled from a lightly adducted copy so the standing stance stays a settled
-  male width (~22 cm).
+  adducts both upper-leg tracks about the forward axis so the feet pass under the body: 4
+  degrees for the walk (~25 cm apart) and 6 degrees for the idle, which is sampled from a
+  lightly adducted copy so the standing stance stays a settled male width (~22 cm). The angle
+  is kept small on purpose — adduction tilts the whole leg inward, and a larger angle made
+  the legs converge and twist into a curvy, feminine gait.
 - The idle hands take the first sampled walk pose rather than the average of the four. The
   wrists and fingers swing through very different poses across the cycle, so averaging them
   collapsed the hand into a splayed, palm-forward shape. Each wrist is then twisted 45
