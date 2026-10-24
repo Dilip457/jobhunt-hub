@@ -1,0 +1,54 @@
+{
+ "generated_at": "2026-10-24T23:49:30+00:00",
+ "roles": {
+  "genai": {
+   "role": "genai",
+   "count": 1484,
+   "generated_at": "2026-10-24T23:33:14+00:00",
+   "sources": {
+    "LinkedIn": 368,
+    "Shine": 315,
+    "Naukri": 234,
+    "SimplyHired": 229,
+    "Indeed": 189,
+    "Foundit": 107,
+    "Company Career Pages": 41,
+    "Remotive": 1
+   },
+   "demo": false,
+   "status": "merged"
+  },
+  "data": {
+   "role": "data",
+   "count": 1744,
+   "generated_at": "2026-10-24T23:39:09+00:00",
+   "sources": {
+    "LinkedIn": 486,
+    "Shine": 336,
+    "Naukri": 278,
+    "SimplyHired": 256,
+    "Indeed": 187,
+    "Foundit": 177,
+    "Company Career Pages": 24
+   },
+   "demo": false,
+   "status": "merged"
+  },
+  "uiux": {
+   "role": "uiux",
+   "count": 1702,
+   "generated_at": "2026-10-24T23:45:32+00:00",
+   "sources": {
+    "LinkedIn": 736,
+    "Shine": 307,
+    "Naukri": 232,
+    "SimplyHired": 212,
+    "Indeed": 143,
+    "Foundit": 68,
+    "Company Career Pages": 4
+   },
+   "demo": false,
+   "status": "merged"
+  }
+ }
+}
