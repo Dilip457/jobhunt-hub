@@ -285,173 +285,6 @@ function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): TH
 // 0.9. The values in these helpers were measured directly from the GLB
 // position data so the shapes hug the real mesh instead of guessing.
 
-// The sleep console. It slides in from the side while the role cards are up and
-// the guide leans on it — forearms on the top, head down on his arms. `front`
-// and `handX` are local to the guide, `top` is the surface height.
-const CONSOLE = {
-  top: 1.12,
-  front: 0.44,
-  width: 1.62,
-  depth: 0.5,
-  handX: 0.15,
-  slideFrom: 5.6,
-  slideSeconds: 0.85,
-};
-
-// The fold that turns the relaxed idle into the lean, as degrees about each
-// bone's own axes. The arms are deliberately absent: they are solved by IK so
-// the hands land on the console top whatever its height, because hand-authoring
-// the arm angles fought the bone frames — the arm's local X flips direction
-// once the shoulder has been rotated by the torso fold.
-const SLEEP_POSE: Record<string, [number, number, number]> = {
-  Spine: [24, 0, 0],
-  Spine01: [20, 0, 0],
-  Spine02: [14, 0, 0],
-  neck: [38, 0, 0],
-  Head: [22, 0, 0],
-  LeftUpLeg: [-16, 0, 0],
-  RightUpLeg: [-16, 0, 0],
-  LeftLeg: [22, 0, 0],
-  RightLeg: [22, 0, 0],
-};
-
-// Aim a bone so the joint it drives points at a world target.
-const aimFrom = new THREE.Vector3();
-const aimTo = new THREE.Vector3();
-const aimWanted = new THREE.Vector3();
-const aimRotate = new THREE.Quaternion();
-const aimParent = new THREE.Quaternion();
-function aimBone(bone: THREE.Bone, target: THREE.Vector3): void {
-  bone.updateMatrixWorld(true);
-  bone.getWorldPosition(aimFrom);
-  let child: THREE.Object3D | null = null;
-  bone.children.forEach((candidate) => {
-    if (!child && (candidate as THREE.Bone).isBone) child = candidate;
-  });
-  if (!child) return;
-  (child as THREE.Object3D).getWorldPosition(aimTo);
-  aimTo.sub(aimFrom).normalize();
-  aimWanted.copy(target).sub(aimFrom).normalize();
-  aimRotate.setFromUnitVectors(aimTo, aimWanted);
-  bone.parent?.getWorldQuaternion(aimParent);
-  const local = aimParent.clone().invert().multiply(aimRotate).multiply(aimParent);
-  bone.quaternion.premultiply(local);
-  bone.updateMatrixWorld(true);
-}
-
-// Two-bone IK: put the hand on a world target by aiming the upper arm at a
-// solved elbow and the forearm at the target.
-function solveArm(root: THREE.Object3D, side: "Left" | "Right", target: THREE.Vector3): void {
-  const upper = root.getObjectByName(`${side}Arm`) as THREE.Bone | undefined;
-  const fore = root.getObjectByName(`${side}ForeArm`) as THREE.Bone | undefined;
-  const hand = root.getObjectByName(`${side}Hand`) as THREE.Bone | undefined;
-  if (!upper || !fore || !hand) return;
-  root.updateMatrixWorld(true);
-  const shoulder = new THREE.Vector3();
-  upper.getWorldPosition(shoulder);
-  const elbowNow = new THREE.Vector3();
-  fore.getWorldPosition(elbowNow);
-  const handNow = new THREE.Vector3();
-  hand.getWorldPosition(handNow);
-  const upperLength = shoulder.distanceTo(elbowNow);
-  const foreLength = elbowNow.distanceTo(handNow);
-  const toHand = target.clone().sub(shoulder);
-  const reach = Math.min(
-    Math.max(toHand.length(), Math.abs(upperLength - foreLength) + 0.005),
-    upperLength + foreLength - 0.005,
-  );
-  const direction = toHand.normalize();
-  const cosElbow = clamp(
-    (upperLength * upperLength + reach * reach - foreLength * foreLength) /
-      (2 * upperLength * reach),
-    -1,
-    1,
-  );
-  const elbowAngle = Math.acos(cosElbow);
-  // Keep the elbows out to the sides and a little back, so the pose reads as
-  // leaning on the console rather than reaching across it.
-  const pole = new THREE.Vector3(side === "Left" ? 1 : -1, -0.3, -0.55).normalize();
-  const perpendicular = pole.clone().sub(direction.clone().multiplyScalar(pole.dot(direction)));
-  if (perpendicular.lengthSq() < 1e-6) perpendicular.set(0, -1, 0);
-  perpendicular.normalize();
-  const elbow = shoulder
-    .clone()
-    .add(direction.clone().multiplyScalar(Math.cos(elbowAngle) * upperLength))
-    .add(perpendicular.multiplyScalar(Math.sin(elbowAngle) * upperLength));
-  aimBone(upper, elbow);
-  aimBone(fore, target);
-}
-
-// Build the leaning-sleep pose as a clip: fold the idle, solve the arms onto
-// the console, then hold it with a slow breathing cycle so the sleep is not a
-// statue. Sampled in the guide's resting transform, so the captured bone
-// rotations stay correct wherever the guide is later placed.
-function createSleepClip(
-  root: THREE.Object3D,
-  baseClip: THREE.AnimationClip,
-  targets: { left: THREE.Vector3; right: THREE.Vector3 },
-): THREE.AnimationClip {
-  const sampler = new THREE.AnimationMixer(root);
-  const sample = sampler.clipAction(baseClip);
-  sample.play();
-  sampler.setTime(0);
-  root.updateMatrixWorld(true);
-
-  const bones: THREE.Bone[] = [];
-  root.traverse((object) => {
-    const bone = object as THREE.Bone;
-    if (bone.isBone) bones.push(bone);
-  });
-
-  const euler = new THREE.Euler();
-  const delta = new THREE.Quaternion();
-  bones.forEach((bone) => {
-    const angles = SLEEP_POSE[bone.name];
-    if (!angles) return;
-    euler.set(
-      (angles[0] * Math.PI) / 180,
-      (angles[1] * Math.PI) / 180,
-      (angles[2] * Math.PI) / 180,
-      "XYZ",
-    );
-    delta.setFromEuler(euler);
-    bone.quaternion.multiply(delta);
-  });
-  root.updateMatrixWorld(true);
-  solveArm(root, "Left", targets.left);
-  solveArm(root, "Right", targets.right);
-  root.updateMatrixWorld(true);
-
-  const pose = new Map<string, THREE.Quaternion>();
-  bones.forEach((bone) => pose.set(bone.name, bone.quaternion.clone()));
-  sampler.uncacheRoot(root);
-
-  const duration = 6.4;
-  const frames = [0, duration * 0.25, duration * 0.5, duration * 0.75, duration];
-  const breath = new THREE.Quaternion();
-  const breathEuler = new THREE.Euler();
-  const tracks: THREE.KeyframeTrack[] = [];
-  bones.forEach((bone) => {
-    const base = pose.get(bone.name);
-    if (!base) return;
-    const moves = bone.name === "Spine01" || bone.name === "Spine02" ||
-      bone.name === "neck" || bone.name === "Head";
-    const values: number[] = [];
-    frames.forEach((time) => {
-      const phase = (time / duration) * Math.PI * 2;
-      const quaternion = base.clone();
-      if (moves) {
-        breathEuler.set(0.014 * (0.5 - 0.5 * Math.cos(phase)), 0, 0);
-        breath.setFromEuler(breathEuler);
-        quaternion.multiply(breath);
-      }
-      values.push(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
-    });
-    tracks.push(new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, frames, values));
-  });
-  return new THREE.AnimationClip("student-sleep", duration, tracks);
-}
-
 // The head, hair and neck keep the original textured material, but the neck's
 // bottom edge meets the jacket collar along a jagged, interleaved seam: the two
 // material groups weave in and out over roughly five centimetres, and the neck
@@ -1310,70 +1143,17 @@ export default function CinematicIntro({ onComplete }: Props) {
       const mixer = new THREE.AnimationMixer(character);
       const walkAction = mixer.clipAction(walkClip);
       const idleAction = mixer.clipAction(idleClip);
-      // The sleep pose is solved against the console in the guide's resting
-      // transform (origin, facing +z), so the captured bone rotations hold
-      // wherever the guide is later placed.
-      const sleepClip = createSleepClip(character, idleSource, {
-        left: new THREE.Vector3(CONSOLE.handX, GROUND_Y + CONSOLE.top + 0.035, CONSOLE.front),
-        right: new THREE.Vector3(-CONSOLE.handX, GROUND_Y + CONSOLE.top + 0.035, CONSOLE.front),
-      });
-      const sleepAction = mixer.clipAction(sleepClip);
       walkAction.play();
       idleAction.play();
-      sleepAction.play();
       walkAction.setEffectiveWeight(0);
       idleAction.setEffectiveWeight(1);
-      sleepAction.setEffectiveWeight(0);
       mixer.update(0);
-
-      // The console itself. It lives in a group that carries the guide's
-      // selector transform, and slides in along its own local x.
-      const consoleGroup = new THREE.Group();
-      const consoleBody = new THREE.Group();
-      consoleGroup.add(consoleBody);
-      consoleGroup.visible = false;
-      scene.add(consoleGroup);
-      {
-        const shell = new THREE.MeshStandardMaterial({
-          color: 0x0a0e18,
-          roughness: 0.42,
-          metalness: 0.42,
-          envMapIntensity: 0.55,
-        });
-        const slab = new THREE.Mesh(
-          new THREE.BoxGeometry(CONSOLE.width, CONSOLE.top - 0.06, CONSOLE.depth),
-          shell,
-        );
-        slab.position.set(0, (CONSOLE.top - 0.06) / 2, CONSOLE.front);
-        slab.castShadow = !isMobile;
-        slab.receiveShadow = !isMobile;
-        consoleBody.add(slab);
-        const top = new THREE.Mesh(
-          new THREE.BoxGeometry(CONSOLE.width + 0.1, 0.06, CONSOLE.depth + 0.1),
-          shell,
-        );
-        top.position.set(0, CONSOLE.top - 0.03, CONSOLE.front);
-        top.castShadow = !isMobile;
-        consoleBody.add(top);
-        const edge = new THREE.Mesh(
-          new THREE.BoxGeometry(CONSOLE.width + 0.1, 0.022, 0.022),
-          new THREE.MeshStandardMaterial({
-            color: 0x287bff,
-            emissive: 0x287bff,
-            emissiveIntensity: 2.4,
-          }),
-        );
-        edge.position.set(0, CONSOLE.top - 0.004, CONSOLE.front + (CONSOLE.depth + 0.1) / 2);
-        consoleBody.add(edge);
-      }
 
       const state = {
         phase: phaseRef.current,
         phaseStart: performance.now() / 1000,
         selected: null as RoleSlug | null,
         walkBlend: 0,
-        sleepBlend: 0,
-        consoleSlide: 0,
         speed: 0,
       };
 
@@ -1589,31 +1369,8 @@ export default function CinematicIntro({ onComplete }: Props) {
         state.speed = speed;
         const targetBlend = moving ? 1 : 0;
         state.walkBlend = lerp(state.walkBlend, targetBlend, 1 - Math.exp(-dt * 8));
-
-        // He settles onto the console a beat after it lands, and comes off it
-        // fast — the snap awake is the whole point of the role click.
-        const wantSleep = state.phase === "selecting" && phaseTime > CONSOLE.slideSeconds + 0.35;
-        state.sleepBlend = lerp(
-          state.sleepBlend,
-          wantSleep ? 1 : 0,
-          1 - Math.exp(-dt * (wantSleep ? 2.4 : 11)),
-        );
-
-        // Console: slides in from the side while the cards are up, and retracts
-        // the moment he leaves for a role.
-        if (state.phase === "selecting") {
-          state.consoleSlide = Math.min(1, state.consoleSlide + dt / CONSOLE.slideSeconds);
-        } else {
-          state.consoleSlide = Math.max(0, state.consoleSlide - dt / 0.45);
-        }
-        consoleGroup.visible = state.consoleSlide > 0.002;
-        consoleGroup.position.set(0, GROUND_Y, SELECTOR_Z);
-        consoleGroup.rotation.y = faceCameraAngle;
-        consoleBody.position.x = lerp(CONSOLE.slideFrom, 0, easeInOutCubic(state.consoleSlide));
-
         walkAction.setEffectiveWeight(state.walkBlend);
-        sleepAction.setEffectiveWeight(state.sleepBlend);
-        idleAction.setEffectiveWeight(Math.max(0, 1 - state.walkBlend - state.sleepBlend));
+        idleAction.setEffectiveWeight(1 - state.walkBlend);
         walkAction.timeScale = clamp(speed / WALK_CYCLE_DISTANCE, 0.04, 1.2);
         mixer.update(dt);
 
