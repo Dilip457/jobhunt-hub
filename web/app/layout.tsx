@@ -19,6 +19,16 @@ export const metadata: Metadata = {
   description:
     "A cinematic job-discovery experience for GenAI, Data Engineering and UI/UX roles across India. Real listings, real links, updated daily.",
   robots: { index: false, follow: false },
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
+      { url: "/favicon-32.png", sizes: "32x32" },
+      { url: "/favicon-16.png", sizes: "16x16" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
