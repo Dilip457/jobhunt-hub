@@ -1,6 +1,7 @@
 "use client";
 
-import { PlayIcon, SparkIcon } from "./Icons";
+import BrandMark from "./BrandMark";
+import { PlayIcon } from "./Icons";
 
 /**
  * The first paint before the cinematic bundle and model are ready.
@@ -20,9 +21,7 @@ export default function IntroBoot() {
 
       <header className="intro-topbar">
         <span className="brand-lockup">
-          <span className="brand-mark">
-            <SparkIcon width={17} height={17} />
-          </span>
+          <BrandMark />
           <span className="brand-copy">
             <strong>JOBHUNT</strong>
             <span>INDIA / 2026</span>

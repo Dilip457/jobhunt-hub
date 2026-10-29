@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { RoleSlug } from "@/lib/types";
-import { MailIcon, RouteIcon, SparkIcon } from "./Icons";
+import BrandMark from "./BrandMark";
+import { MailIcon, RouteIcon } from "./Icons";
 import RoleDestinations from "./RoleDestinations";
 
 interface Props {
@@ -35,9 +36,7 @@ export default function StaticIntro({ onSelect, reduced = false }: Props) {
 
       <header className="intro-topbar">
         <span className="brand-lockup">
-          <span className="brand-mark">
-            <SparkIcon width={17} height={17} />
-          </span>
+          <BrandMark />
           <span className="brand-copy">
             <strong>JOBHUNT</strong>
             <span>INDIA / 2026</span>

@@ -8,6 +8,7 @@ import type { Job, RoleData, RoleSlug, RunState, StatusResponse } from "@/lib/ty
 import { cityCounts, matchesExperience, type ExperienceBucket } from "@/lib/utils";
 import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
 import Filters from "./Filters";
+import BrandMark from "./BrandMark";
 import { AlertIcon, MailIcon, RouteIcon, SparkIcon } from "./Icons";
 import ConfirmRefresh from "./ConfirmRefresh";
 import JobCard from "./JobCard";
@@ -318,9 +319,7 @@ export default function JobDashboard({ role }: Props) {
       <header className="dashboard-header">
         <div className="shell dashboard-header-inner">
           <Link className="brand-lockup" href="/" aria-label="JobHunt India home">
-            <span className="brand-mark">
-              <SparkIcon width={17} height={17} />
-            </span>
+            <BrandMark />
             <span className="brand-copy">
               <strong>JOBHUNT</strong>
               <span>INDIA / 2026</span>

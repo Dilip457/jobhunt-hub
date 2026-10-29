@@ -202,12 +202,21 @@ The character has no facial blendshapes, eye rig, lip-sync or motion capture;
 the source ships only walk and run clips. The dashboard states this and the full
 modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 
-The tab icon is a transparent mark of the guide climbing steps. Chromium does not
-animate SVG favicons, so `AnimatedFavicon.tsx` paints a 64×64 frame to a canvas at
-about 12 fps and points every `rel="icon"` link at the resulting PNG. The animation
-pauses while the tab is hidden and is skipped under `prefers-reduced-motion: reduce`,
-where the static SVG, ICO and PNG files in `web/public/` remain. Icon URLs carry a
-`?v=` suffix so a browser that cached an older tab icon picks up the new one.
+The shared brand mark is a CSS 3D cube with the white spark on its front and back
+faces (`BrandMark.tsx`). It gently rocks ±28° on Y and floats a pixel, so the mark
+reads as dimensional without hiding the spark; the boot screen stays cheap because
+the effect uses CSS transforms rather than a second WebGL context. The mark is 42px
+on desktop and 36px on phones, and the reduced-motion path freezes it at a three-
+quarter view.
+
+The tab icon is a transparent mark of the guide climbing two chunky steps. The
+figure and steps were enlarged to fill the canvas so the mark stays legible at 16px.
+Chromium does not animate SVG favicons, so `AnimatedFavicon.tsx` paints a 64×64
+frame to a canvas at about 12 fps and points every `rel="icon"` link at the resulting
+PNG. The animation pauses while the tab is hidden and is skipped under
+`prefers-reduced-motion: reduce`, where the static SVG, ICO and PNG files in
+`web/public/` remain. Icon URLs carry a `?v=6` suffix so a browser that cached an
+older tab icon picks up the new one.
 
 ### 4.6 GitHub API
 

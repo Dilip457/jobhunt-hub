@@ -89,13 +89,13 @@ function drawArm(
     ctx,
     [
       [0, 0],
-      [1.2 * direction, 1.7],
-      [1.8 * direction, 2.9],
+      [1.4 * direction, 2],
+      [2 * direction, 3.8],
     ],
     BLUE,
-    1.9,
+    2.3,
   );
-  disc(ctx, 1.8 * direction, 2.9, 1, SKIN, 0.8);
+  disc(ctx, 2 * direction, 3.8, 1.2, SKIN, 0.9);
   ctx.restore();
 }
 
@@ -113,14 +113,14 @@ function drawLeg(
     ctx,
     [
       [0, 0],
-      [0.5 * direction, 1],
-      [0.9 * direction, 2],
+      [0.6 * direction, 1.8],
+      [1.2 * direction, 3.6],
     ],
     BLUE,
-    2.1,
+    2.5,
   );
 
-  roundedRect(ctx, direction < 0 ? -2 : -0.2, 1.7, 2.2, 1.2, 0.6);
+  roundedRect(ctx, direction < 0 ? -2.6 : 0, 3.2, 2.6, 1.4, 0.7);
   ctx.fillStyle = INK;
   ctx.fill();
   ctx.restore();
@@ -131,39 +131,33 @@ function drawScene(ctx: CanvasRenderingContext2D, time: number) {
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
-  // Staircase silhouette.
+  // Two chunky steps fill the lower half so the mark reads at 16px.
   trace(
     ctx,
     [
-      [2, 29],
-      [2, 26],
-      [9, 26],
-      [9, 22],
-      [16, 22],
-      [16, 18],
-      [23, 18],
-      [23, 14],
-      [30, 14],
-      [30, 29],
+      [2, 30],
+      [2, 25],
+      [13, 25],
+      [13, 20],
+      [30, 20],
+      [30, 30],
     ],
     true,
   );
   ctx.fillStyle = WHITE;
   ctx.fill();
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.1;
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 
   // A blue shimmer travels up the treads.
   const treads: Array<[number, number, number]> = [
-    [26, 2, 9],
-    [22, 9, 16],
-    [18, 16, 23],
-    [14, 23, 30],
+    [25, 2, 13],
+    [20, 13, 30],
   ];
   const pulse = (time * 0.42) % 1;
   treads.forEach(([y, x1, x2], index) => {
-    const raw = Math.abs(pulse - index / 3);
+    const raw = Math.abs(pulse - index / 2);
     const distance = Math.min(raw, 1 - raw);
     const glow = Math.max(0, 1 - distance * 4);
     ctx.globalAlpha = 0.55 + 0.45 * glow;
@@ -171,53 +165,28 @@ function drawScene(ctx: CanvasRenderingContext2D, time: number) {
     ctx.moveTo(x1, y);
     ctx.lineTo(x2, y);
     ctx.strokeStyle = BLUE;
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = 1.6;
     ctx.stroke();
   });
   ctx.globalAlpha = 1;
 
-  // Destination flag on the top step.
-  const flagSway = Math.sin(time * 2.2) * 0.35;
-  trace(ctx, [
-    [27.4, 14],
-    [27.4, 8.2],
-  ]);
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
-
-  trace(
-    ctx,
-    [
-      [27.4, 8.2],
-      [30.6, 9.4 + flagSway],
-      [27.4, 10.6],
-    ],
-    true,
-  );
-  ctx.fillStyle = RED;
-  ctx.fill();
-  ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.7;
-  ctx.stroke();
-
   // Walking figure.
   const phase = time * 5.2;
   const swing = Math.sin(phase);
-  const bob = -Math.abs(Math.cos(phase)) * 0.3;
-  const leftLegAngle = -10 - swing * 8;
-  const rightLegAngle = 10 + swing * 8;
-  const leftArmAngle = 8 + swing * 6;
-  const rightArmAngle = -8 - swing * 6;
+  const bob = -Math.abs(Math.cos(phase)) * 0.35;
+  const leftLegAngle = -12 - swing * 9;
+  const rightLegAngle = 12 + swing * 9;
+  const leftArmAngle = 10 + swing * 7;
+  const rightArmAngle = -10 - swing * 7;
 
   ctx.save();
   ctx.translate(0, bob);
 
-  drawArm(ctx, 17.3, 10.9, leftArmAngle, -1);
-  drawLeg(ctx, 18.3, 16.2, leftLegAngle, -1);
+  drawArm(ctx, 18.2, 10.4, leftArmAngle, -1);
+  drawLeg(ctx, 19.6, 16.4, leftLegAngle, -1);
 
   // Neck.
-  roundedRect(ctx, 18.9, 9.4, 1.2, 1.4, 0.4);
+  roundedRect(ctx, 20.3, 8.6, 1.4, 1.4, 0.5);
   ctx.fillStyle = SKIN;
   ctx.fill();
   ctx.strokeStyle = INK;
@@ -228,26 +197,26 @@ function drawScene(ctx: CanvasRenderingContext2D, time: number) {
   trace(
     ctx,
     [
-      [16.9, 10.2],
-      [22.1, 10.2],
-      [23.1, 16.2],
-      [15.9, 16.2],
+      [17.6, 9.8],
+      [24.4, 9.8],
+      [25.4, 16.4],
+      [16.6, 16.4],
     ],
     true,
   );
   ctx.fillStyle = BLUE;
   ctx.fill();
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.1;
   ctx.stroke();
 
   trace(
     ctx,
     [
-      [18.6, 10.3],
-      [20.4, 10.3],
-      [20.8, 15.9],
-      [18.2, 15.9],
+      [19.4, 9.9],
+      [22.6, 9.9],
+      [23, 16.1],
+      [19, 16.1],
     ],
     true,
   );
@@ -255,36 +224,36 @@ function drawScene(ctx: CanvasRenderingContext2D, time: number) {
   ctx.fill();
 
   trace(ctx, [
-    [17.3, 12.4],
-    [22.3, 11.6],
+    [17.9, 12.2],
+    [24.1, 11.2],
   ]);
   ctx.strokeStyle = RED;
-  ctx.lineWidth = 1.3;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  drawLeg(ctx, 20.7, 16.2, rightLegAngle, 1);
-  drawArm(ctx, 21.7, 10.9, rightArmAngle, 1);
+  drawLeg(ctx, 22.4, 16.4, rightLegAngle, 1);
+  drawArm(ctx, 23.8, 10.4, rightArmAngle, 1);
 
   // Head and red cap.
-  disc(ctx, 19.5, 7.1, 2.7, SKIN, 1);
+  disc(ctx, 21, 5.8, 3.1, SKIN, 1.1);
   ctx.beginPath();
-  ctx.moveTo(16.8, 6.1);
-  ctx.quadraticCurveTo(19.5, 3.4, 22.2, 6.1);
-  ctx.lineTo(22.2, 6.6);
-  ctx.lineTo(16.8, 6.6);
+  ctx.moveTo(17.9, 4.8);
+  ctx.quadraticCurveTo(21, 1.8, 24.1, 4.8);
+  ctx.lineTo(24.1, 5.4);
+  ctx.lineTo(17.9, 5.4);
   ctx.closePath();
   ctx.fillStyle = RED;
   ctx.fill();
   ctx.strokeStyle = INK;
-  ctx.lineWidth = 0.8;
+  ctx.lineWidth = 0.9;
   ctx.stroke();
 
   trace(ctx, [
-    [22, 6.2],
-    [23.3, 6.2],
+    [23.9, 5],
+    [25.4, 5],
   ]);
   ctx.strokeStyle = RED;
-  ctx.lineWidth = 1.4;
+  ctx.lineWidth = 1.6;
   ctx.stroke();
 
   ctx.restore();

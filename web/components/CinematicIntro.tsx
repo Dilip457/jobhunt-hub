@@ -8,7 +8,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { getRole } from "@/lib/roles";
 import type { RoleSlug } from "@/lib/types";
 import { prefetchRole } from "@/lib/prefetch";
-import { ArrowRightIcon, PlayIcon, RefreshIcon, SparkIcon } from "./Icons";
+import BrandMark from "./BrandMark";
+import { ArrowRightIcon, PlayIcon, RefreshIcon } from "./Icons";
 import RoleDestinations from "./RoleDestinations";
 import StaticIntro from "./StaticIntro";
 
@@ -1676,9 +1677,7 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       <header className="intro-topbar">
         <span className="brand-lockup">
-          <span className="brand-mark">
-            <SparkIcon width={17} height={17} />
-          </span>
+          <BrandMark />
           <span className="brand-copy">
             <strong>JOBHUNT</strong>
             <span>INDIA / 2026</span>

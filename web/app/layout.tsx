@@ -40,14 +40,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="model/gltf-binary"
           crossOrigin="anonymous"
         />
-        <link rel="icon" href="/favicon.ico?v=5" sizes="any" />
-        <link rel="shortcut icon" href="/favicon.ico?v=5" />
-        <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml" sizes="any" />
-        <link rel="icon" href="/favicon-32.png?v=5" type="image/png" sizes="32x32" />
-        <link rel="icon" href="/favicon-16.png?v=5" type="image/png" sizes="16x16" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=5" />
-        <link rel="mask-icon" href="/favicon.svg?v=5" color="#FF304F" />
-        <link rel="manifest" href="/manifest.json?v=5" />
+        <link rel="icon" href="/favicon.ico?v=6" sizes="any" />
+        <link rel="shortcut icon" href="/favicon.ico?v=6" />
+        <link rel="icon" href="/favicon.svg?v=6" type="image/svg+xml" sizes="any" />
+        <link rel="icon" href="/favicon-32.png?v=6" type="image/png" sizes="32x32" />
+        <link rel="icon" href="/favicon-16.png?v=6" type="image/png" sizes="16x16" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=6" />
+        <link rel="mask-icon" href="/favicon.svg?v=6" color="#FF304F" />
+        <link rel="manifest" href="/manifest.json?v=6" />
       </head>
       <body>
         <AnimatedFavicon />
