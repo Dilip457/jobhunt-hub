@@ -121,7 +121,7 @@ jobhunt-hub/
 │  └─ uiux.json
 ├─ web/
 │  ├─ app/
-│  │  ├─ layout.tsx              # fonts, metadata, GLB preload
+│  │  ├─ layout.tsx              # fonts, metadata, favicon, GLB preload
 │  │  ├─ page.tsx                # /
 │  │  ├─ globals.css             # all visual styling and responsive layout
 │  │  ├─ jobs/[role]/page.tsx    # /jobs/genai|data|uiux
@@ -140,6 +140,7 @@ jobhunt-hub/
 │  │  ├─ RoleSwitcher.tsx         # in-dashboard role tabs
 │  │  ├─ ConfirmRefresh.tsx       # hidden-refresh confirmation dialog
 │  │  ├─ RefreshPanel.tsx         # queued/running/success/failed progress
+│  │  ├─ AnimatedFavicon.tsx      # transparent canvas favicon, ~12 fps
 │  │  └─ Icons.tsx                # inline SVG icon set
 │  ├─ lib/
 │  │  ├─ types.ts                 # Job, RoleData, StatusResponse, RoleMeta
@@ -175,7 +176,7 @@ jobhunt-hub/
 | `/jobs/data` | `web/app/jobs/[role]/page.tsx` | `generateMetadata`, `RolePage` | Role label and metadata |
 | `/jobs/uiux` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Renders `JobDashboard` |
 | Invalid role | `web/app/jobs/[role]/page.tsx` | `redirect("/")` | Unknown slug returns home |
-| App shell | `web/app/layout.tsx` | `metadata`, `viewport`, `RootLayout` | Fonts, `noindex`, theme colour, GLB preload |
+| App shell | `web/app/layout.tsx` | `metadata`, `viewport`, `RootLayout`, `AnimatedFavicon` | Fonts, `noindex`, theme colour, versioned favicon/manifest links, GLB preload |
 
 `web/app/globals.css` owns:
 
@@ -206,6 +207,7 @@ jobhunt-hub/
 | Role switcher | `web/components/RoleSwitcher.tsx` | `RoleSwitcher` | In-dashboard role tabs |
 | Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh` | “Refresh … jobs?” dialog; Escape/backdrop cancel |
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
+| Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `drawArm`, `drawLeg`, `paint` | Draws the guide climbing steps on a 64×64 transparent canvas at ~12 fps, updates every icon link, pauses when hidden, and defers to the static files under `prefers-reduced-motion` |
 | Icons | `web/components/Icons.tsx` | `SearchIcon`, `ChevronDownIcon`, `RefreshIcon`, `MapPinIcon`, `BuildingIcon`, `CalendarIcon`, `ExternalIcon`, `CheckIcon`, `CloseIcon`, `SparkIcon`, `MailIcon`, `BriefcaseIcon`, `LayersIcon`, `GlobeIcon`, `AlertIcon`, `GithubIcon`, `CodeIcon`, `FilterIcon`, `EyeIcon`, `ArrowRightIcon`, `ArrowLeftIcon`, `PlayIcon`, `RouteIcon` | Inline SVG icon set |
 
 ### 4.3 Data access and shared logic
@@ -228,6 +230,9 @@ jobhunt-hub/
 | Wide scene poster | `web/public/models/student/scene.webp` | `.intro-poster` and `.static-intro-scene` in `globals.css` |
 | Portrait reference | `web/public/models/student/portrait.webp` | Reference render only; not used as the loading background |
 | Attribution | `web/public/models/student/ATTRIBUTION.txt` | Asset license, modifications and prototype limitations |
+| Favicon source | `web/public/favicon.svg` | Transparent guide-on-steps mark; SMIL walk cycle for browsers that animate SVG favicons |
+| Favicon fallbacks | `web/public/favicon.ico`, `favicon-{16,32,48}.png`, `apple-touch-icon.png`, `icon-{192,512}.png` | Static tab, iOS and PWA icons; alpha preserved |
+| PWA manifest | `web/public/manifest.json` | Installable app metadata and shortcuts to the three role pages |
 
 ---
 

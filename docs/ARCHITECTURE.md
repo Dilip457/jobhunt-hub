@@ -202,6 +202,13 @@ The character has no facial blendshapes, eye rig, lip-sync or motion capture;
 the source ships only walk and run clips. The dashboard states this and the full
 modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 
+The tab icon is a transparent mark of the guide climbing steps. Chromium does not
+animate SVG favicons, so `AnimatedFavicon.tsx` paints a 64×64 frame to a canvas at
+about 12 fps and points every `rel="icon"` link at the resulting PNG. The animation
+pauses while the tab is hidden and is skipped under `prefers-reduced-motion: reduce`,
+where the static SVG, ICO and PNG files in `web/public/` remain. Icon URLs carry a
+`?v=` suffix so a browser that cached an older tab icon picks up the new one.
+
 ### 4.6 GitHub API
 
 Vercel uses a fine-grained PAT with:
