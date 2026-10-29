@@ -20,16 +20,6 @@ export const metadata: Metadata = {
   description:
     "A cinematic job-discovery experience for GenAI, Data Engineering and UI/UX roles across India. Real listings, real links, updated daily.",
   robots: { index: false, follow: false },
-  icons: {
-    icon: [
-      { url: "/favicon.svg?v=5", type: "image/svg+xml", sizes: "any" },
-      { url: "/favicon-32.png?v=5", type: "image/png", sizes: "32x32" },
-      { url: "/favicon-16.png?v=5", type: "image/png", sizes: "16x16" },
-    ],
-    shortcut: "/favicon.ico?v=5",
-    apple: "/apple-touch-icon.png?v=5",
-  },
-  manifest: "/manifest.json?v=5",
 };
 
 export const viewport: Viewport = {
@@ -51,7 +41,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           crossOrigin="anonymous"
         />
         <link rel="icon" href="/favicon.ico?v=5" sizes="any" />
+        <link rel="shortcut icon" href="/favicon.ico?v=5" />
+        <link rel="icon" href="/favicon.svg?v=5" type="image/svg+xml" sizes="any" />
+        <link rel="icon" href="/favicon-32.png?v=5" type="image/png" sizes="32x32" />
+        <link rel="icon" href="/favicon-16.png?v=5" type="image/png" sizes="16x16" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=5" />
         <link rel="mask-icon" href="/favicon.svg?v=5" color="#FF304F" />
+        <link rel="manifest" href="/manifest.json?v=5" />
       </head>
       <body>
         <AnimatedFavicon />
