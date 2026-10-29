@@ -73,6 +73,29 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+// A 34° vertical lens is a good cinematic frame on a desktop monitor, but on a
+// portrait phone it leaves a very narrow horizontal field. The gates are wider
+// than the character, so the mobile camera needs a wider lens to keep the
+// selected destination and its surroundings in frame. Tablets sit between the
+// two extremes. Short landscape viewports get an extra boost because their
+// vertical field is the limiting dimension.
+function cameraFovForAspect(aspect: number, height: number): number {
+  let fov: number;
+  if (aspect >= 1.45) fov = 34;
+  else if (aspect >= 1) fov = lerp(34, 42, (1.45 - aspect) / 0.45);
+  else if (aspect >= 0.7) fov = lerp(42, 48, (1 - aspect) / 0.3);
+  else fov = lerp(48, 54, clamp((0.7 - aspect) / 0.25));
+  return Math.min(60, fov + clamp((720 - height) / 320) * 12);
+}
+
+function narrowFactor(aspect: number): number {
+  return clamp((1.25 - aspect) / 0.8);
+}
+
+function shortViewportFactor(height: number): number {
+  return clamp((720 - height) / 300);
+}
+
 function lerpAngle(a: number, b: number, t: number): number {
   const delta = ((((b - a + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
   return a + delta * t;
@@ -730,7 +753,12 @@ export default function CinematicIntro({ onComplete }: Props) {
       scene.background = new THREE.Color(0x05060a);
       scene.fog = new THREE.FogExp2(0x05060a, isMobile ? 0.034 : 0.029);
 
-      const camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.04, 120);
+      const camera = new THREE.PerspectiveCamera(
+        cameraFovForAspect(window.innerWidth / window.innerHeight, window.innerHeight),
+        window.innerWidth / window.innerHeight,
+        0.04,
+        120,
+      );
       try {
         pmrem = new THREE.PMREMGenerator(renderer);
         const room = new RoomEnvironment();
@@ -1157,24 +1185,42 @@ export default function CinematicIntro({ onComplete }: Props) {
         speed: 0,
       };
 
-      const closePosition = new THREE.Vector3(0, 1.56, isMobile ? 1.7 : 1.52);
+      const closePosition = new THREE.Vector3(
+        0,
+        1.56,
+        lerp(1.52, 1.25, narrowFactor(camera.aspect)),
+      );
       const closeLook = new THREE.Vector3(0, 1.43, 0);
-      const widePosition = new THREE.Vector3(0.35, isMobile ? 2.1 : 2.0, isMobile ? 7.4 : 6.6);
+      const widePosition = new THREE.Vector3(
+        0.35,
+        lerp(2.0, 2.1, narrowFactor(camera.aspect)),
+        lerp(6.6, 7.4, narrowFactor(camera.aspect)),
+      );
       const wideLook = new THREE.Vector3(0.05, 1.0, -2.2);
       // The selection camera is a closer stage shot: the guide is large enough
       // to read the face and fabric without losing the three destinations.
-      // Previous framing left the character at roughly 300px tall on a 900px
-      // viewport, which made even the 1K atlas look soft.
-      const selectorPosition = new THREE.Vector3(
-        isMobile ? 1.25 : 1.45,
-        isMobile ? 2.5 : 1.92,
-        isMobile ? 4.1 : 1.0,
-      );
-      const selectorLook = new THREE.Vector3(
-        isMobile ? 0.25 : 0.75,
-        isMobile ? 0.35 : 0.52,
-        isMobile ? SELECTOR_Z - 0.8 : SELECTOR_Z - 0.4,
-      );
+      // The shot is recomputed from the viewport aspect so portrait phones get
+      // a centred, slightly wider stage instead of a cropped desktop frame.
+      const selectorPosition = new THREE.Vector3();
+      const selectorLook = new THREE.Vector3();
+
+      function updateSelectorShot(aspect: number) {
+        const narrow = narrowFactor(aspect);
+        const distance = lerp(4.7, 6.0, narrow);
+        const angle = lerp(0.3, 0.16, narrow);
+        selectorPosition.set(
+          Math.sin(angle) * distance,
+          lerp(1.92, 2.15, narrow),
+          SELECTOR_Z + Math.cos(angle) * distance,
+        );
+        selectorLook.set(
+          lerp(0.75, 0.05, narrow),
+          lerp(0.52, 0.5, narrow),
+          SELECTOR_Z + lerp(-0.4, -0.7, narrow),
+        );
+      }
+
+      updateSelectorShot(camera.aspect);
       const faceCameraAngle = Math.atan2(selectorPosition.x, selectorPosition.z - SELECTOR_Z);
 
       const desiredPosition = widePosition.clone();
@@ -1182,6 +1228,10 @@ export default function CinematicIntro({ onComplete }: Props) {
       const currentLook = closeLook.clone();
       const tempVector = new THREE.Vector3();
       const tempLook = new THREE.Vector3();
+      const departureCamera = new THREE.Vector3();
+      const departureLook = new THREE.Vector3();
+      const desktopDepartureCamera = new THREE.Vector3();
+      const desktopDepartureLook = new THREE.Vector3();
 
       let turntableYaw = 0;
       let turntableVelocity = 0;
@@ -1415,6 +1465,8 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       function updateCamera(dt: number, time: number) {
         const phaseTime = time - state.phaseStart;
+        updateSelectorShot(camera.aspect);
+        const narrow = narrowFactor(camera.aspect);
         if (state.phase === "greeting") {
           const hold = smoothstep(clamp(phaseTime / (GREETING_MS / 1000)));
           desiredPosition.copy(closePosition);
@@ -1440,24 +1492,46 @@ export default function CinematicIntro({ onComplete }: Props) {
           const distance = Math.hypot(destination.x, destination.z - SELECTOR_Z);
           const departSeconds = travelDuration(distance) + 0.2;
           const progress = easeInOutCubic(clamp(phaseTime / departSeconds));
-          const destinationCamera = new THREE.Vector3(
-            destination.x * 0.42 + (isMobile ? 1.7 : 2.7),
-            isMobile ? 2.2 : 2.12,
-            destination.z + (isMobile ? 4.6 : 4.8),
+          // The departure shot must fit the whole gate, not just the traveller.
+          // A portrait phone has a much narrower horizontal field, and a short
+          // landscape viewport is constrained vertically, so pull the camera
+          // back until the gate's width and height fit. Aim at the gate itself
+          // rather than at a point between the gate and the centre: this keeps
+          // the destination and its surroundings visible while he walks.
+          const vFov = (camera.fov * Math.PI) / 180;
+          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+          const gateWidth = 3.2;
+          const gateHeight = 5.0;
+          const fitDistance = Math.max(
+            (gateWidth / 2 + 0.25) / Math.tan(hFov / 2),
+            (gateHeight / 2 + 0.45) / Math.tan(vFov / 2),
+            5.4,
           );
-          const destinationLook = new THREE.Vector3(destination.x * 0.72, 1.32, destination.z);
-          const near = new THREE.Vector3(
-            destination.x * 0.7 + (isMobile ? 0.5 : 1.1),
-            isMobile ? 1.95 : 1.9,
-            destination.z + (isMobile ? 2.1 : 2.4),
+          desktopDepartureCamera.set(
+            destination.x * 0.35 + 1.1,
+            3.0,
+            destination.z + 8.2,
           );
+          desktopDepartureLook.set(destination.x, 2.0, destination.z);
+          departureCamera.set(
+            destination.x * 0.35 + 0.35,
+            3.0,
+            destination.z + fitDistance,
+          );
+          departureLook.set(destination.x, 1.85, destination.z);
+          const wide = Math.max(narrow, shortViewportFactor(window.innerHeight));
+          departureCamera.lerp(desktopDepartureCamera, 1 - wide);
+          departureLook.lerp(desktopDepartureLook, 1 - wide);
           if (state.phase === "transition") {
-            const t = easeInOutCubic(clamp(phaseTime / 0.8));
-            desiredPosition.copy(destinationCamera).lerp(near, t);
-            desiredLook.copy(destinationLook).lerp(new THREE.Vector3(destination.x, 1.6, destination.z), t);
+            desiredPosition.copy(departureCamera);
+            desiredLook.copy(departureLook);
           } else {
-            desiredPosition.copy(selectorPosition).lerp(destinationCamera, progress);
-            desiredLook.copy(selectorLook).lerp(destinationLook, progress);
+            // Pan to the chosen gate early in the walk. Without this the
+            // selected gate can sit half off-screen while the camera is still
+            // interpolating from the centre-stage look point.
+            const lookProgress = smoothstep(clamp(phaseTime / 0.9));
+            desiredPosition.copy(selectorPosition).lerp(departureCamera, progress);
+            desiredLook.copy(selectorLook).lerp(departureLook, lookProgress);
           }
         } else {
           desiredPosition.copy(closePosition);
@@ -1488,8 +1562,15 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       function onResize() {
         if (disposed) return;
-        camera.aspect = window.innerWidth / window.innerHeight;
+        const aspect = window.innerWidth / window.innerHeight;
+        const narrow = narrowFactor(aspect);
+        camera.aspect = aspect;
+        camera.fov = cameraFovForAspect(aspect, window.innerHeight);
         camera.updateProjectionMatrix();
+        closePosition.z = lerp(1.52, 1.25, narrow);
+        widePosition.y = lerp(2.0, 2.1, narrow);
+        widePosition.z = lerp(6.6, 7.4, narrow);
+        updateSelectorShot(aspect);
         renderer?.setPixelRatio(renderPixelRatio());
         renderer?.setSize(window.innerWidth, window.innerHeight, false);
       }

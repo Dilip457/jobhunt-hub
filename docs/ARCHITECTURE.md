@@ -184,7 +184,7 @@ The cinematic intro is progressive enhancement, never a gate:
 | **Skip intro** | Cancels timers and jumps straight to role selection |
 | `prefers-reduced-motion: reduce` | Static wide-scene selector: four-second `HI.` first, then the same three destinations; no canvas |
 | WebGL unavailable, model fails, or a 12 s load timeout | The same static wide-scene fallback; the greeting is shown before the role cards |
-| Very small screen | Responsive camera and a bottom-sheet role selector |
+| Very small screen | Aspect- and height-aware camera, gate-fitting departure shot, scrollable compact bottom sheet; short landscape uses a three-column strip |
 | Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |
 
 The 3D character is a stylized, rigged CC0 **“Casual Man”** base by Grab3D, simplified
@@ -193,7 +193,12 @@ hair, a cleaned basecolour and a generated breathing idle. The material is unifo
 (no roughness/metallic maps) to remove specular flecks, and the earlier runtime glasses are
 gone. The destination gates stay hidden during the close-up and fade into the world with
 the pullback. The loading boot and static fallback use a wide scene poster (`scene.webp`),
-not a full-screen face crop. The character has no facial blendshapes, eye rig, lip-sync or motion capture;
+not a full-screen face crop. The camera is aspect- and height-aware: portrait phones use a
+wider vertical lens and a centred stage, while the departure shot pulls back until the
+selected gate's full width and height fit. This keeps the gate and its surroundings visible
+while the guide walks, instead of cropping a pillar or the arch on a narrow screen. The
+role sheet scrolls when needed and becomes a compact three-column strip in short landscape.
+The character has no facial blendshapes, eye rig, lip-sync or motion capture;
 the source ships only walk and run clips. The dashboard states this and the full
 modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 
@@ -496,7 +501,7 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 6. **Legacy `first_seen` values.** Pre-change jobs may show the portal posted date as “first seen” because no earlier scrape history was stored.
 7. **Retention is 21 days.** A job that disappears from the portals can remain on the board for up to 21 days.
 8. **Terms of service.** Scraping public pages may be restricted by individual portals; this project is intended for personal, non-commercial use.
-9. **The 3D guide is a prototype.** The rigged character is a stylized CC0 base (a bearded adult in a blue bomber over a white V-neck t-shirt and navy jeans) with no facial blendshapes, eye rig, lip-sync or motion capture. Its walk/run clips are the only shipped animation, and the close-up is staged to avoid uncanny detail the asset cannot support. The scrambled garment atlas is replaced at runtime by clean blue clothing groups, with the t-shirt panel and collar skin band masked per fragment across the body materials, while the head, hair, hands and sneakers keep the original texture; it is still a modified stock asset, not a bespoke character.
+9. **The 3D guide is a prototype.** The rigged character is a stylized CC0 base (a bearded adult in a blue bomber over a white crew-neck tee and navy jeans) with no facial blendshapes, eye rig, lip-sync or motion capture. Its walk/run clips are the only shipped animation, and the close-up is staged to avoid uncanny detail the asset cannot support. The scrambled garment atlas is replaced at runtime by clean blue clothing groups, with the t-shirt panel and collar skin band masked per fragment across the body materials, while the head, hair, hands and sneakers keep the original texture; it is still a modified stock asset, not a bespoke character.
 10. **The cinematic is not required.** Reduced-motion, WebGL failure and model failure all fall back to a static selector; jobs are never blocked behind the animation.
 
 ---
