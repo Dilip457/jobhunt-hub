@@ -35,7 +35,7 @@ export const ROLES: RoleMeta[] = [
     slug: "ba",
     label: "Business Analyst",
     shortLabel: "BA",
-    fullLabel: "Business Analysis",
+    fullLabel: "Business Analyst",
     description: "Requirements, BRD/FRD, SQL, UAT & Agile delivery",
     accent: "#8B5CF6",
     accentSoft: "rgba(139, 92, 246, 0.16)",
