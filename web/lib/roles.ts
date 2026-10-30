@@ -40,7 +40,7 @@ export const ROLES: RoleMeta[] = [
     accent: "#8B5CF6",
     accentSoft: "rgba(139, 92, 246, 0.16)",
     blurb:
-      "Business analysis, requirements, UAT and Agile delivery roles. Fresher, entry-level and 1–3 year roles are ranked first; senior roles stay available below.",
+      "Business Analyst roles covering requirements, BRD/FRD, UAT and Agile delivery. Fresher, entry-level and 1–3 year roles are ranked first; senior roles stay available below.",
   },
   {
     slug: "sde",
