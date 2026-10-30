@@ -189,11 +189,30 @@ registered in `ROLE_RESUME_PROFILES`, `ROLE_HIGH_WEIGHT`, `ROLE_MEDIUM_WEIGHT`,
 pipeline means adding a table and one entry per registry — the patch functions are
 role-agnostic and do not branch on the slug.
 
-Unlike BA, SDE does **not** get the entry-level-first score adjustment: the profile targets
-4+ years, so listings rank purely on match score. `api_sources.py` carries `sde` entries in
-`ROLE_SEARCH_TERMS`, `ROLE_TITLE_TOKENS`, `ROLE_TITLE_EXCLUDE` and `ROLE_SKILLS`, and the
-workflow's keyless-sources step runs for both `ba` and `sde`, writing
-`artifacts/sde.apis.json`. `publish.py` merges every `sde*.json` artifact.
+SDE is a **3–8 year track**, not an entry-level one, so it gets its own experience band
+instead of BA's entry-level-first boost. `SDE_EXPERIENCE_BAND = (3, 8)` is applied in three
+places so the whole pipeline agrees on the band:
+
+- `run_source.py` overrides `ScoringEngine._score_experience_match` with an overlap score.
+  The vendor version centred on one years figure, which pushed the top of the band (7–8
+  years) down as if over-qualified; the override scores the overlap with 3–8 instead.
+- `export.py` (`sde_band_score`) nudges the published score: squarely in band +8, strong
+  overlap +6, partial +3, entry-level −12, clearly too senior −10. Because the dashboard
+  sorts by score by default, this is what surfaces 3–8 year roles first.
+- `api_sources.py` (`sde_band_adjust`) applies the same shape to the keyless feeds.
+
+Titles are the fallback when a listing states no range: senior/lead/SDE-II/III up, principal/
+architect/director/VP down, fresher/intern/junior down. `web/lib/utils.ts`
+(`experienceBandPriority`) mirrors the same bands for the dashboard's `score` sort when the
+role is `sde`, the way `experiencePriority` does for `ba`.
+
+`api_sources.py` carries `sde` entries in `ROLE_SEARCH_TERMS`, `ROLE_TITLE_TOKENS`,
+`ROLE_TITLE_EXCLUDE` and `ROLE_SKILLS`, and the workflow's keyless-sources step runs for both
+`ba` and `sde`, writing `artifacts/sde.apis.json`. `publish.py` merges every `sde*.json`
+artifact. `profiles/sde.json` asks for the whole vendor registry — `company_pages`, `linkedin`,
+`naukri`, `indeed`, `foundit`, `shine`, `timesjobs`, `wellfound`, `instahyre`, `glassdoor` —
+where BA and UI/UX run two sources; `run_source.py` drops any name the vendor does not
+register, so this list can safely stay ahead of the vendor.
 
 ### 4.3 Publisher — `publish.py`
 

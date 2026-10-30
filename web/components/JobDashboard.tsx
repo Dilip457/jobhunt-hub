@@ -7,6 +7,7 @@ import { getRole } from "@/lib/roles";
 import type { Job, RoleData, RoleSlug, RunState, StatusResponse } from "@/lib/types";
 import {
   cityCounts,
+  experienceBandPriority,
   experiencePriority,
   matchesExperience,
   type ExperienceBucket,
@@ -295,6 +296,11 @@ export default function JobDashboard({ role }: Props) {
       // even when a senior listing has a slightly higher raw match score.
       if (role === "ba") {
         const priority = experiencePriority(a) - experiencePriority(b);
+        if (priority !== 0) return priority;
+      }
+      // SDE targets 3–8 years, so that band leads the score ordering.
+      if (role === "sde") {
+        const priority = experienceBandPriority(a) - experienceBandPriority(b);
         if (priority !== 0) return priority;
       }
       return b.score - a.score;

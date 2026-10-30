@@ -163,6 +163,42 @@ export function experiencePriority(job: Job): number {
   return 2;
 }
 
+/**
+ * Ranking used by the Software Development Engineer track. The profile targets
+ * 3-8 years, so listings whose experience range overlaps that band come first,
+ * then ones that only touch it, then roles that are clearly too senior, and
+ * entry-level roles last. The score is still the tie-breaker inside each band.
+ */
+export function experienceBandPriority(job: Job): number {
+  const BAND_LO = 3;
+  const BAND_HI = 8;
+  const min = job.experience_min ?? null;
+  const max = job.experience_max ?? null;
+
+  if (min != null || max != null) {
+    const start = min ?? (max as number);
+    const end = max ?? (min as number);
+    const low = Math.min(start, end);
+    const high = Math.max(start, end);
+    const overlap = Math.min(high, BAND_HI) - Math.max(low, BAND_LO) + 1;
+    if (low >= BAND_LO && high <= BAND_HI) return 0;
+    if (overlap >= 3) return 0;
+    if (overlap >= 1) return 1;
+    if (high < BAND_LO) return 3;
+    return 2;
+  }
+
+  const text = `${job.title} ${job.snippet ?? ""}`.toLowerCase();
+  if (/\b(principal|architect|director|vp|vice president|head of|distinguished)\b/.test(text)) {
+    return 2;
+  }
+  if (/\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b/.test(text)) return 3;
+  if (/\b(senior|lead|sde\s*(?:ii|2|iii|3)|engineer\s*(?:ii|2|iii|3)|specialist)\b/.test(text)) {
+    return 0;
+  }
+  return 1;
+}
+
 export function initials(value: string): string {
   const clean = value.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
   if (!clean || clean.toLowerCase() === "unknown") return "–";

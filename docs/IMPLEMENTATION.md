@@ -53,7 +53,8 @@ jobhunt-hub/
 │  ├─ genai.json                 # GenAI role keywords, sources, limits
 │  ├─ data.json                  # Data Engineering profile
 │  ├─ uiux.json                  # UI/UX profile
-│  └─ ba.json                    # Business Analyst profile (entry-level first)
+│  ├─ ba.json                    # Business Analyst profile (entry-level first)
+│  └─ sde.json                   # Software Development Engineer profile (3-8 years, 10 portals)
 ├─ vendor/                       # cloned at runtime, not committed
 ├─ web/                          # Next.js 15 app (Vercel Root Directory)
 │  ├─ app/
@@ -245,7 +246,7 @@ The `if: always()` means publishing can happen even when a scrape or WARP job fa
 
 ### 4.1 Role profiles
 
-Files: `profiles/genai.json`, `profiles/data.json`, `profiles/uiux.json`, `profiles/ba.json`
+Files: `profiles/genai.json`, `profiles/data.json`, `profiles/uiux.json`, `profiles/ba.json`, `profiles/sde.json`
 
 | Field | Meaning |
 |---|---|

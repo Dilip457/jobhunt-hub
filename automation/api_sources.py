@@ -236,6 +236,41 @@ def title_relevant(role: str, title: str) -> bool:
     return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
 
 
+# SDE targets 3-8 years; titles are the fallback when no range is stated.
+SDE_BAND = (3, 8)
+SDE_OVER_TITLE = re.compile(
+    r"\b(principal|architect|director|vp|vice president|head of|distinguished)\b", re.I
+)
+SDE_UNDER_TITLE = re.compile(
+    r"\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b", re.I
+)
+
+
+def sde_band_adjust(title: str, snippet: str) -> float:
+    """Bias SDE listings toward the 3-8 year band the profile targets."""
+    band_lo, band_hi = SDE_BAND
+    exp_min, exp_max = extract_experience(title, snippet)
+    if exp_min is not None or exp_max is not None:
+        start = exp_min if exp_min is not None else exp_max
+        end = exp_max if exp_max is not None else exp_min
+        low, high = min(start, end), max(start, end)
+        overlap = min(high, band_hi) - max(low, band_lo) + 1
+        if low >= band_lo and high <= band_hi:
+            return 8.0
+        if overlap >= 3:
+            return 6.0
+        if overlap >= 1:
+            return 3.0
+        if high < band_lo:
+            return -9.0
+        return -7.0
+    if SDE_OVER_TITLE.search(title or ""):
+        return -7.0
+    if SDE_UNDER_TITLE.search(title or ""):
+        return -9.0
+    return 0.0
+
+
 def score_job(role: str, title: str, snippet: str) -> float:
     text = f"{title} {snippet}".lower()
     title_l = (title or "").lower()
@@ -251,6 +286,8 @@ def score_job(role: str, title: str, snippet: str) -> float:
             score += 9
         if BA_SENIOR_TITLE.search(title or ""):
             score -= 10
+    elif role == "sde":
+        score += sde_band_adjust(title or "", snippet or "")
     return round(max(0.0, min(score, 97.0)), 1)
 
 

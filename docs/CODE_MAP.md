@@ -225,7 +225,7 @@ jobhunt-hub/
 | `web/lib/github.ts` | `readJsonFromDataBranch`, `getRunStatus`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured` | All server-side GitHub access |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
 | `web/lib/fallback.ts` | `fallbackRoleData`, `fallbackManifest` | Seed data with `demo: true` |
-| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first |
+| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
 
 ### 4.4 Static assets
 
@@ -517,6 +517,7 @@ Schedule: `30 21 * * *` UTC = 03:00 IST. Manual dispatch accepts `all | genai | 
 | `data` | `profiles/data.json` | `Dilip457/DataEngineer_JobHunt` | `de_jobs.db` |
 | `uiux` | `profiles/uiux.json` | `Dilip457/UI-UX-Job_Hunt` | `jobs.db` |
 | `ba` | `profiles/ba.json` | `Dilip457/UI-UX-Job_Hunt` (patched) | `jobs.db` |
+| `sde` | `profiles/sde.json` | `Dilip457/UI-UX-Job_Hunt` (patched) | `jobs.db` |
 
 `profiles/*.json` are **search configs**, not candidate resumes. They control keywords, cities, sources, minimum score and freshness.
 

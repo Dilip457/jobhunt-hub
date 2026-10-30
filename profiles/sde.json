@@ -4,8 +4,16 @@
   "repo": "Dilip457/UI-UX-Job_Hunt",
   "db": "jobs.db",
   "sources": [
+    "company_pages",
     "linkedin",
-    "company_pages"
+    "naukri",
+    "indeed",
+    "foundit",
+    "shine",
+    "timesjobs",
+    "wellfound",
+    "instahyre",
+    "glassdoor"
   ],
   "playwright": false,
   "keywords": [
@@ -29,7 +37,12 @@
     "Java",
     "Kubernetes"
   ],
-  "cities": ["Hyderabad", "Bangalore", "Pune", "Chennai"],
+  "cities": [
+    "Hyderabad",
+    "Bangalore",
+    "Pune",
+    "Chennai"
+  ],
   "min_score": 18,
   "max_days": 21,
   "limit": 1000

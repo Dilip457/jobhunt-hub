@@ -188,15 +188,78 @@ BA_SENIOR_TITLE = re.compile(
 )
 
 
-def priority_score(role: str, title: str, score: float) -> float:
-    if role != "ba":
-        return score
+# SDE targets 3-8 years. Titles are the fallback when a listing states no range.
+SDE_BAND = (3, 8)
+SDE_IN_BAND_TITLE = re.compile(
+    r"\b(senior|sr\.?|lead|sde\s*(?:ii|2|iii|3)|engineer\s*(?:ii|2|iii|3)|specialist)\b",
+    re.I,
+)
+SDE_OVER_TITLE = re.compile(
+    r"\b(principal|architect|director|vp|vice president|head of|distinguished)\b", re.I
+)
+SDE_UNDER_TITLE = re.compile(
+    r"\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b", re.I
+)
+
+
+def sde_band_score(
+    title: str,
+    score: float,
+    exp_min: Optional[int] = None,
+    exp_max: Optional[int] = None,
+) -> float:
+    """Nudge an SDE listing by how well it fits the 3-8 year target band.
+
+    The band wins on the published score, so the dashboard's default
+    score-descending sort surfaces 3-8 year roles before fresher and very
+    senior ones.
+    """
+    band_lo, band_hi = SDE_BAND
     value = float(score or 0)
-    if BA_ENTRY_TITLE.search(title or ""):
-        value += 10
-    if BA_SENIOR_TITLE.search(title or ""):
+
+    if exp_min is not None or exp_max is not None:
+        start = exp_min if exp_min is not None else exp_max
+        end = exp_max if exp_max is not None else exp_min
+        low, high = min(start, end), max(start, end)
+        overlap = min(high, band_hi) - max(low, band_lo) + 1
+        if low >= band_lo and high <= band_hi:
+            value += 8
+        elif overlap >= 3:
+            value += 6
+        elif overlap >= 1:
+            value += 3
+        elif high < band_lo:
+            value -= 12
+        else:
+            value -= 10
+        return max(0.0, min(value, 100.0))
+
+    if SDE_OVER_TITLE.search(title or ""):
+        value -= 10
+    if SDE_UNDER_TITLE.search(title or ""):
         value -= 12
-    return round(max(0.0, min(value, 100.0)), 1)
+    elif SDE_IN_BAND_TITLE.search(title or ""):
+        value += 5
+    return max(0.0, min(value, 100.0))
+
+
+def priority_score(
+    role: str,
+    title: str,
+    score: float,
+    exp_min: Optional[int] = None,
+    exp_max: Optional[int] = None,
+) -> float:
+    if role == "ba":
+        value = float(score or 0)
+        if BA_ENTRY_TITLE.search(title or ""):
+            value += 10
+        if BA_SENIOR_TITLE.search(title or ""):
+            value -= 12
+        return round(max(0.0, min(value, 100.0)), 1)
+    if role == "sde":
+        return round(sde_band_score(title, float(score or 0), exp_min, exp_max), 1)
+    return score
 
 
 def extract_experience(title: str, description: str) -> Tuple[Optional[int], Optional[int]]:
@@ -356,7 +419,9 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             "apply_url": (row["apply_url"] or url).strip(),
             "source": source,
             "posted_date": posted or None,
-            "score": priority_score(role, row["title"], float(row["match_score"] or 0)),
+            "score": priority_score(
+                role, row["title"], float(row["match_score"] or 0), exp_min, exp_max
+            ),
             "score_parts": {
                 "role": round(float(row["role_match"] or 0), 1),
                 "skill": round(float(row["skill_match"] or 0), 1),

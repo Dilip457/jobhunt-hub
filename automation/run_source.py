@@ -207,6 +207,19 @@ SDE_ROLE_KEYWORDS = {
     "low": ["developer", "engineer", "software", "engineering"],
 }
 
+# The SDE track targets 3-8 years, so experience is scored against that band
+# rather than against a single years figure.
+SDE_EXPERIENCE_BAND = (3, 8)
+SDE_IN_BAND_TITLE = re.compile(
+    r"\b(senior|lead|sde\s*(?:ii|2|iii|3)|engineer\s*(?:ii|2|iii|3)|specialist)\b"
+)
+SDE_OVER_TITLE = re.compile(
+    r"\b(principal|architect|director|vp|vice president|head of|distinguished)\b"
+)
+SDE_UNDER_TITLE = re.compile(
+    r"\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b"
+)
+
 # ── Registries, so the patch functions below stay role-agnostic ──────────────
 ROLE_RESUME_PROFILES = {"ba": BA_RESUME_PROFILE, "sde": SDE_RESUME_PROFILE}
 ROLE_HIGH_WEIGHT = {"ba": BA_HIGH_WEIGHT_KEYWORDS, "sde": SDE_HIGH_WEIGHT_KEYWORDS}
@@ -366,8 +379,49 @@ def _patch_sde_scoring(scoring_engine) -> None:
         raw = (primary_matches * 15) + (secondary_matches * 5)
         return min(100.0, max(40.0, raw))
 
+    def score_experience(self, title: str, description: str) -> float:
+        """Score how well a listing sits in the 3-8 year band this track targets.
+
+        The vendor's version centres on a single years figure, which pushed the
+        top of the band (7-8 years) down as if it were over-qualified. This
+        scores the overlap with the band instead, so the whole 3-8 range ranks
+        high and only genuinely junior or very senior listings fall away.
+        """
+        band_lo, band_hi = SDE_EXPERIENCE_BAND
+        combined = self._normalize(f"{title} {description[:300]}")
+        low = high = None
+        match = re.search(r"(\d+)\s*-\s*(\d+)\s*years?", combined)
+        if match:
+            low, high = int(match.group(1)), int(match.group(2))
+            if low > high:
+                low, high = high, low
+        if low is None:
+            match = re.search(r"(\d+)\+?\s*years?\s+(?:of\s+)?experience", combined)
+            if match:
+                low = high = int(match.group(1))
+        if low is None:
+            if SDE_OVER_TITLE.search(combined):
+                return 35.0
+            if SDE_UNDER_TITLE.search(combined):
+                return 30.0
+            if SDE_IN_BAND_TITLE.search(combined):
+                return 92.0
+            return 75.0
+
+        overlap = min(high, band_hi) - max(low, band_lo) + 1
+        if low >= band_lo and high <= band_hi:
+            return 100.0
+        if overlap >= 3:
+            return 95.0
+        if overlap >= 1:
+            return 85.0
+        if high < band_lo:
+            return 30.0
+        return 40.0
+
     scoring_engine.ScoringEngine._score_role_match = score_role
     scoring_engine.ScoringEngine._score_tool_match = score_tools
+    scoring_engine.ScoringEngine._score_experience_match = score_experience
 
 
 PLAYWRIGHT_CITIES = ["Hyderabad", "Bangalore", "Pune"]
