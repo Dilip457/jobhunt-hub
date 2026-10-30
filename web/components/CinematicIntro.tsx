@@ -37,11 +37,15 @@ const MAX_TURN_VELOCITY = 2.4;
 const GROUND_Y = 0.014;
 const DAIS_TOP = 0.04;
 
+// Five destinations now, so the arc is re-spaced evenly about the centre. The
+// outer gates sit a little nearer than the middle ones, which keeps the row
+// reading as an arc rather than a flat wall.
 const GATE_POSITIONS: Record<RoleSlug, THREE.Vector3> = {
-  genai: new THREE.Vector3(-4.6, 0, -9.15),
-  data: new THREE.Vector3(-1.55, 0, -9.75),
-  uiux: new THREE.Vector3(1.55, 0, -9.75),
-  ba: new THREE.Vector3(4.6, 0, -9.15),
+  genai: new THREE.Vector3(-5.5, 0, -9.15),
+  data: new THREE.Vector3(-2.75, 0, -9.6),
+  uiux: new THREE.Vector3(0, 0, -9.75),
+  ba: new THREE.Vector3(2.75, 0, -9.6),
+  sde: new THREE.Vector3(5.5, 0, -9.15),
 };
 
 const GATE_COLORS: Record<RoleSlug, number> = {
@@ -49,6 +53,7 @@ const GATE_COLORS: Record<RoleSlug, number> = {
   data: 0x287bff,
   uiux: 0xffffff,
   ba: 0x8b5cf6,
+  sde: 0x22c55e,
 };
 
 function clamp(value: number, min = 0, max = 1): number {

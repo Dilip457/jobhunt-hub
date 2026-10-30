@@ -76,7 +76,7 @@ flowchart LR
     subgraph GitHub["GitHub"]
         API["GitHub REST API"]
         ACTIONS["Actions: scrape.yml"]
-        DATA["data branch<br/>genai.json · data.json · uiux.json · ba.json · manifest.json"]
+        DATA["data branch<br/>genai.json · data.json · uiux.json · ba.json · sde.json · manifest.json"]
         MAIN["main branch<br/>web/ + automation/"]
     end
 
@@ -128,7 +128,7 @@ The workflow has four job groups:
 
 | Job | Purpose | Timeout | Parallelism |
 |---|---|---|---|
-| `prepare` | Build the role matrix (`genai`, `data`, `uiux`, `ba`) | default | one job |
+| `prepare` | Build the role matrix (`genai`, `data`, `uiux`, `ba`, `sde`) | default | one job |
 | `scrape` | Run the vendor pipeline + direct portal scrapers per role | 75 min per role | **1 role at a time** (`max-parallel: 1`) |
 | `warp` | Run Indeed SEO + SimplyHired through Cloudflare WARP | 12 min per role | **1 role at a time**, `continue-on-error` |
 | `publish` | Merge artifacts and force-push the `data` branch | default | one job, `if: always()` |
@@ -172,6 +172,29 @@ BA-only portal scrapers live in `portal_scrapers.py` (`iiba`, `wellfound`) and r
 normal `scrape` job. The workflow adds a BA-specific `api_sources.py` step that writes
 `artifacts/ba.apis.json`; `publish.py` merges every `ba*.json` artifact.
 
+### 4.2.2 Software Development Engineer track
+
+SDE follows the same pattern as BA and reuses `Dilip457/UI-UX-Job_Hunt`, so adding it needed
+no new vendor repo and no new scraper. `run_source.py` patches that repo before its modules
+import:
+
+- `config.SEARCH_KEYWORDS`, `SKILL_SEARCH_KEYWORDS` and `TARGET_ROLES` from `profiles/sde.json`
+- `config.RESUME_PROFILE`, high/medium weight keywords and the role/tool scoring functions
+  (`_patch_sde_scoring`), pointing them at the `SDE_*` tables
+- `scrapers.company_pages_scraper.DESIGN_KEYWORDS`, so SDE titles survive its title filter
+
+The role tables live in `run_source.py` (`SDE_RESUME_PROFILE`, `SDE_ROLE_KEYWORDS`, …) and are
+registered in `ROLE_RESUME_PROFILES`, `ROLE_HIGH_WEIGHT`, `ROLE_MEDIUM_WEIGHT`,
+`ROLE_KEYWORD_TABLES` and `ROLE_COMPANY_TITLE_KEYWORDS`. Adding another role to the shared
+pipeline means adding a table and one entry per registry — the patch functions are
+role-agnostic and do not branch on the slug.
+
+Unlike BA, SDE does **not** get the entry-level-first score adjustment: the profile targets
+4+ years, so listings rank purely on match score. `api_sources.py` carries `sde` entries in
+`ROLE_SEARCH_TERMS`, `ROLE_TITLE_TOKENS`, `ROLE_TITLE_EXCLUDE` and `ROLE_SKILLS`, and the
+workflow's keyless-sources step runs for both `ba` and `sde`, writing
+`artifacts/sde.apis.json`. `publish.py` merges every `sde*.json` artifact.
+
 ### 4.3 Publisher — `publish.py`
 
 The publisher is deliberately conservative:
@@ -189,7 +212,7 @@ The publisher is deliberately conservative:
 The `web/` directory is a Next.js 15 app deployed with **Root Directory = `web`**.
 
 - `/` is the cinematic entry point: a Three.js close-up greeting, pullback, illuminated path and role selection.
-- `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and `/jobs/ba` are static, shareable dashboards.
+- `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde` are static, shareable dashboards.
 - `/jobs/[role]` is pre-rendered for the four known roles; any other slug redirects to `/`.
 - The dashboard is a client component with filters, a role switcher and shareable query parameters.
 - `/api/jobs` reads a role's JSON from the `data` branch.
@@ -312,7 +335,7 @@ sequenceDiagram
     participant User as Browser
 
     Cron->>Prep: 21:30 UTC / 03:00 IST
-    Prep->>Prep: build matrix (genai, data, uiux, ba)
+    Prep->>Prep: build matrix (genai, data, uiux, ba, sde)
     Prep->>Scrape: matrix
     Prep->>Warp: matrix
 
@@ -459,7 +482,7 @@ sequenceDiagram
 ```
 
 Each role has its own shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
-`/jobs/ba`. The homepage `/` stays clean; choosing a destination navigates to the role
+`/jobs/ba`, `/jobs/sde`. The homepage `/` stays clean; choosing a destination navigates to the role
 route. Filter parameters (`q`, `city`, `source`, `score`, `exp`, `days`, `sort`) are written
 to the role URL so a filtered view can be shared. Unknown role slugs redirect to `/`.
 

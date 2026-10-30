@@ -1,6 +1,6 @@
-export type RoleSlug = "genai" | "data" | "uiux" | "ba";
+export type RoleSlug = "genai" | "data" | "uiux" | "ba" | "sde";
 
-export const ROLE_SLUGS: RoleSlug[] = ["genai", "data", "uiux", "ba"];
+export const ROLE_SLUGS: RoleSlug[] = ["genai", "data", "uiux", "ba", "sde"];
 
 export function isRoleSlug(value: string): value is RoleSlug {
   return (ROLE_SLUGS as string[]).includes(value);

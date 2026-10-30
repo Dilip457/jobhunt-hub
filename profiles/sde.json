@@ -1,0 +1,36 @@
+{
+  "role": "sde",
+  "label": "Software Development Engineer",
+  "repo": "Dilip457/UI-UX-Job_Hunt",
+  "db": "jobs.db",
+  "sources": [
+    "linkedin",
+    "company_pages"
+  ],
+  "playwright": false,
+  "keywords": [
+    "Software Development Engineer",
+    "Software Engineer",
+    "Senior Software Engineer",
+    "Backend Engineer",
+    "Full Stack Developer",
+    ".NET Developer",
+    "API Developer"
+  ],
+  "skill_keywords": [
+    "C# .NET Core",
+    "REST API",
+    "Python",
+    "React.js",
+    "Azure",
+    "SQL",
+    "Microservices",
+    "CI/CD GitHub Actions",
+    "Java",
+    "Kubernetes"
+  ],
+  "cities": ["Hyderabad", "Bangalore", "Pune", "Chennai"],
+  "min_score": 18,
+  "max_days": 21,
+  "limit": 1000
+}

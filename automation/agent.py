@@ -27,7 +27,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-ROLES = ("genai", "data", "uiux", "ba")
+ROLES = ("genai", "data", "uiux", "ba", "sde")
 LOCK_STALE_MINUTES = 240
 
 

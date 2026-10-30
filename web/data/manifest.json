@@ -54,6 +54,21 @@
    },
    "demo": true,
    "status": "demo"
+  },
+  "sde": {
+   "role": "sde",
+   "count": 14,
+   "generated_at": "2026-10-30T07:30:00+05:30",
+   "sources": {
+    "LinkedIn": 5,
+    "Naukri": 3,
+    "Indeed": 2,
+    "Foundit": 2,
+    "Company Career Pages": 1,
+    "Shine": 1
+   },
+   "demo": true,
+   "status": "demo"
   }
  }
 }

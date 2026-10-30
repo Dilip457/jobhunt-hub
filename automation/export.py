@@ -397,7 +397,7 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export a scraper SQLite DB to portal JSON")
     parser.add_argument("--db", required=True, help="Path to the scraper's SQLite DB")
-    parser.add_argument("--role", required=True, help="Role slug: genai | data | uiux | ba")
+    parser.add_argument("--role", required=True, help="Role slug: genai | data | uiux | ba | sde")
     parser.add_argument("--out", required=True, help="Output JSON path")
     parser.add_argument("--min-score", type=float, default=25.0)
     parser.add_argument("--limit", type=int, default=800)

@@ -57,6 +57,8 @@ ROLE_SEARCH_TERMS = {
     "uiux": ["ux designer", "ui designer", "product designer", "interaction designer"],
     "ba": ["business analyst", "functional analyst", "business systems analyst",
            "product analyst", "business analyst fresher"],
+    "sde": ["software engineer", "software development engineer", "backend engineer",
+            "full stack developer", ".net developer"],
 }
 
 # A job only counts if one of these appears in its title (keeps feeds on-topic).
@@ -74,6 +76,13 @@ ROLE_TITLE_TOKENS = {
            "business systems analyst", "systems analyst", "process analyst",
            "requirements analyst", "product analyst", "it analyst",
            "business process analyst", "bpa", "analyst"],
+    # SDE titles. `developer` and `engineer` are broad tokens, so
+    # ROLE_TITLE_EXCLUDE below removes the families that are clearly not
+    # software engineering.
+    "sde": ["software engineer", "software developer", "software development engineer",
+            "sde", "backend", "back end", "full stack", "fullstack", ".net",
+            "dotnet", "asp.net", "api developer", "application developer",
+            "platform engineer", "developer", "engineer", "programmer"],
 }
 
 # Titles that contain a role token but are clearly a different job family.
@@ -91,6 +100,14 @@ ROLE_TITLE_EXCLUDE = {
            "supply chain", "payment operations", "revenue analyst",
            "marketing", "sales", "business development", "account executive",
            "recruiter", "support specialist"],
+    # `developer`/`engineer` are broad tokens, so drop the non-software families.
+    "sde": ["sales", "account executive", "recruiter", "marketing",
+            "business development", "support specialist", "mechanical",
+            "civil", "electrical", "hardware", "data entry", "intern",
+            "trainee", "qa", "manual testing", "test engineer",
+            "network engineer", "devops engineer", "site reliability",
+            "solutions engineer", "salesforce", "servicenow", "sap ",
+            "warehouse", "driver", "technician"],
 }
 
 ROLE_SKILLS = {
@@ -111,6 +128,11 @@ ROLE_SKILLS = {
            "wireframe", "data visualization", "data visualisation", "sql", "agile",
            "scrum", "sprint", "jira", "confluence", "visio", "excel", "power bi",
            "tableau", "balsamiq", "figma", "postman", "api testing", "api"],
+    "sde": ["c#", ".net", "dotnet", "asp.net", "rest api", "api", "python",
+            "react", "javascript", "typescript", "java", "azure", "sql",
+            "microservice", "docker", "kubernetes", "ci/cd", "github actions",
+            "git", "flask", "entity framework", "mongodb", "redis",
+            "unit test", "system design", "data structure", "algorithm"],
 }
 
 # Business Analyst is an entry-level-first track: fresher/entry/1–3 year roles

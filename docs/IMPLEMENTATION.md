@@ -113,7 +113,7 @@ on:
     inputs:
       role:
         type: choice
-        options: [all, genai, data, uiux, ba]
+        options: [all, genai, data, uiux, ba, sde]
         default: all
 ```
 
@@ -472,7 +472,7 @@ artifacts/
 ### 5.2 Merge algorithm
 
 ```text
-for each role in (genai, data, uiux, ba):
+for each role in (genai, data, uiux, ba, sde):
     candidate = first valid artifact for the role
     for each additional artifact:
         candidate = merge_payloads(candidate, artifact, retention)
@@ -585,6 +585,7 @@ python automation/publish.py \
 | `/jobs/data` | GET | Data Engineering dashboard (pre-rendered) |
 | `/jobs/uiux` | GET | UI/UX dashboard (pre-rendered) |
 | `/jobs/ba` | GET | Business Analyst dashboard (pre-rendered) |
+| `/jobs/sde` | GET | Software Development Engineer dashboard (pre-rendered) |
 | `/jobs/<unknown>` | GET | Redirect to `/` |
 | `/api/jobs?role=<role>` | GET | Return `RoleData` JSON |
 | `/api/jobs?role=<role>&fresh=1` | GET | Same, bypassing caches |
@@ -673,7 +674,7 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 
 The public UI does **not** render a refresh button, and there is no admin URL. On any dashboard, press **`Alt` + `Shift` + `R`** to open the confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. The shortcut is ignored while typing in an input, textarea, select or contenteditable element, and `Escape` cancels.
 
-Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and `/jobs/ba`. The homepage `/` stays a clean introduction, choosing a destination navigates to its route, and browser back/forward works naturally. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are written to the role URL for shareable filtered views.
+Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde`. The homepage `/` stays a clean introduction, choosing a destination navigates to its route, and browser back/forward works naturally. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are written to the role URL for shareable filtered views.
 
 ### 6.6 UI
 

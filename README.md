@@ -36,12 +36,12 @@ GitHub Actions (03:00 IST or manual — runs entirely in the cloud, no PC needed
             │
             ▼
    orphan `data` branch (single commit, JSON is MERGED, never clobbered)
-     manifest.json · genai.json · data.json · uiux.json · ba.json
+     manifest.json · genai.json · data.json · uiux.json · ba.json · sde.json
             │
             ▼
 Vercel — Next.js
   ├─ /                    cinematic role selection (Three.js)
-  ├─ /jobs/genai|data|uiux|ba shareable dashboards + filters
+  ├─ /jobs/genai|data|uiux|ba|sde shareable dashboards + filters
   ├─ /api/jobs       reads the data branch (60s cache)
   ├─ /api/refresh    dispatches the workflow
   └─ /api/status     polls the GitHub Actions run
@@ -76,7 +76,7 @@ jobhunt-hub/
 └─ web/                           # Next.js 15 app (Vercel root)
    ├─ app/
    │  ├─ page.tsx                 # cinematic intro
-   │  ├─ jobs/[role]/page.tsx     # /jobs/genai · /jobs/data · /jobs/uiux · /jobs/ba
+   │  ├─ jobs/[role]/page.tsx     # /jobs/genai · /jobs/data · /jobs/uiux · /jobs/ba · /jobs/sde
    │  ├─ globals.css
    │  └─ api/{jobs,refresh,status}/route.ts
    ├─ components/                 # intro, dashboard, filters, cards
@@ -259,7 +259,7 @@ The dashboard is one click away in every degraded mode:
 - Keyboard focus, mobile layout and browser back/forward work normally.
 
 Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
-`/jobs/ba` — and filter parameters are preserved in the URL.
+`/jobs/ba`, `/jobs/sde` — and filter parameters are preserved in the URL.
 
 ### The 3D guide is a prototype
 
@@ -354,7 +354,7 @@ Protections:
 ### Shareable role URLs
 
 Each destination has a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
-`/jobs/ba`. The homepage stays at `/`; choosing a role navigates to its route, so links and
+`/jobs/ba`, `/jobs/sde`. The homepage stays at `/`; choosing a role navigates to its route, so links and
 browser history work normally. Filter parameters such as `?q=python&city=Bangalore` are
 written to the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 

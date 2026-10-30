@@ -18,6 +18,7 @@ on:
           - data
           - uiux
           - ba
+          - sde
 
 permissions:
   contents: write
@@ -95,17 +96,17 @@ jobs:
             --no-apis \
             --no-validate
 
-      - name: Fetch BA-specific keyless sources
-        if: matrix.role == 'ba'
+      - name: Fetch extra keyless sources (BA, SDE)
+        if: matrix.role == 'ba' || matrix.role == 'sde'
         continue-on-error: true
         working-directory: portal
         env:
           PYTHONUNBUFFERED: "1"
         run: |
           python automation/api_sources.py \
-            --role ba \
-            --profile profiles/ba.json \
-            --out artifacts/ba.apis.json \
+            --role "${{ matrix.role }}" \
+            --profile "profiles/${{ matrix.role }}.json" \
+            --out "artifacts/${{ matrix.role }}.apis.json" \
             --max-days 21 \
             --min-score 18
 

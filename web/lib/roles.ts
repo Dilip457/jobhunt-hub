@@ -42,6 +42,17 @@ export const ROLES: RoleMeta[] = [
     blurb:
       "Business analysis, requirements, UAT and Agile delivery roles. Fresher, entry-level and 1–3 year roles are ranked first; senior roles stay available below.",
   },
+  {
+    slug: "sde",
+    label: "SDE",
+    shortLabel: "SDE",
+    fullLabel: "Software Development Engineer",
+    description: "Backend, full-stack, API & cloud engineering",
+    accent: "#22C55E",
+    accentSoft: "rgba(34, 197, 94, 0.16)",
+    blurb:
+      "Software engineering roles — backend, full-stack, API and cloud — ranked by match to a .NET, Python, React and Azure profile.",
+  },
 ];
 
 export const DEFAULT_ROLE: RoleSlug = "genai";

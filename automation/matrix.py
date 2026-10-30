@@ -13,6 +13,10 @@ REPOS = {
     # Business Analyst reuses the UI/UX vendor pipeline; the BA profile below
     # replaces its keywords and skills, so no separate vendor repo is needed.
     "ba": "Dilip457/UI-UX-Job_Hunt",
+    # Software Development Engineer reuses the same generic pipeline for the
+    # same reason: profiles/sde.json and the SDE patch in run_source.py replace
+    # its search keywords, resume profile and scoring.
+    "sde": "Dilip457/UI-UX-Job_Hunt",
 }
 
 

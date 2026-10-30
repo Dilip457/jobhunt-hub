@@ -33,7 +33,7 @@ artifacts/<role>.json
 automation/publish.py
   └─ merge_payloads() → force-push orphan data branch
         ↓
-data branch: genai.json · data.json · uiux.json · ba.json · manifest.json · vercel.json
+data branch: genai.json · data.json · uiux.json · ba.json · sde.json · manifest.json · vercel.json
         ↓
 web/lib/github.ts → web/lib/service.ts → web/app/api/jobs/route.ts
         ↓
@@ -125,7 +125,7 @@ jobhunt-hub/
 │  │  ├─ layout.tsx              # fonts, metadata, favicon, GLB preload
 │  │  ├─ page.tsx                # /
 │  │  ├─ globals.css             # all visual styling and responsive layout
-│  │  ├─ jobs/[role]/page.tsx    # /jobs/genai|data|uiux|ba
+│  │  ├─ jobs/[role]/page.tsx    # /jobs/genai|data|uiux|ba|sde
 │  │  └─ api/{jobs,refresh,status}/route.ts
 │  ├─ components/
 │  │  ├─ IntroPage.tsx            # dynamic loader for the cinematic
@@ -178,6 +178,7 @@ jobhunt-hub/
 | `/jobs/data` | `web/app/jobs/[role]/page.tsx` | `generateMetadata`, `RolePage` | Role label and metadata |
 | `/jobs/uiux` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Renders `JobDashboard` |
 | `/jobs/ba` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Business Analyst dashboard (entry-level first) |
+| `/jobs/sde` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Software Development Engineer dashboard |
 | Invalid role | `web/app/jobs/[role]/page.tsx` | `redirect("/")` | Unknown slug returns home |
 | App shell | `web/app/layout.tsx` | `metadata`, `viewport`, `RootLayout`, `AnimatedFavicon` | Fonts, `noindex`, theme colour, versioned favicon/manifest links, GLB preload |
 

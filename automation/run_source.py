@@ -52,12 +52,14 @@ LINKEDIN_GEO_IDS = {
     "Bangalore": "105214831",
 }
 
-# ── Business Analyst profile for the shared UI/UX vendor repo ────────────────
+# ── Role profiles for the shared UI/UX vendor repo ───────────────────────────
 #
-# The BA track reuses Dilip457/UI-UX-Job_Hunt, whose config, scoring engine and
-# company-page filter are all design-specific. These constants are injected
-# before the vendor modules import their config, so the shared pipeline searches
-# and scores BA roles instead of designers.
+# The BA and SDE tracks reuse Dilip457/UI-UX-Job_Hunt, whose config, scoring
+# engine and company-page filter are all design-specific. These constants are
+# injected before the vendor modules import their config, so the shared pipeline
+# searches and scores the requested role instead of designers. Adding another
+# role to this repo means adding a table here and one entry to each registry
+# below — no vendor fork and no new scraper.
 
 BA_RESUME_PROFILE = {
     "name": "Business Analyst",
@@ -131,6 +133,91 @@ BA_ROLE_KEYWORDS = {
     "low": ["business", "analysis", "requirements", "process"],
 }
 
+# ── Software Development Engineer profile ─────────────────────────────────────
+# Built from the SDE resume: C#/.NET Core and Python services, REST API design
+# and performance work, React front ends, Azure, and CI/CD. The target roles are
+# mid/senior engineering titles, so unlike the BA track this one does not favour
+# entry-level listings.
+
+SDE_RESUME_PROFILE = {
+    "name": "Software Development Engineer",
+    "title": "Senior Software Engineer",
+    "years_of_experience": 4,
+    "locations": ["Hyderabad", "Bangalore", "Pune", "Chennai"],
+    "notice_period": "Immediate",
+    "core_skills": [
+        "C#", ".NET Core", "ASP.NET Core", "REST API", "API Design",
+        "API Performance Optimization", "Python", "JavaScript", "TypeScript",
+        "SQL", "Microservices", "Object-Oriented Programming",
+        "Data Structures", "Algorithms", "System Design", "Unit Testing",
+        "Code Review", "CI/CD",
+    ],
+    "design_tools": [
+        "Azure", "Azure Functions", "Azure Data Factory", "Azure DevOps",
+        "Git", "GitHub Actions", "Docker", "Kubernetes", "Postman",
+        "Visual Studio", "SQL Server", "Redis", "MongoDB",
+    ],
+    "ai_tools": ["AI-Assisted Development", "MCP Servers"],
+    "frontend_skills": ["React.js", "HTML", "CSS", "JavaScript"],
+    "standards": ["REST", "SOLID", "Agile", "Scrum"],
+    "research_methods": [],
+    "domains": [
+        "Enterprise", "Fintech", "Cloud", "Networking", "B2B SaaS", "E-commerce",
+    ],
+    "industry_keywords": [
+        "Software Engineering", "Cloud", "API Platform", "Product Engineering",
+    ],
+    "portfolio_keywords": [],
+    "target_role_keywords": [
+        "Software Development Engineer", "Software Engineer",
+        "Senior Software Engineer", "Backend Engineer", "Full Stack Developer",
+        ".NET Developer", "API Developer", "Application Developer",
+    ],
+    "experience_highlights": ["4+ years", "Backend and API engineering", "Azure"],
+}
+
+SDE_HIGH_WEIGHT_KEYWORDS = [
+    "c#", ".net", "dotnet", "asp.net", "rest api", "api", "python", "sql",
+    "microservice", "azure", "react", "javascript", "typescript", "java",
+    "backend", "full stack", "fullstack", "docker", "kubernetes", "ci/cd",
+    "git", "unit test",
+]
+
+SDE_MEDIUM_WEIGHT_KEYWORDS = [
+    "flask", "entity framework", "mongodb", "redis", "github actions",
+    "azure devops", "system design", "data structure", "algorithm",
+    "design pattern", "jira", "agile", "scrum", "postman", "logging",
+    "performance", "scalability",
+]
+
+SDE_ROLE_KEYWORDS = {
+    "high": [
+        "software development engineer", "software engineer", "software developer",
+        "senior software engineer", "backend engineer", "back end engineer",
+        "backend developer", "full stack developer", "fullstack developer",
+        "full stack engineer", ".net developer", "dotnet developer",
+        "api developer", "application developer", "java developer",
+        "python developer", "sde", "sde 2", "sde ii", "member of technical staff",
+    ],
+    "medium": [
+        "programmer", "product engineer", "platform engineer",
+        "integrations engineer", "application engineer", "web developer",
+        "frontend developer", "software architect",
+    ],
+    "low": ["developer", "engineer", "software", "engineering"],
+}
+
+# ── Registries, so the patch functions below stay role-agnostic ──────────────
+ROLE_RESUME_PROFILES = {"ba": BA_RESUME_PROFILE, "sde": SDE_RESUME_PROFILE}
+ROLE_HIGH_WEIGHT = {"ba": BA_HIGH_WEIGHT_KEYWORDS, "sde": SDE_HIGH_WEIGHT_KEYWORDS}
+ROLE_MEDIUM_WEIGHT = {"ba": BA_MEDIUM_WEIGHT_KEYWORDS, "sde": SDE_MEDIUM_WEIGHT_KEYWORDS}
+ROLE_KEYWORD_TABLES = {"ba": BA_ROLE_KEYWORDS, "sde": SDE_ROLE_KEYWORDS}
+# Titles the shared company-pages scraper should keep for each patched role.
+ROLE_COMPANY_TITLE_KEYWORDS = {
+    "ba": list(BA_ROLE_KEYWORDS["high"]) + ["analyst"],
+    "sde": list(SDE_ROLE_KEYWORDS["high"]) + ["engineer", "developer"],
+}
+
 
 def _patch_config(config, args) -> None:
     config.SEARCH_LOCATIONS = list(PAN_INDIA_LOCATIONS)
@@ -150,7 +237,7 @@ def _patch_config(config, args) -> None:
 
     # The shared UI/UX vendor config searches for designers by default. Replace
     # its keyword lists and resume profile before scoring_engine imports them.
-    if args.role == "ba":
+    if args.role in ROLE_RESUME_PROFILES:
         profile = getattr(args, "profile_data", {}) or {}
         keywords = [k for k in (profile.get("keywords") or []) if k]
         skills = [k for k in (profile.get("skill_keywords") or []) if k]
@@ -159,9 +246,9 @@ def _patch_config(config, args) -> None:
             config.SKILL_SEARCH_KEYWORDS = list(skills)
             config.ALL_SEARCH_KEYWORDS = config.SEARCH_KEYWORDS + config.SKILL_SEARCH_KEYWORDS
             config.TARGET_ROLES = list(keywords)
-        config.RESUME_PROFILE = dict(BA_RESUME_PROFILE)
-        config.HIGH_WEIGHT_KEYWORDS = list(BA_HIGH_WEIGHT_KEYWORDS)
-        config.MEDIUM_WEIGHT_KEYWORDS = list(BA_MEDIUM_WEIGHT_KEYWORDS)
+        config.RESUME_PROFILE = dict(ROLE_RESUME_PROFILES[args.role])
+        config.HIGH_WEIGHT_KEYWORDS = list(ROLE_HIGH_WEIGHT[args.role])
+        config.MEDIUM_WEIGHT_KEYWORDS = list(ROLE_MEDIUM_WEIGHT[args.role])
 
 
 def _patch_scoring(scoring_engine, config, role: str = "") -> None:
@@ -176,6 +263,8 @@ def _patch_scoring(scoring_engine, config, role: str = "") -> None:
 
     if role == "ba":
         _patch_ba_scoring(scoring_engine)
+    elif role == "sde":
+        _patch_sde_scoring(scoring_engine)
 
 
 def _patch_ba_scoring(scoring_engine) -> None:
@@ -226,6 +315,61 @@ def _patch_ba_scoring(scoring_engine) -> None:
     scoring_engine.ScoringEngine._score_tool_match = score_tools
 
 
+def _patch_sde_scoring(scoring_engine) -> None:
+    """Replace the vendor's design-only role/tool scoring with SDE scoring.
+
+    Mirrors _patch_ba_scoring: the shared pipeline scores designers, so both the
+    role match and the tool match are re-pointed at the SDE tables.
+    """
+    scoring_engine.RESUME_PROFILE = dict(SDE_RESUME_PROFILE)
+    scoring_engine.HIGH_WEIGHT_KEYWORDS = list(SDE_HIGH_WEIGHT_KEYWORDS)
+    scoring_engine.MEDIUM_WEIGHT_KEYWORDS = list(SDE_MEDIUM_WEIGHT_KEYWORDS)
+    scoring_engine.ROLE_KEYWORDS = {k: list(v) for k, v in SDE_ROLE_KEYWORDS.items()}
+
+    def score_role(self, title: str, description: str = "") -> float:
+        title_norm = self._normalize(title)
+        desc_norm = self._normalize(description or "")
+        score = 0.0
+        for role in SDE_ROLE_KEYWORDS["high"]:
+            if role in title_norm:
+                score = max(score, 95.0)
+                break
+        if score < 80:
+            for role in SDE_ROLE_KEYWORDS["medium"]:
+                if role in title_norm:
+                    score = max(score, 75.0)
+                    break
+        if score < 60:
+            for role in SDE_ROLE_KEYWORDS["low"]:
+                if role in title_norm:
+                    score = max(score, 55.0)
+                    break
+        if score > 0 and desc_norm:
+            for role in SDE_ROLE_KEYWORDS["high"]:
+                if role in desc_norm:
+                    score = min(100.0, score + 5.0)
+                    break
+        return min(100.0, score)
+
+    def score_tools(self, description: str) -> float:
+        if not description:
+            return 50.0
+        desc = self._normalize(description)
+        primary = ["c#", ".net", "dotnet", "asp.net", "python", "sql", "azure",
+                   "rest api", "react", "java", "docker", "kubernetes",
+                   "microservice", "git"]
+        secondary = ["flask", "entity framework", "mongodb", "redis",
+                     "github actions", "azure devops", "postman", "unit test",
+                     "jira", "agile", "scrum", "linux"]
+        primary_matches = sum(1 for tool in primary if tool in desc)
+        secondary_matches = sum(1 for tool in secondary if tool in desc)
+        raw = (primary_matches * 15) + (secondary_matches * 5)
+        return min(100.0, max(40.0, raw))
+
+    scoring_engine.ScoringEngine._score_role_match = score_role
+    scoring_engine.ScoringEngine._score_tool_match = score_tools
+
+
 PLAYWRIGHT_CITIES = ["Hyderabad", "Bangalore", "Pune"]
 
 
@@ -265,14 +409,14 @@ def _patch_sources(
     except Exception as exc:  # pragma: no cover - optional patch
         print(f"[run_source] LinkedIn patch skipped: {exc}")
 
-    # The shared company-pages scraper only keeps design titles. Point it at BA
-    # titles so BA roles from company career pages are not discarded.
-    if role == "ba":
+    # The shared company-pages scraper only keeps design titles. Point it at the
+    # patched role's titles so those roles from company career pages survive.
+    if role in ROLE_COMPANY_TITLE_KEYWORDS:
         try:
             import scrapers.company_pages_scraper as company_pages
 
-            company_pages.DESIGN_KEYWORDS = list(BA_ROLE_KEYWORDS["high"]) + ["analyst"]
-            print("[run_source] company-pages title filter patched for Business Analyst")
+            company_pages.DESIGN_KEYWORDS = list(ROLE_COMPANY_TITLE_KEYWORDS[role])
+            print(f"[run_source] company-pages title filter patched for {role}")
         except Exception as exc:
             print(f"[run_source] company-pages patch skipped: {exc}")
 
