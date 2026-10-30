@@ -160,7 +160,7 @@ REPOS = {
 - `needs: prepare`
 - `timeout-minutes: 75`
 - `strategy.fail-fast: false`
-- `strategy.max-parallel: 1` → **roles run one at a time**
+- `strategy.max-parallel: 5` → **all roles run at once**, one runner each
 
 Steps:
 
@@ -178,7 +178,8 @@ python automation/run_source.py \
   --out "artifacts/<role>.json" \
   --no-playwright \
   --no-apis \
-  --no-validate
+  --no-validate \
+  --parallel-sources 4
 ```
 
 6. Upload the artifact (always, even on failure):
@@ -199,7 +200,7 @@ Artifact name: `jobs-<role>`; retention: 14 days.
 - `needs: prepare`
 - `timeout-minutes: 12`
 - `continue-on-error: true`
-- `strategy.max-parallel: 1`
+- `strategy.max-parallel: 5` → all roles at once
 
 Steps:
 
@@ -1066,7 +1067,7 @@ Brand mark and favicon clarity pass (2026-10-29, local production build): the st
 1. **Indeed** — direct cloud scraping is blocked most of the time. Options: WARP (current), a residential proxy, or the optional local agent.
 2. **Posted dates for Indeed/SimplyHired** — currently set to the scrape date; could be improved by parsing their date elements.
 3. **First-seen backfill** — legacy jobs use the portal posted date as a proxy. Exact historical scrape dates could be backfilled from Actions artifacts while they are still retained.
-4. **Sequential matrix** — `max-parallel: 1` can be raised if runtime becomes a problem, at the cost of more concurrent load.
+4. **Concurrency ceiling** — roles run in parallel and each role scrapes up to `--parallel-sources` sources at once. Raising either throttle speeds the run up to the point the portals start rate-limiting.
 5. **Parser maintenance** — portal HTML changes require selector updates.
 6. **Retention** — 21 days is a balance between freshness and board size; it is configurable via `--retention-days`.
 7. **3D guide** — the stylized CC0 character is rigged for body motion but has no facial blendshapes, eye rig or lip-sync. A production character would need facial animation, hair simulation and motion capture.

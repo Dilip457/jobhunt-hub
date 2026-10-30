@@ -502,6 +502,88 @@ def _patch_sources(
         pass
 
 
+def _patch_parallel_scrapers(main_module, limit: int) -> None:
+    """Run the vendor's per-source scrapers concurrently.
+
+    The vendor's `_run_scrapers` walks its sources one at a time, so a role
+    configured with ten portals pays the sum of their latencies rather than the
+    slowest one. Every scraper is I/O bound and each source is a different
+    domain, so a small thread pool is the right shape: it does not stack
+    concurrent requests onto a single host.
+
+    Each source still gets its own scraper instance and a *snapshot* of the
+    existing-data sets, so nothing is shared mutably between threads. Results
+    are merged afterwards in registry order and de-duplicated by URL, which is
+    what the sequential loop achieved by mutating the shared sets inline.
+    """
+    if limit <= 1:
+        return
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    pipeline = getattr(main_module, "JobSearchPipeline", None)
+    if pipeline is None or not hasattr(pipeline, "_run_scrapers"):
+        print("[run_source] parallel scrapers skipped: pipeline not found")
+        return
+
+    registry = getattr(main_module, "SCRAPER_REGISTRY", {})
+
+    def scrape_one(name, urls_snapshot, ids_snapshot):
+        scraper_class = registry.get(name)
+        if not scraper_class:
+            return name, [], "unknown scraper"
+        try:
+            scraper = scraper_class()
+            scraper.set_existing_data(set(urls_snapshot), set(ids_snapshot))
+            jobs = scraper.scrape() or []
+            print(f"[run_source]   {name}: {len(jobs)} raw jobs")
+            return name, jobs, None
+        except Exception as exc:
+            return name, [], str(exc)
+
+    def run_scrapers(self, existing_urls, existing_job_ids):
+        names = [name for name in self.sources if name in registry]
+        for name in self.sources:
+            if name not in registry:
+                print(f"[run_source] unknown scraper: {name}")
+        if not names:
+            return []
+
+        urls_snapshot = set(existing_urls)
+        ids_snapshot = set(existing_job_ids)
+        outcomes: dict[str, list] = {}
+        with ThreadPoolExecutor(max_workers=min(limit, len(names))) as pool:
+            futures = [
+                pool.submit(scrape_one, name, urls_snapshot, ids_snapshot)
+                for name in names
+            ]
+            for future in futures:
+                name, jobs, error = future.result()
+                outcomes[name] = jobs
+                if error:
+                    print(f"[run_source] scraper error ({name}): {error}")
+                    self.stats["errors"] = self.stats.get("errors", 0) + 1
+
+        merged = []
+        seen = set()
+        for name in names:
+            for job in outcomes.get(name, []):
+                key = (job.get("url") or job.get("job_id") or "").strip()
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                merged.append(job)
+
+        for job in merged:
+            existing_urls.add(job.get("url", ""))
+            existing_job_ids.add(job.get("job_id", ""))
+        return merged
+
+    pipeline._run_scrapers = run_scrapers
+    print(f"[run_source] sources will run in parallel (up to {limit} at a time)")
+
+
 def _disable_dashboard(main_module, config, repo_dir: str) -> None:
     class _NoDashboard:
         def __init__(self, *args, **kwargs):
@@ -556,6 +638,7 @@ def run(args) -> int:
     main_module = importlib.import_module("main")
     _disable_dashboard(main_module, config, repo_dir)
     _patch_sources(getattr(args, "keywords", None), getattr(args, "cities", None), args.role)
+    _patch_parallel_scrapers(main_module, getattr(args, "parallel_sources", 1))
 
     if args.no_validate:
         _disable_validation()
@@ -679,6 +762,12 @@ def main() -> None:
     parser.add_argument("--no-portal", action="store_true", help="Skip the direct portal scrapers")
     parser.add_argument("--no-apis", action="store_true", help="Skip the cloud-safe API sources")
     parser.add_argument("--no-ats", action="store_true", help="Skip company ATS boards")
+    parser.add_argument(
+        "--parallel-sources",
+        type=int,
+        default=4,
+        help="Scrape this many sources concurrently (1 = sequential)",
+    )
     parser.add_argument("--no-validate", action="store_true")
     args = parser.parse_args()
 

@@ -129,11 +129,22 @@ The workflow has four job groups:
 | Job | Purpose | Timeout | Parallelism |
 |---|---|---|---|
 | `prepare` | Build the role matrix (`genai`, `data`, `uiux`, `ba`, `sde`) | default | one job |
-| `scrape` | Run the vendor pipeline + direct portal scrapers per role | 75 min per role | **1 role at a time** (`max-parallel: 1`) |
-| `warp` | Run Indeed SEO + SimplyHired through Cloudflare WARP | 12 min per role | **1 role at a time**, `continue-on-error` |
+| `scrape` | Run the vendor pipeline + direct portal scrapers per role | 75 min per role | **all roles at once** (`max-parallel: 5`) |
+| `warp` | Run Indeed SEO + SimplyHired through Cloudflare WARP | 12 min per role | **all roles at once**, `continue-on-error` |
 | `publish` | Merge artifacts and force-push the `data` branch | default | one job, `if: always()` |
 
-The `scrape` and `warp` groups both depend only on `prepare`, so GitHub may run them concurrently. Within each group, the roles run sequentially.
+The `scrape` and `warp` groups both depend only on `prepare`, so GitHub may run them concurrently. Within each group every role is its own job on its own runner with its own vendor checkout, so the matrix runs them all in parallel — the run costs the *slowest* role rather than the sum. Both groups used to be `max-parallel: 1`, which serialised them.
+
+### 4.1.1 Concurrency inside a role
+
+Two levels, and they multiply:
+
+1. **Across roles** — the matrix above. Five roles that each took ~14 minutes now overlap instead of queueing.
+2. **Across sources within a role** — the vendor's `_run_scrapers` walks its sources one at a time, so a role with ten portals paid the sum of their latencies. `run_source.py` replaces it (`_patch_parallel_scrapers`) with a bounded `ThreadPoolExecutor`, default 4, tunable with `--parallel-sources N` (`1` disables it and leaves the vendor loop untouched).
+
+The scrapers are I/O bound and each source is a different domain, so threads are the right shape and no single host sees stacked requests. Each worker gets its own scraper instance and a *snapshot* of the existing-data sets, so nothing is shared mutably between threads; results are merged afterwards in registry order and de-duplicated by URL, which is what the sequential loop achieved by mutating the shared sets inline. A failing source is caught, logged and counted exactly as before.
+
+URL validation is already skipped in CI (`--no-validate`), so the remaining cost inside a role is the scrape itself.
 
 ### 4.2 Scraper sources
 
@@ -579,7 +590,7 @@ No paid domain, database, proxy, or API subscription is required for the core fl
 1. **Indeed is unreliable from cloud IPs.** It frequently returns `403 Security Check` or `401 Authenticating`. The WARP job improves the odds but does not guarantee results. A residential IP or paid proxy would be required for reliability.
 2. **Scraping HTML is brittle.** A portal redesign can break a parser until it is updated.
 3. **GitHub cron is best-effort.** The schedule starts at 03:00 IST to absorb typical delays, but runs can still start late or be dropped, and GitHub may disable schedules for inactive repositories.
-4. **Sequential matrix.** `max-parallel: 1` keeps resource usage predictable but makes full runs slower.
+4. **Concurrency has a politeness ceiling.** Roles run in parallel and each role scrapes up to `--parallel-sources` sources at once, which is what keeps a full run inside the job timeout. Push either number higher and the portals may rate-limit or block the runner IPs; the throttles are `max-parallel` in `scrape.yml` and `--parallel-sources` on `run_source.py`.
 5. **Cache lag.** New data can take a few minutes to appear through the CDN.
 6. **Legacy `first_seen` values.** Pre-change jobs may show the portal posted date as “first seen” because no earlier scrape history was stored.
 7. **Retention is 21 days.** A job that disappears from the portals can remain on the board for up to 21 days.

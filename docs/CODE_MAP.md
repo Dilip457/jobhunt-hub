@@ -356,6 +356,7 @@ The profiles are **hardcoded structured dictionaries** in the external scraper r
 | Data | `Dilip457/DataEngineer_JobHunt` | `config.py` → `RESUME_PROFILE` | `scoring_engine.py` → `ScoringEngine` | 3.9 |
 | UI/UX | `Dilip457/UI-UX-Job_Hunt` | `config.py` → `RESUME_PROFILE` | `scoring_engine.py` → `ScoringEngine` | 4.0 |
 | Business Analyst | `Dilip457/UI-UX-Job_Hunt` (patched by `run_source.py`) | `run_source.py` → `BA_RESUME_PROFILE` | `run_source.py` → `_patch_ba_scoring` | 1 (fresher/1–3 yr target) |
+| SDE | `Dilip457/UI-UX-Job_Hunt` (patched by `run_source.py`) | `run_source.py` → `SDE_RESUME_PROFILE` | `run_source.py` → `_patch_sde_scoring` | 4 (3–8 yr band target) |
 
 Linked files:
 
@@ -366,6 +367,7 @@ Linked files:
 - UI/UX: <https://github.com/Dilip457/UI-UX-Job_Hunt/blob/main/config.py>
 - UI/UX scoring: <https://github.com/Dilip457/UI-UX-Job_Hunt/blob/main/scoring_engine.py>
 - Business Analyst: `automation/run_source.py` → `BA_RESUME_PROFILE`, `_patch_ba_scoring`, `_patch_sources`
+- SDE: `automation/run_source.py` → `SDE_RESUME_PROFILE`, `_patch_sde_scoring`, `_patch_sources`, `SDE_EXPERIENCE_BAND`
 
 These are different preloaded profiles, one per role track. They are **not** the current visitor's resume.
 
@@ -378,6 +380,7 @@ These are different preloaded profiles, one per role track. They are **not** the
 | 3. Load role search config | `profiles/<role>.json` | `repo`, `db`, `sources`, `keywords`, `cities`, `min_score`, `max_days` (search config, not the resume) |
 | 4. Import vendor config | `automation/run_source.py` | `run()` → `importlib.import_module("config")` |
 | 5. Patch search/scoring | `automation/run_source.py` | `_patch_config()`, `_patch_scoring()` |
+| 5b. Patch concurrency | `automation/run_source.py` | `_patch_parallel_scrapers()` → threaded `JobSearchPipeline._run_scrapers` (`--parallel-sources`) |
 | 6. Run vendor pipeline | `automation/run_source.py` | `main_module.JobSearchPipeline(sources=...)` |
 | 7. Score each job | Vendor `scoring_engine.py` | `ScoringEngine.compute_score()`, `score_batch()` |
 | 8. Store in vendor DB | Vendor `main.py` / `config.py` | SQLite `DB_PATH` |
