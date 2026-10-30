@@ -33,7 +33,7 @@ artifacts/<role>.json
 automation/publish.py
   └─ merge_payloads() → force-push orphan data branch
         ↓
-data branch: genai.json · data.json · uiux.json · manifest.json · vercel.json
+data branch: genai.json · data.json · uiux.json · ba.json · manifest.json · vercel.json
         ↓
 web/lib/github.ts → web/lib/service.ts → web/app/api/jobs/route.ts
         ↓
@@ -116,22 +116,23 @@ jobhunt-hub/
 │  ├─ warp_probe2.py             # WARP session/browser probe
 │  └─ warp_proxy_test.py         # WARP proxy-mode probe
 ├─ profiles/
-│  ├─ genai.json                 # role search config, NOT a resume
+│  ├─ genai.json                 # role search config, NOT a resume, NOT a resume
 │  ├─ data.json
-│  └─ uiux.json
+│  ├─ uiux.json
+│  └─ ba.json
 ├─ web/
 │  ├─ app/
 │  │  ├─ layout.tsx              # fonts, metadata, favicon, GLB preload
 │  │  ├─ page.tsx                # /
 │  │  ├─ globals.css             # all visual styling and responsive layout
-│  │  ├─ jobs/[role]/page.tsx    # /jobs/genai|data|uiux
+│  │  ├─ jobs/[role]/page.tsx    # /jobs/genai|data|uiux|ba
 │  │  └─ api/{jobs,refresh,status}/route.ts
 │  ├─ components/
 │  │  ├─ IntroPage.tsx            # dynamic loader for the cinematic
 │  │  ├─ IntroBoot.tsx            # clean first paint / loading screen
 │  │  ├─ CinematicIntro.tsx       # Three.js scene, phases, camera, walk
 │  │  ├─ StaticIntro.tsx          # reduced-motion / WebGL fallback
-│  │  ├─ RoleDestinations.tsx     # three accessible role cards
+│  │  ├─ RoleDestinations.tsx     # four accessible role cards
 │  │  ├─ JobDashboard.tsx         # dashboard state, filters, refresh polling
 │  │  ├─ Filters.tsx              # search/city/source/score/experience/date/sort
 │  │  ├─ JobCard.tsx              # one job card
@@ -173,9 +174,10 @@ jobhunt-hub/
 | Path | File | Symbols | Responsibility |
 |---|---|---|---|
 | `/` | `web/app/page.tsx` | `HomePage` | Renders `IntroPage` |
-| `/jobs/genai` | `web/app/jobs/[role]/page.tsx` | `generateStaticParams`, `RolePage` | Pre-renders the three valid roles |
+| `/jobs/genai` | `web/app/jobs/[role]/page.tsx` | `generateStaticParams`, `RolePage` | Pre-renders the four valid roles |
 | `/jobs/data` | `web/app/jobs/[role]/page.tsx` | `generateMetadata`, `RolePage` | Role label and metadata |
 | `/jobs/uiux` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Renders `JobDashboard` |
+| `/jobs/ba` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Business Analyst dashboard (entry-level first) |
 | Invalid role | `web/app/jobs/[role]/page.tsx` | `redirect("/")` | Unknown slug returns home |
 | App shell | `web/app/layout.tsx` | `metadata`, `viewport`, `RootLayout`, `AnimatedFavicon` | Fonts, `noindex`, theme colour, versioned favicon/manifest links, GLB preload |
 
@@ -198,8 +200,8 @@ jobhunt-hub/
 | Dynamic intro loader | `web/components/IntroPage.tsx` | `CinematicIntro` dynamic import, `IntroBoot` loading | Keeps the first paint free of HI and role cards |
 | Boot screen | `web/components/IntroBoot.tsx` | `IntroBoot` | Brand, loader, no headline, no role cards |
 | Cinematic scene | `web/components/CinematicIntro.tsx` | `CinematicIntro`, `Phase`, `SceneController`, `createIdleClip`, `adductWalkClip`, `WALK_ADDUCTION`, `IDLE_ADDUCTION`, `HAND_TWIST`, `installCleanClothing`, `SKIN_BAND`, `TEE_V`, `TEE_FACING`, `cameraFovForAspect`, `narrowFactor`, `shortViewportFactor`, `updateSelectorShot`, `travelProfile`, `travelDuration`, `applyPhase`, `updateCharacter`, `updateTurntable`, `updateCamera`, `onPointerDown`, `onPointerMove` | Greeting, pullback, path, turn, walk, gates, clean clothing material split, fragment-masked white tee panel and skin collar band, split walk/idle adduction, palm-inward idle hands, aspect- and height-aware selector camera, gate-fitting departure tracking, selection, turntable drag/optional auto-rotate, transition |
-| Static fallback | `web/components/StaticIntro.tsx` | `StaticIntro`, `STATIC_GREETING_MS` | `HI.` for 4 s, then the three destinations; no canvas |
-| Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX |
+| Static fallback | `web/components/StaticIntro.tsx` | `StaticIntro`, `STATIC_GREETING_MS` | `HI.` for 4 s, then the four destinations; no canvas |
+| Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX / Business Analyst |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
 | Job card | `web/components/JobCard.tsx` | `JobCard`, `avatarHue` | Source badge, NEW badge, title, company, location, experience, snippet, dates, score, Apply |
@@ -216,13 +218,13 @@ jobhunt-hub/
 
 | File | Key symbols | Owns |
 |---|---|---|
-| `web/lib/types.ts` | `RoleSlug`, `ROLE_SLUGS`, `isRoleSlug`, `ScoreParts`, `Job`, `RoleData`, `Manifest`, `StatusResponse`, `RoleMeta` | The public data contract |
-| `web/lib/roles.ts` | `ROLES`, `DEFAULT_ROLE`, `getRole` | Labels, descriptions, accents and blurbs |
+| `web/lib/types.ts` | `RoleSlug`, `ROLE_SLUGS`, `isRoleSlug`, `ScoreParts`, `Job`, `RoleData`, `Manifest`, `StatusResponse`, `RoleMeta` (`shortLabel`) | The public data contract |
+| `web/lib/roles.ts` | `ROLES`, `DEFAULT_ROLE`, `getRole` | Labels, short labels, descriptions, accents and blurbs |
 | `web/lib/service.ts` | `getRoleData`, `getManifest` | Reads the `data` branch, falls back to seed JSON |
 | `web/lib/github.ts` | `readJsonFromDataBranch`, `getRunStatus`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured` | All server-side GitHub access |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
 | `web/lib/fallback.ts` | `fallbackRoleData`, `fallbackManifest` | Seed data with `demo: true` |
-| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `sourceColor`, `initials` | Display and filter helpers |
+| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first |
 
 ### 4.4 Static assets
 
@@ -234,7 +236,7 @@ jobhunt-hub/
 | Attribution | `web/public/models/student/ATTRIBUTION.txt` | Asset license, modifications and prototype limitations |
 | Favicon source | `web/public/favicon.svg` | Transparent guide-on-two-steps mark enlarged for 16px legibility; SMIL walk cycle for browsers that animate SVG favicons |
 | Favicon fallbacks | `web/public/favicon.ico`, `favicon-{16,32,48}.png`, `apple-touch-icon.png`, `icon-{192,512}.png` | Static tab, iOS and PWA icons; alpha preserved |
-| PWA manifest | `web/public/manifest.json` | Installable app metadata and shortcuts to the three role pages |
+| PWA manifest | `web/public/manifest.json` | Installable app metadata and shortcuts to the four role pages |
 
 ---
 
@@ -314,7 +316,7 @@ Read and written in `JobDashboard.tsx`; select options in `Filters.tsx`.
 
 | Route | File | Request | Success | Failure / notes |
 |---|---|---|---|---|
-| `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data` or `uiux`; optional `fresh=1` | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` |
+| `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data`, `uiux` or `ba`; optional `fresh=1` | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` |
 | `GET /api/status` | `web/app/api/status/route.ts` | optional `role` | `StatusResponse` | Always `no-store`; returns idle message if GitHub is unreachable |
 | `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued" }` | `403` blocked origin; `400` bad body/role; `503` unconfigured; `409` already running; `429` cooldown; `502` dispatch failed |
 
@@ -345,13 +347,14 @@ The public export intentionally contains job data only, with no candidate/profil
 
 ### 8.2 Where the resume-derived profiles actually live
 
-The profiles are **hardcoded structured dictionaries** in the three external scraper repositories:
+The profiles are **hardcoded structured dictionaries** in the external scraper repositories (the BA track injects its own profile into the shared UI/UX repo at runtime):
 
 | Role | External repository | Resume profile symbol | Scoring engine | Candidate years |
 |---|---|---|---|---|
 | GenAI | `Dilip457/Job-Hunt-for-GenAI-Profile` | `config.py` → `RESUME_PROFILE` | `scoring_engine.py` → `ScoringEngine` | 2.7 |
 | Data | `Dilip457/DataEngineer_JobHunt` | `config.py` → `RESUME_PROFILE` | `scoring_engine.py` → `ScoringEngine` | 3.9 |
 | UI/UX | `Dilip457/UI-UX-Job_Hunt` | `config.py` → `RESUME_PROFILE` | `scoring_engine.py` → `ScoringEngine` | 4.0 |
+| Business Analyst | `Dilip457/UI-UX-Job_Hunt` (patched by `run_source.py`) | `run_source.py` → `BA_RESUME_PROFILE` | `run_source.py` → `_patch_ba_scoring` | 1 (fresher/1–3 yr target) |
 
 Linked files:
 
@@ -361,6 +364,7 @@ Linked files:
 - Data scoring: <https://github.com/Dilip457/DataEngineer_JobHunt/blob/main/scoring_engine.py>
 - UI/UX: <https://github.com/Dilip457/UI-UX-Job_Hunt/blob/main/config.py>
 - UI/UX scoring: <https://github.com/Dilip457/UI-UX-Job_Hunt/blob/main/scoring_engine.py>
+- Business Analyst: `automation/run_source.py` → `BA_RESUME_PROFILE`, `_patch_ba_scoring`, `_patch_sources`
 
 These are different preloaded profiles, one per role track. They are **not** the current visitor's resume.
 
@@ -405,6 +409,7 @@ Weights:
 | GenAI | 35% | 35% | 15% | 10% | 5% |
 | Data | 35% | 35% | 15% | 10% | 5% |
 | UI/UX | 30% | 30% | 20% | 10% | 10% |
+| Business Analyst | 30% | 30% | 20% | 10% | 10% (BA role/tool scoring patched in `run_source.py`) |
 
 The final vendor score is the weighted sum, plus a location bonus (up to 3 points), capped at 100. A source-specific bypass may raise a qualifying job-board result to 65.
 
@@ -501,7 +506,7 @@ The current implementation is a **preloaded, per-role prototype score**, not a u
 | `warp` | `prepare` | Cloudflare WARP job for Indeed SEO + SimplyHired | `automation/portal_scrapers.py` |
 | `publish` | `prepare`, `scrape`, `warp` | Downloads all artifacts, merges and force-pushes `data` branch | `automation/publish.py` |
 
-Schedule: `30 21 * * *` UTC = 03:00 IST. Manual dispatch accepts `all | genai | data | uiux`.
+Schedule: `30 21 * * *` UTC = 03:00 IST. Manual dispatch accepts `all | genai | data | uiux | ba`.
 
 ### 9.2 Role configuration and vendor mapping
 
@@ -510,6 +515,7 @@ Schedule: `30 21 * * *` UTC = 03:00 IST. Manual dispatch accepts `all | genai | 
 | `genai` | `profiles/genai.json` | `Dilip457/Job-Hunt-for-GenAI-Profile` | `genai_jobs.db` |
 | `data` | `profiles/data.json` | `Dilip457/DataEngineer_JobHunt` | `de_jobs.db` |
 | `uiux` | `profiles/uiux.json` | `Dilip457/UI-UX-Job_Hunt` | `jobs.db` |
+| `ba` | `profiles/ba.json` | `Dilip457/UI-UX-Job_Hunt` (patched) | `jobs.db` |
 
 `profiles/*.json` are **search configs**, not candidate resumes. They control keywords, cities, sources, minimum score and freshness.
 
@@ -598,6 +604,7 @@ data/
 ├─ genai.json
 ├─ data.json
 ├─ uiux.json
+├─ ba.json
 ├─ manifest.json
 └─ vercel.json        # disables Vercel deployments for the JSON-only branch
 ```
@@ -628,7 +635,7 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 
 | Field | Type | Produced by | Used by |
 |---|---|---|---|
-| `role` | `"genai"`, `"data"` or `"uiux"` | `automation/export.py`, `automation/publish.py` | `web/lib/types.ts`, dashboard |
+| `role` | `"genai"`, `"data"`, `"uiux"` or `"ba"` | `automation/export.py`, `automation/publish.py` | `web/lib/types.ts`, dashboard |
 | `generated_at` | ISO string | `export.py`, `publish.py` | `StatsBar` |
 | `count` | number | `export.py`, `publish.py` | `StatsBar`, dashboard |
 | `sources` | name → count | `export.py`, `portal_scrapers.py`, `api_sources.py`, `publish.py` | filters, stats |
@@ -649,7 +656,7 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | `Job.is_new` | boolean | vendor DB | NEW badge |
 | `Job.first_seen` | date/null | export/publish merge | “First seen” |
 
-Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`, `web/data/manifest.json` → `web/lib/fallback.ts`.
+Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`, `web/data/ba.json`, `web/data/manifest.json` → `web/lib/fallback.ts`.
 
 ---
 
@@ -705,12 +712,12 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
 | Score tier colours/labels | `web/lib/utils.ts` `scoreTier()` | `ScoreRing.tsx`, `JobCard.tsx` |
-| Resume profile / scoring keywords | External vendor `config.py` and `scoring_engine.py` | `automation/export.py`, `publish.py` |
+| Resume profile / scoring keywords | External vendor `config.py` and `scoring_engine.py` (BA: `run_source.py` patches) | `automation/export.py`, `publish.py` |
 | Simple portal/API score | `automation/api_sources.py` `score_job()` | `build_job()`, portal/API collectors |
 | Search keywords/cities/score floor | `profiles/<role>.json` | `run_source.py`, workflow |
 | Add a portal source | `automation/portal_scrapers.py` `fetch_*`, `SOURCES` | `collect_portal_jobs()` |
 | Add an API/ATS source | `automation/api_sources.py` `fetch_*`, `SOURCES` | `collect_api_jobs()` |
-| Add a role track | `profiles/<role>.json`, `automation/matrix.py` `REPOS` | `web/lib/types.ts`, `roles.ts`, `publish.py` `ROLES`, `agent.py` `ROLES`, workflow choices |
+| Add a role track | `profiles/<role>.json`, `automation/matrix.py` `REPOS` | `web/lib/types.ts`, `roles.ts`, `publish.py` `ROLES`, `agent.py` `ROLES`, workflow choices; shared-vendor roles also need a patch in `run_source.py` |
 | Refresh cooldown | `web/lib/github.ts` `REFRESH_COOLDOWN_MINUTES` | refresh API + dialog copy |
 | Retention window | `automation/publish.py` `DEFAULT_RETENTION_DAYS` | workflow `--retention-days` |
 | Schedule | `.github/workflows/scrape.yml` cron | `docs/ARCHITECTURE.md` |

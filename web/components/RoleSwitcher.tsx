@@ -22,7 +22,8 @@ export default function RoleSwitcher({ role, onChange }: Props) {
           style={{ "--role-accent": item.accent } as CSSProperties}
         >
           <span className="role-switch-dot" aria-hidden />
-          <span>{item.label}</span>
+          <span className="role-switch-label">{item.label}</span>
+          <span className="role-switch-short" aria-hidden>{item.shortLabel}</span>
         </button>
       ))}
     </nav>

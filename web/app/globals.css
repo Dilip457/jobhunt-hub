@@ -695,7 +695,7 @@ button:disabled {
 /* Role selection inside the scene */
 
 /* Desktop: a shallow destination dock across the bottom. The stage above it
-   keeps the character, path and all three gates visible at once. */
+   keeps the character, path and all four gates visible at once. */
 .intro-roles.intro-roles-cinematic {
   position: fixed;
   top: auto;
@@ -782,7 +782,7 @@ button:disabled {
 .intro-roles-cinematic .destination-grid {
   grid-area: grid;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
   min-height: 0;
   margin: 0;
@@ -1511,6 +1511,10 @@ button:disabled {
   border-radius: 50%;
   background: var(--role-accent);
   box-shadow: 0 0 12px var(--role-accent);
+}
+
+.role-switch-short {
+  display: none;
 }
 
 .dashboard-header-actions {
@@ -2576,6 +2580,20 @@ button:disabled {
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
+@media (min-width: 901px) and (max-width: 1180px) {
+  .intro-roles.intro-roles-cinematic {
+    grid-template-columns: minmax(180px, 0.72fr) minmax(0, 2.8fr);
+  }
+
+  .intro-roles-cinematic .destination-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .intro-roles-cinematic .destination-card {
+    min-height: 82px;
+  }
+}
+
 @media (max-width: 1100px) {
   .intro-roles.intro-roles-cinematic {
     width: calc(100vw - 40px);
@@ -3013,6 +3031,25 @@ button:disabled {
     display: none;
   }
 
+  .role-switch-btn {
+    gap: 5px;
+    padding: 8px 7px;
+    font-size: 11px;
+  }
+
+  .role-switch-label {
+    display: none;
+  }
+
+  .role-switch-short {
+    display: inline;
+  }
+
+  .role-switch-dot {
+    width: 5px;
+    height: 5px;
+  }
+
   .brand-mark {
     --cube: 16px;
     --half: 8px;
@@ -3084,7 +3121,7 @@ button:disabled {
 }
 
 /* Short portrait phones: keep the guide and the destination visible above the
-   sheet instead of letting the three cards fill the whole screen. */
+   sheet instead of letting the four cards fill the whole screen. */
 @media (max-width: 760px) and (max-height: 720px) {
   .intro-roles.intro-roles-cinematic {
     padding: 12px;

@@ -1,11 +1,12 @@
 # JobHunt India
 
-A public, daily-updated job portal for three role tracks — **GenAI**, **Data Engineering** and **UI/UX** — built from three existing Python scrapers.
+A public, daily-updated job portal for four role tracks — **GenAI**, **Data Engineering**, **UI/UX** and **Business Analyst** — built from existing Python scrapers.
 
 **Live:** <https://jobhunt-hub-web.vercel.app>
 
 - **UI:** Next.js on Vercel
 - **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired) + LinkedIn, plus optional keyless boards (no PC required)
+- **Business Analyst:** the UI/UX vendor pipeline with BA config, scoring and title filters, plus IIBA Career Center, Wellfound, Remote OK and We Work Remotely. Fresher and 1–3 year roles rank first.
 - **Data:** compact JSON on an orphan `data` branch
 - **Database:** none
 - **Cost:** ₹0/month
@@ -35,12 +36,12 @@ GitHub Actions (03:00 IST or manual — runs entirely in the cloud, no PC needed
             │
             ▼
    orphan `data` branch (single commit, JSON is MERGED, never clobbered)
-     manifest.json · genai.json · data.json · uiux.json
+     manifest.json · genai.json · data.json · uiux.json · ba.json
             │
             ▼
 Vercel — Next.js
   ├─ /                    cinematic role selection (Three.js)
-  ├─ /jobs/genai|data|uiux shareable dashboards + filters
+  ├─ /jobs/genai|data|uiux|ba shareable dashboards + filters
   ├─ /api/jobs       reads the data branch (60s cache)
   ├─ /api/refresh    dispatches the workflow
   └─ /api/status     polls the GitHub Actions run
@@ -70,11 +71,12 @@ jobhunt-hub/
 ├─ profiles/
 │  ├─ genai.json
 │  ├─ data.json
-│  └─ uiux.json
+│  ├─ uiux.json
+│  └─ ba.json
 └─ web/                           # Next.js 15 app (Vercel root)
    ├─ app/
    │  ├─ page.tsx                 # cinematic intro
-   │  ├─ jobs/[role]/page.tsx     # /jobs/genai · /jobs/data · /jobs/uiux
+   │  ├─ jobs/[role]/page.tsx     # /jobs/genai · /jobs/data · /jobs/uiux · /jobs/ba
    │  ├─ globals.css
    │  └─ api/{jobs,refresh,status}/route.ts
    ├─ components/                 # intro, dashboard, filters, cards
@@ -154,6 +156,31 @@ still publish.
 Local end-to-end run (UI/UX, 14-day window): **633 jobs** — LinkedIn 215, Naukri 173,
 Shine 112, Indeed 88, Foundit 45 — exported to 385 KB of JSON.
 
+### Business Analyst sources
+
+The BA track reuses the UI/UX vendor pipeline (no separate scraper repo). Before the run,
+`run_source.py` replaces its design keywords, resume profile, role/tool scoring and
+company-page title filter with BA versions, so the shared pipeline searches for business
+analysts instead of designers.
+
+Two BA-only portal scrapers sit alongside the shared portals:
+
+| Source | How it is read | Notes |
+|---|---|---|
+| **IIBA Career Center** | server-rendered search page (plain HTTP) | the BA-specific board; parses both its legacy `job-tile` and newer `job-card` layouts |
+| **Wellfound** | embedded Apollo state in the role page | India roles + unrestricted remote only; US-only remote listings are dropped |
+
+Two keyless feeds also run for BA:
+
+| Source | What it adds | Key needed |
+|---|---|---|
+| **Remote OK** | public remote jobs API | none |
+| **We Work Remotely** | public RSS feed | none |
+
+BA is an **entry-level-first** track: `api_sources.py` and `export.py` boost fresher, entry,
+graduate, junior and 1–3 year titles and push senior/lead/manager titles down. The dashboard
+applies the same priority when sorting by score, so fresher and 1–3 year roles appear first.
+
 ### Optional: keyless ATS boards and job APIs
 
 `automation/api_sources.py` still contains keyless company ATS boards and optional official
@@ -218,8 +245,8 @@ catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `
 
 1. A clean boot screen loads the scene; no role cards are shown during this step.
 2. A four-second close-up of the guide says **“HI.”** against red/blue rim light. Role cards are still hidden.
-3. The camera pulls back to reveal an illuminated path and three gates.
-4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering and UI/UX (a bottom sheet on phones).
+3. The camera pulls back to reveal an illuminated path and four gates.
+4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering, UI/UX and Business Analyst (a bottom sheet on phones).
 5. In role selection, drag the guide left or right to inspect the front, side and back. **Auto-rotate** is off by default and can be turned on from the dock; dragging always works.
 6. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 
@@ -231,8 +258,8 @@ The dashboard is one click away in every degraded mode:
 - Every full page load plays the greeting; use **Skip intro** if you want to go straight to the roles.
 - Keyboard focus, mobile layout and browser back/forward work normally.
 
-Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` —
-and filter parameters are preserved in the URL.
+Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
+`/jobs/ba` — and filter parameters are preserved in the URL.
 
 ### The 3D guide is a prototype
 
@@ -326,10 +353,10 @@ Protections:
 
 ### Shareable role URLs
 
-Each destination has a real route: `/jobs/genai`, `/jobs/data` and `/jobs/uiux`. The
-homepage stays at `/`; choosing a role navigates to its route, so links and browser
-history work normally. Filter parameters such as `?q=python&city=Bangalore` are written to
-the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
+Each destination has a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
+`/jobs/ba`. The homepage stays at `/`; choosing a role navigates to its route, so links and
+browser history work normally. Filter parameters such as `?q=python&city=Bangalore` are
+written to the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 
 Hiding the control is a UX guard, not an authentication boundary: the API route is still
 reachable. The cooldown and one-run concurrency limit keep accidental or repeated use
@@ -341,10 +368,12 @@ bounded. A secret token can be added to the route if hard access control is need
 
 1. Add `profiles/<slug>.json` with `repo`, `db`, `sources`, `min_score`, and optionally
    `playwright`, `keywords`, `cities`.
-2. Add the slug to `ROLES` in `web/lib/roles.ts`.
+2. Add the slug to `ROLES` in `web/lib/roles.ts` (include a `shortLabel` for the mobile dock).
 3. Add it to `REPOS` in `automation/matrix.py` and the workflow's `workflow_dispatch` choices.
-4. Add seed JSON at `web/data/<slug>.json` (optional).
+4. Add seed JSON at `web/data/<slug>.json` (optional but required if `fallback.ts` imports it).
 5. Add it to `ROLES` in `automation/publish.py` and `automation/agent.py`.
+6. For a role that shares another vendor repo, add its config/scoring patch in
+   `automation/run_source.py` (the BA track is the reference implementation).
 
 ---
 
@@ -373,6 +402,9 @@ Scrapers and optional APIs fail in different ways, so the pipeline can use both:
 | **SimplyHired** (Indeed inventory) | ✅ via WARP (optional) | Indeed's sister site; same Indian listings |
 | Company ATS boards | ✅ works (optional) | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
 | Adzuna / Jooble / Google Jobs | ✅ works (optional, with keys) | official APIs, no PC |
+| **IIBA Career Center** | ✅ works (BA only) | plain HTTP; the BA-specific board |
+| **Wellfound** | ✅ works (BA only) | India + unrestricted remote only |
+| **Remote OK / We Work Remotely** | ✅ works (BA only) | keyless remote feeds |
 
 Cloud runs use `--no-apis`, so only the direct scrapers + LinkedIn publish by default.
 

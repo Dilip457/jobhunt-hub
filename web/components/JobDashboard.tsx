@@ -5,7 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
 import type { Job, RoleData, RoleSlug, RunState, StatusResponse } from "@/lib/types";
-import { cityCounts, matchesExperience, type ExperienceBucket } from "@/lib/utils";
+import {
+  cityCounts,
+  experiencePriority,
+  matchesExperience,
+  type ExperienceBucket,
+} from "@/lib/utils";
 import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
 import Filters from "./Filters";
 import BrandMark from "./BrandMark";
@@ -286,9 +291,15 @@ export default function JobDashboard({ role }: Props) {
     return list.sort((a, b) => {
       if (sort === "date") return (b.posted_date ?? "").localeCompare(a.posted_date ?? "");
       if (sort === "company") return a.company.localeCompare(b.company);
+      // Business Analyst is an entry/1–3 year track: keep those roles first
+      // even when a senior listing has a slightly higher raw match score.
+      if (role === "ba") {
+        const priority = experiencePriority(a) - experiencePriority(b);
+        if (priority !== 0) return priority;
+      }
       return b.score - a.score;
     });
-  }, [jobs, query, city, source, score, experience, dateRange, sort]);
+  }, [jobs, query, city, source, score, experience, dateRange, sort, role]);
 
   useEffect(() => {
     setVisible(PAGE_SIZE);
@@ -350,8 +361,8 @@ export default function JobDashboard({ role }: Props) {
             </p>
             <h1>{roleMeta.fullLabel}</h1>
             <p className="hero-lede">
-              {roleMeta.blurb} Curated from Naukri, Foundit, Indeed, Shine and LinkedIn, with
-              deduplicated links and a transparent match signal.
+              {roleMeta.blurb} Curated from Naukri, Foundit, Indeed, Shine, LinkedIn, Wellfound,
+              IIBA and more, with deduplicated links and a transparent match signal.
             </p>
             <div className="hero-actions">
               <a className="primary-btn" href="#jobs">

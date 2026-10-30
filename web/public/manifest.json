@@ -1,7 +1,7 @@
 {
   "name": "JobHunt India",
   "short_name": "JobHunt",
-  "description": "A cinematic job-discovery experience for GenAI, Data Engineering and UI/UX roles across India. Real listings, real links, updated daily.",
+  "description": "A cinematic job-discovery experience for GenAI, Data Engineering, UI/UX and Business Analyst roles across India. Real listings, real links, updated daily.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#08090D",
@@ -48,6 +48,13 @@
       "short_name": "UI/UX",
       "description": "View UI/UX Design jobs",
       "url": "/jobs/uiux",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Business Analyst Roles",
+      "short_name": "Business Analyst",
+      "description": "View entry-level and 1–3 year Business Analyst jobs",
+      "url": "/jobs/ba",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]

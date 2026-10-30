@@ -1,12 +1,13 @@
 # Architecture — JobHunt Hub
 
-A zero-cost, cloud-only job board for three role tracks:
+A zero-cost, cloud-only job board for four role tracks:
 
 - **GenAI / AI Engineering**
 - **Data Engineering**
 - **UI / UX Design**
+- **Business Analyst** (entry-level first: fresher and 1–3 year roles rank above senior roles)
 
-It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company career pages, publishes them as compact JSON, and serves them through a Next.js app on Vercel.
+It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company career pages, plus BA-specific sources (IIBA Career Center, Wellfound, Remote OK, We Work Remotely), publishes them as compact JSON, and serves them through a Next.js app on Vercel.
 
 | Item | Value |
 |---|---|
@@ -24,7 +25,7 @@ It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company car
 ## 1. What the system does
 
 1. Every morning, GitHub Actions runs the scraping workflow.
-2. Three independent scrapers collect jobs for the three role tracks.
+2. Four independent scrapers collect jobs for the four role tracks. Business Analyst reuses the UI/UX vendor pipeline with BA config and scoring, and adds its own portal and API sources.
 3. The results are merged with the previous published data.
 4. The merged JSON is force-pushed to an orphan `data` branch.
 5. Vercel serves a Next.js UI and API routes that read that JSON.
@@ -75,7 +76,7 @@ flowchart LR
     subgraph GitHub["GitHub"]
         API["GitHub REST API"]
         ACTIONS["Actions: scrape.yml"]
-        DATA["data branch<br/>genai.json · data.json · uiux.json · manifest.json"]
+        DATA["data branch<br/>genai.json · data.json · uiux.json · ba.json · manifest.json"]
         MAIN["main branch<br/>web/ + automation/"]
     end
 
@@ -127,7 +128,7 @@ The workflow has four job groups:
 
 | Job | Purpose | Timeout | Parallelism |
 |---|---|---|---|
-| `prepare` | Build the role matrix (`genai`, `data`, `uiux`) | default | one job |
+| `prepare` | Build the role matrix (`genai`, `data`, `uiux`, `ba`) | default | one job |
 | `scrape` | Run the vendor pipeline + direct portal scrapers per role | 75 min per role | **1 role at a time** (`max-parallel: 1`) |
 | `warp` | Run Indeed SEO + SimplyHired through Cloudflare WARP | 12 min per role | **1 role at a time**, `continue-on-error` |
 | `publish` | Merge artifacts and force-push the `data` branch | default | one job, `if: always()` |
@@ -147,6 +148,29 @@ The `scrape` and `warp` groups both depend only on `prepare`, so GitHub may run 
 | **Indeed SEO** | Search-engine-style pages through WARP | `warp` job |
 | **SimplyHired** | `curl_cffi` through WARP | `warp` job |
 | **Optional APIs / ATS** | Adzuna, Jooble, JSearch, Remotive, Himalayas, Greenhouse/Lever/Ashby/SmartRecruiters | Local / opt-in only (`--no-apis` in cloud) |
+| **IIBA Career Center** | Server-rendered search page (plain HTTP) | `scrape` job (BA only) |
+| **Wellfound** | Embedded Apollo state in the role page | `scrape` job (BA only) |
+| **Remote OK** | Public remote jobs API | BA API step |
+| **We Work Remotely** | Public RSS feed | BA API step |
+
+### 4.2.1 Business Analyst track
+
+Business Analyst has no separate vendor repo. It reuses `Dilip457/UI-UX-Job_Hunt`, and
+`run_source.py` patches that repo before its modules import:
+
+- `config.SEARCH_KEYWORDS`, `SKILL_SEARCH_KEYWORDS` and `TARGET_ROLES` from `profiles/ba.json`
+- `config.RESUME_PROFILE`, high/medium weight keywords and the role/tool scoring functions
+- `scrapers.company_pages_scraper.DESIGN_KEYWORDS`, so BA titles survive its title filter
+
+`api_sources.py` and `export.py` apply an **entry-level-first** score adjustment for `ba`:
+fresher, entry-level, graduate, intern, junior, associate and 1–3 year titles get a boost;
+senior, lead, principal, manager, director and head titles are pushed down. The dashboard
+(`web/lib/utils.ts` → `experiencePriority()`) applies the same order when the role is `ba`
+and the sort is `score`.
+
+BA-only portal scrapers live in `portal_scrapers.py` (`iiba`, `wellfound`) and run inside the
+normal `scrape` job. The workflow adds a BA-specific `api_sources.py` step that writes
+`artifacts/ba.apis.json`; `publish.py` merges every `ba*.json` artifact.
 
 ### 4.3 Publisher — `publish.py`
 
@@ -165,8 +189,8 @@ The publisher is deliberately conservative:
 The `web/` directory is a Next.js 15 app deployed with **Root Directory = `web`**.
 
 - `/` is the cinematic entry point: a Three.js close-up greeting, pullback, illuminated path and role selection.
-- `/jobs/genai`, `/jobs/data` and `/jobs/uiux` are static, shareable dashboards.
-- `/jobs/[role]` is pre-rendered for the three known roles; any other slug redirects to `/`.
+- `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and `/jobs/ba` are static, shareable dashboards.
+- `/jobs/[role]` is pre-rendered for the four known roles; any other slug redirects to `/`.
 - The dashboard is a client component with filters, a role switcher and shareable query parameters.
 - `/api/jobs` reads a role's JSON from the `data` branch.
 - `/api/refresh` dispatches the GitHub Actions workflow.
@@ -182,7 +206,7 @@ The cinematic intro is progressive enhancement, never a gate:
 | Normal visit | Clean boot, then a four-second rigged 3D character close-up (`HI.`), camera pullback, path, turn, walk, role selection |
 | Returning visitor | The greeting still plays; **Skip intro** jumps straight to role selection |
 | **Skip intro** | Cancels timers and jumps straight to role selection |
-| `prefers-reduced-motion: reduce` | Static wide-scene selector: four-second `HI.` first, then the same three destinations; no canvas |
+| `prefers-reduced-motion: reduce` | Static wide-scene selector: four-second `HI.` first, then the same four destinations; no canvas |
 | WebGL unavailable, model fails, or a 12 s load timeout | The same static wide-scene fallback; the greeting is shown before the role cards |
 | Very small screen | Aspect- and height-aware camera, gate-fitting departure shot, scrollable compact bottom sheet; short landscape uses a three-column strip |
 | Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |
@@ -243,6 +267,7 @@ data  (orphan, single commit, force-pushed every run)
 ├─ genai.json
 ├─ data.json
 ├─ uiux.json
+├─ ba.json
 ├─ manifest.json
 └─ vercel.json   ← tells Vercel not to deploy this branch
 ```
@@ -287,7 +312,7 @@ sequenceDiagram
     participant User as Browser
 
     Cron->>Prep: 21:30 UTC / 03:00 IST
-    Prep->>Prep: build matrix (genai, data, uiux)
+    Prep->>Prep: build matrix (genai, data, uiux, ba)
     Prep->>Scrape: matrix
     Prep->>Warp: matrix
 
@@ -433,10 +458,10 @@ sequenceDiagram
     UI->>UI: success → reload jobs with fresh=1
 ```
 
-Each role has its own shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The
-homepage `/` stays clean; choosing a destination navigates to the role route. Filter
-parameters (`q`, `city`, `source`, `score`, `exp`, `days`, `sort`) are written to the role
-URL so a filtered view can be shared. Unknown role slugs redirect to `/`.
+Each role has its own shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
+`/jobs/ba`. The homepage `/` stays clean; choosing a destination navigates to the role
+route. Filter parameters (`q`, `city`, `source`, `score`, `exp`, `days`, `sort`) are written
+to the role URL so a filtered view can be shared. Unknown role slugs redirect to `/`.
 
 ### Guards
 

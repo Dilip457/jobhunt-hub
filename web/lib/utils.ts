@@ -128,6 +128,41 @@ export function matchesExperience(job: Job, bucket: ExperienceBucket): boolean {
   }
 }
 
+/**
+ * Ranking used by the Business Analyst track. Fresher/entry-level roles come
+ * first, then 1–3 year roles, then unspecified/mid roles, and senior roles
+ * last. The score is still the tie-breaker inside each band.
+ */
+export function experiencePriority(job: Job): number {
+  const min = job.experience_min ?? null;
+  const max = job.experience_max ?? null;
+
+  if (min != null) {
+    if (min <= 1) return 0;
+    if (min <= 3) return 1;
+    if (min >= 6) return 3;
+    return 2;
+  }
+  if (max != null) {
+    if (max <= 1) return 0;
+    if (max <= 3) return 1;
+    if (max >= 6) return 3;
+    return 2;
+  }
+
+  const text = `${job.title} ${job.snippet ?? ""}`.toLowerCase();
+  if (/\b(fresher|entry[\s-]?level|graduate|intern|trainee|0\s*[-–]\s*1)\b/.test(text)) return 0;
+  if (/\b(junior|associate|1\s*[-–]\s*3|1\s*[-–]\s*2|2\s*[-–]\s*3)\b/.test(text)) return 1;
+  if (
+    /\b(senior|lead|principal|staff|manager|director|head|architect|6\+?\s*years?|7\+?\s*years?|8\+?\s*years?)\b/.test(
+      text,
+    )
+  ) {
+    return 3;
+  }
+  return 2;
+}
+
 export function initials(value: string): string {
   const clean = value.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
   if (!clean || clean.toLowerCase() === "unknown") return "–";
@@ -146,6 +181,11 @@ const SOURCE_COLORS: Record<string, string> = {
   wellfound: "#0f172a",
   glassdoor: "#0caa41",
   instahyre: "#6366f1",
+  "iiba career center": "#1f5fa8",
+  "remote ok": "#f97316",
+  "we work remotely": "#0ea5e9",
+  cutshort: "#5851d3",
+  hirist: "#2563eb",
   "company career pages": "#14b8a6",
   company_pages: "#14b8a6",
   playwright: "#8b5cf6",

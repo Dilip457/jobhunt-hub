@@ -31,13 +31,16 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from export import (
     canonical_url,
     clean_company,
     clean_title,
+    extract_experience,
     looks_foreign,
     make_snippet,
     normalize_location,
@@ -52,6 +55,8 @@ ROLE_SEARCH_TERMS = {
     "genai": ["machine learning engineer", "generative ai engineer", "llm engineer", "ai engineer"],
     "data": ["data engineer", "big data engineer", "etl developer", "cloud data engineer"],
     "uiux": ["ux designer", "ui designer", "product designer", "interaction designer"],
+    "ba": ["business analyst", "functional analyst", "business systems analyst",
+           "product analyst", "business analyst fresher"],
 }
 
 # A job only counts if one of these appears in its title (keeps feeds on-topic).
@@ -62,6 +67,13 @@ ROLE_TITLE_TOKENS = {
              "spark", "pyspark", "data warehouse", "databricks", "snowflake", "sql"],
     "uiux": ["ux", "ui", "designer", "design", "interaction", "visual", "figma",
              "user experience", "product design"],
+    # BA-specific titles plus a broad `analyst` token. The broad token keeps
+    # IIBA's generic listings alive; ROLE_TITLE_EXCLUDE below removes the
+    # finance, data, QA, security and ops analyst families.
+    "ba": ["business analyst", "business analysis", "functional analyst",
+           "business systems analyst", "systems analyst", "process analyst",
+           "requirements analyst", "product analyst", "it analyst",
+           "business process analyst", "bpa", "analyst"],
 }
 
 # Titles that contain a role token but are clearly a different job family.
@@ -69,6 +81,16 @@ ROLE_TITLE_EXCLUDE = {
     "genai": ["sales", "account executive", "recruiter", "marketing", "support specialist"],
     "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee", "data center"],
     "uiux": ["mechanical", "hardware", "electrical", "civil", "data center", "instructional"],
+    # `analyst` is a broad token (it keeps IIBA's generic titles alive), so
+    # exclude the analyst families that are clearly not business analysis.
+    "ba": ["data analyst", "business intelligence", "financial analyst", "finance",
+           "fp&a", "investment analyst", "credit analyst", "risk", "lending",
+           "quality analyst", "qa analyst", "security analyst", "soc analyst",
+           "research analyst", "benefits", "compensation", "hris", "workday",
+           "people technology", "sec analyst", "finops", "procurement",
+           "supply chain", "payment operations", "revenue analyst",
+           "marketing", "sales", "business development", "account executive",
+           "recruiter", "support specialist"],
 }
 
 ROLE_SKILLS = {
@@ -81,7 +103,28 @@ ROLE_SKILLS = {
     "uiux": ["figma", "sketch", "adobe xd", "prototyp", "wireframe", "user research",
              "usability", "design system", "interaction design", "ux", "ui",
              "responsive", "accessibility", "html", "css", "framer", "invision"],
+    # Fresher + 1–3 year BA skills and tools, as requested.
+    "ba": ["requirement gathering", "requirement elicitation", "requirement management",
+           "brd", "frd", "business requirement", "functional requirement", "user story",
+           "user stories", "acceptance criteria", "gap analysis", "process mapping",
+           "process improvement", "stakeholder", "uat", "user acceptance testing",
+           "wireframe", "data visualization", "data visualisation", "sql", "agile",
+           "scrum", "sprint", "jira", "confluence", "visio", "excel", "power bi",
+           "tableau", "balsamiq", "figma", "postman", "api testing", "api"],
 }
+
+# Business Analyst is an entry-level-first track: fresher/entry/1–3 year roles
+# get a score boost and senior/lead titles are pushed down.
+BA_ENTRY_TITLE = re.compile(
+    r"\b(fresher|entry[\s-]?level|graduate|intern|internship|trainee|junior|jr\.?|"
+    r"associate|0\s*[-–]\s*1|1\s*[-–]\s*3|1\s*[-–]\s*2)\b",
+    re.I,
+)
+BA_SENIOR_TITLE = re.compile(
+    r"\b(senior|sr\.?|lead|principal|staff|manager|director|head|vp|"
+    r"vice president|architect|7\+?\s*years?|8\+?\s*years?)\b",
+    re.I,
+)
 
 REMOTE_WORDS = {"worldwide", "anywhere", "global", "remote", "work from home", "wfh"}
 
@@ -101,6 +144,21 @@ def get_json(url: str, params: Optional[Dict[str, Any]] = None, headers: Optiona
     if params:
         url = url + "?" + urllib.parse.urlencode(params)
     return _request(url, headers=headers)
+
+
+def get_text(url: str, headers: Optional[Dict[str, str]] = None) -> str:
+    merged = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    }
+    if headers:
+        merged.update(headers)
+    req = urllib.request.Request(url, headers=merged)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
+        return response.read().decode("utf-8", "replace")
 
 
 def post_json(url: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None):
@@ -166,7 +224,12 @@ def score_job(role: str, title: str, snippet: str) -> float:
     for skill in ROLE_SKILLS.get(role, []):
         if skill in text:
             score += 3
-    return round(min(score, 97.0), 1)
+    if role == "ba":
+        if BA_ENTRY_TITLE.search(title or ""):
+            score += 9
+        if BA_SENIOR_TITLE.search(title or ""):
+            score -= 10
+    return round(max(0.0, min(score, 97.0)), 1)
 
 
 def build_job(
@@ -190,6 +253,7 @@ def build_job(
     if not keep:
         return None
     snippet = make_snippet(description)
+    exp_min, exp_max = extract_experience(title, description)
     return {
         "id": str(job_id or canonical_url(url)),
         "title": clean_title(title),
@@ -201,8 +265,8 @@ def build_job(
         "posted_date": posted,
         "score": score_job(role, title, snippet),
         "score_parts": {"role": 0.0, "skill": 0.0, "experience": 0.0, "tool": 0.0, "domain": 0.0},
-        "experience_min": None,
-        "experience_max": None,
+        "experience_min": exp_min,
+        "experience_max": exp_max,
         "snippet": snippet,
         "is_new": False,
         # When *we* first scraped this job, not when the portal posted it.
@@ -342,6 +406,73 @@ def fetch_himalayas(role: str, max_days: int) -> List[Dict[str, Any]]:
             item.get("description") or item.get("excerpt", ""),
             to_date(item.get("pubDate")),
             item.get("guid"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_remoteok(role: str, max_days: int) -> List[Dict[str, Any]]:
+    """Remote OK's public API. No key, no signup; link back to the listing."""
+    data = get_json("https://remoteok.com/api")
+    jobs: List[Dict[str, Any]] = []
+    for item in (data if isinstance(data, list) else []):
+        if not isinstance(item, dict) or item.get("legal"):
+            continue
+        tags = item.get("tags") or []
+        description = " ".join([item.get("description") or "", " ".join(str(t) for t in tags)])
+        job = build_job(
+            role, "Remote OK",
+            item.get("position", ""),
+            item.get("company", ""),
+            item.get("location") or "Remote",
+            item.get("apply_url") or item.get("url", ""),
+            description,
+            to_date(item.get("date") or item.get("epoch")),
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _rss_date(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value).date().isoformat()
+    except Exception:
+        return to_date(value)
+
+
+def fetch_weworkremotely(role: str, max_days: int) -> List[Dict[str, Any]]:
+    """We Work Remotely's public RSS feed (no key)."""
+    raw = get_text("https://weworkremotely.com/remote-jobs.rss")
+    if not raw:
+        return []
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return []
+
+    jobs: List[Dict[str, Any]] = []
+    for item in root.iter("item"):
+        raw_title = (item.findtext("title") or "").strip()
+        company, _, title = raw_title.partition(": ")
+        if not title:
+            title, company = raw_title, ""
+        region = (item.findtext("region") or "").strip()
+        country = (item.findtext("country") or "").strip()
+        link = (item.findtext("link") or item.findtext("guid") or "").strip()
+        job = build_job(
+            role, "We Work Remotely",
+            title,
+            company or "We Work Remotely",
+            region or country or "Remote",
+            link,
+            item.findtext("description") or "",
+            _rss_date(item.findtext("pubDate")),
+            link,
         )
         if job:
             jobs.append(job)
@@ -502,6 +633,8 @@ SOURCES = (
     ("jsearch", fetch_jsearch),
     ("remotive", fetch_remotive),
     ("himalayas", fetch_himalayas),
+    ("remoteok", fetch_remoteok),
+    ("weworkremotely", fetch_weworkremotely),
     ("ats", fetch_ats),
 )
 

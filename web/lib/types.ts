@@ -1,6 +1,6 @@
-export type RoleSlug = "genai" | "data" | "uiux";
+export type RoleSlug = "genai" | "data" | "uiux" | "ba";
 
-export const ROLE_SLUGS: RoleSlug[] = ["genai", "data", "uiux"];
+export const ROLE_SLUGS: RoleSlug[] = ["genai", "data", "uiux", "ba"];
 
 export function isRoleSlug(value: string): value is RoleSlug {
   return (ROLE_SLUGS as string[]).includes(value);
@@ -76,6 +76,7 @@ export interface StatusResponse {
 export interface RoleMeta {
   slug: RoleSlug;
   label: string;
+  shortLabel: string;
   fullLabel: string;
   description: string;
   accent: string;

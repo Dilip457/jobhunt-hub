@@ -39,6 +39,21 @@
    },
    "demo": true,
    "status": "demo"
+  },
+  "ba": {
+   "role": "ba",
+   "count": 14,
+   "generated_at": "2026-10-29T07:30:00+05:30",
+   "sources": {
+    "Naukri": 3,
+    "LinkedIn": 4,
+    "Indeed": 3,
+    "Shine": 2,
+    "IIBA Career Center": 1,
+    "Wellfound": 1
+   },
+   "demo": true,
+   "status": "demo"
   }
  }
 }

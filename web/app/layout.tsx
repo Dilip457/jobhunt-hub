@@ -18,7 +18,7 @@ const displayFont = Space_Grotesk({
 export const metadata: Metadata = {
   title: "JobHunt India — Find your next move",
   description:
-    "A cinematic job-discovery experience for GenAI, Data Engineering and UI/UX roles across India. Real listings, real links, updated daily.",
+    "A cinematic job-discovery experience for GenAI, Data Engineering, UI/UX and Business Analyst roles across India. Real listings, real links, updated daily.",
   robots: { index: false, follow: false },
 };
 

@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional
 
 from export import canonical_url
 
-ROLES = ("genai", "data", "uiux")
+ROLES = ("genai", "data", "uiux", "ba")
 DEFAULT_RETENTION_DAYS = 21
 
 

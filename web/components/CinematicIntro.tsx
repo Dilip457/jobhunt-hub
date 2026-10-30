@@ -38,15 +38,17 @@ const GROUND_Y = 0.014;
 const DAIS_TOP = 0.04;
 
 const GATE_POSITIONS: Record<RoleSlug, THREE.Vector3> = {
-  genai: new THREE.Vector3(-3.45, 0, -9.0),
-  data: new THREE.Vector3(0, 0, -9.65),
-  uiux: new THREE.Vector3(3.45, 0, -9.0),
+  genai: new THREE.Vector3(-4.6, 0, -9.15),
+  data: new THREE.Vector3(-1.55, 0, -9.75),
+  uiux: new THREE.Vector3(1.55, 0, -9.75),
+  ba: new THREE.Vector3(4.6, 0, -9.15),
 };
 
 const GATE_COLORS: Record<RoleSlug, number> = {
   genai: 0xff304f,
   data: 0x287bff,
   uiux: 0xffffff,
+  ba: 0x8b5cf6,
 };
 
 function clamp(value: number, min = 0, max = 1): number {
@@ -1199,7 +1201,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       );
       const wideLook = new THREE.Vector3(0.05, 1.0, -2.2);
       // The selection camera is a closer stage shot: the guide is large enough
-      // to read the face and fabric without losing the three destinations.
+      // to read the face and fabric without losing the four destinations.
       // The shot is recomputed from the viewport aspect so portrait phones get
       // a centred, slightly wider stage instead of a cropped desktop frame.
       const selectorPosition = new THREE.Vector3();
@@ -1724,7 +1726,7 @@ export default function CinematicIntro({ onComplete }: Props) {
           <span>
             {phase === "approach"
               ? "Follow the light. Your destination is just ahead."
-              : "A dark path. Three directions. One next move."}
+              : "A dark path. Four directions. One next move."}
           </span>
         </div>
       ) : null}

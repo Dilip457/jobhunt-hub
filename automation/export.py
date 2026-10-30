@@ -173,6 +173,31 @@ TITLE_EXP = [
     (re.compile(r"\b(lead|senior|sr\.?)\b", re.I), (5, None)),
 ]
 
+# Business Analyst is an entry-level-first track. The vendor DB score is kept,
+# but fresher/entry/1–3 year titles are lifted and senior titles are pushed
+# down so the dashboard opens on the roles the user actually wants.
+BA_ENTRY_TITLE = re.compile(
+    r"\b(fresher|entry[\s-]?level|graduate|intern|internship|trainee|junior|jr\.?|"
+    r"associate|0\s*[-–]\s*1|1\s*[-–]\s*3|1\s*[-–]\s*2)\b",
+    re.I,
+)
+BA_SENIOR_TITLE = re.compile(
+    r"\b(senior|sr\.?|lead|principal|staff|manager|director|head|vp|"
+    r"vice president|architect|7\+?\s*years?|8\+?\s*years?)\b",
+    re.I,
+)
+
+
+def priority_score(role: str, title: str, score: float) -> float:
+    if role != "ba":
+        return score
+    value = float(score or 0)
+    if BA_ENTRY_TITLE.search(title or ""):
+        value += 10
+    if BA_SENIOR_TITLE.search(title or ""):
+        value -= 12
+    return round(max(0.0, min(value, 100.0)), 1)
+
 
 def extract_experience(title: str, description: str) -> Tuple[Optional[int], Optional[int]]:
     text = f"{title or ''}. {description or ''}"
@@ -331,7 +356,7 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             "apply_url": (row["apply_url"] or url).strip(),
             "source": source,
             "posted_date": posted or None,
-            "score": round(float(row["match_score"] or 0), 1),
+            "score": priority_score(role, row["title"], float(row["match_score"] or 0)),
             "score_parts": {
                 "role": round(float(row["role_match"] or 0), 1),
                 "skill": round(float(row["skill_match"] or 0), 1),
@@ -372,7 +397,7 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export a scraper SQLite DB to portal JSON")
     parser.add_argument("--db", required=True, help="Path to the scraper's SQLite DB")
-    parser.add_argument("--role", required=True, help="Role slug: genai | data | uiux")
+    parser.add_argument("--role", required=True, help="Role slug: genai | data | uiux | ba")
     parser.add_argument("--out", required=True, help="Output JSON path")
     parser.add_argument("--min-score", type=float, default=25.0)
     parser.add_argument("--limit", type=int, default=800)

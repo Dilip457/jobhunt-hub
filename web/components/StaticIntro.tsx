@@ -80,7 +80,7 @@ export default function StaticIntro({ onSelect, reduced = false }: Props) {
           </h1>
           <h2>LET&apos;S FIND YOUR NEXT MOVE.</h2>
           <p className="intro-lede">
-            Three destinations. Real openings across India. Choose the direction that fits
+            Four destinations. Real openings across India. Choose the direction that fits
             what you want to build next.
           </p>
         </section>

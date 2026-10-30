@@ -17,6 +17,7 @@ on:
           - genai
           - data
           - uiux
+          - ba
 
 permissions:
   contents: write
@@ -94,6 +95,20 @@ jobs:
             --no-apis \
             --no-validate
 
+      - name: Fetch BA-specific keyless sources
+        if: matrix.role == 'ba'
+        continue-on-error: true
+        working-directory: portal
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python automation/api_sources.py \
+            --role ba \
+            --profile profiles/ba.json \
+            --out artifacts/ba.apis.json \
+            --max-days 21 \
+            --min-score 18
+
       - name: Upload role artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -102,6 +117,7 @@ jobs:
           path: |
             portal/artifacts/${{ matrix.role }}.json
             portal/artifacts/${{ matrix.role }}.json.status.json
+            portal/artifacts/${{ matrix.role }}.apis.json
           if-no-files-found: warn
           retention-days: 14
 

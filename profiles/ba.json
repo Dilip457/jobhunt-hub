@@ -1,0 +1,36 @@
+{
+  "role": "ba",
+  "label": "Business Analyst",
+  "repo": "Dilip457/UI-UX-Job_Hunt",
+  "db": "jobs.db",
+  "sources": [
+    "linkedin",
+    "company_pages"
+  ],
+  "playwright": false,
+  "keywords": [
+    "Business Analyst",
+    "Functional Analyst",
+    "Business Systems Analyst",
+    "Product Analyst",
+    "Junior Business Analyst",
+    "Business Analyst Fresher"
+  ],
+  "skill_keywords": [
+    "Requirement Gathering",
+    "BRD FRD",
+    "User Stories Acceptance Criteria",
+    "Gap Analysis",
+    "Process Mapping",
+    "UAT",
+    "SQL Business Analyst",
+    "Power BI",
+    "Tableau",
+    "JIRA Confluence",
+    "Agile Scrum"
+  ],
+  "cities": ["Hyderabad", "Bangalore", "Pune", "Mumbai"],
+  "min_score": 18,
+  "max_days": 21,
+  "limit": 1000
+}

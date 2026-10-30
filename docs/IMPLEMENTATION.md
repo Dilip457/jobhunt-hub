@@ -52,7 +52,8 @@ jobhunt-hub/
 ├─ profiles/
 │  ├─ genai.json                 # GenAI role keywords, sources, limits
 │  ├─ data.json                  # Data Engineering profile
-│  └─ uiux.json                  # UI/UX profile
+│  ├─ uiux.json                  # UI/UX profile
+│  └─ ba.json                    # Business Analyst profile (entry-level first)
 ├─ vendor/                       # cloned at runtime, not committed
 ├─ web/                          # Next.js 15 app (Vercel Root Directory)
 │  ├─ app/
@@ -112,7 +113,7 @@ on:
     inputs:
       role:
         type: choice
-        options: [all, genai, data, uiux]
+        options: [all, genai, data, uiux, ba]
         default: all
 ```
 
@@ -146,10 +147,12 @@ REPOS = {
     "genai": "Dilip457/Job-Hunt-for-GenAI-Profile",
     "data":  "Dilip457/DataEngineer_JobHunt",
     "uiux":  "Dilip457/UI-UX-Job_Hunt",
+    # BA reuses the UI/UX vendor pipeline with BA config/scoring patches.
+    "ba":    "Dilip457/UI-UX-Job_Hunt",
 }
 ```
 
-`all` produces all three entries; a specific role produces one.
+`all` produces all four entries; a specific role produces one.
 
 ### 3.4 `scrape` job
 
@@ -242,7 +245,7 @@ The `if: always()` means publishing can happen even when a scrape or WARP job fa
 
 ### 4.1 Role profiles
 
-Files: `profiles/genai.json`, `profiles/data.json`, `profiles/uiux.json`
+Files: `profiles/genai.json`, `profiles/data.json`, `profiles/uiux.json`, `profiles/ba.json`
 
 | Field | Meaning |
 |---|---|
@@ -264,8 +267,11 @@ Current values:
 | `genai` | `playwright`, `linkedin`, `company_pages` | yes | Generative AI Engineer, LLM Engineer, Machine Learning Engineer, AI Engineer |
 | `data` | `playwright`, `linkedin`, `company_pages` | yes | Data Engineer, Big Data Engineer, PySpark Developer, Cloud Data Engineer |
 | `uiux` | `linkedin`, `company_pages` | no | Product Designer, UX Designer, UI Designer, Interaction Designer |
+| `ba` | `linkedin`, `company_pages` | no | Business Analyst, Functional Analyst, Business Systems Analyst, Product Analyst, Junior Business Analyst, Business Analyst Fresher |
 
-All profiles use `min_score: 20` and `max_days: 14`.
+`ba` also has `skill_keywords` (requirement gathering, BRD/FRD, user stories, GAP analysis, process mapping, UAT, SQL, Power BI, Tableau, JIRA/Confluence, Agile/Scrum) and four cities (Hyderabad, Bangalore, Pune, Mumbai). It uses `min_score: 18` and `max_days: 21`.
+
+All profiles except `ba` use `min_score: 20` and `max_days: 14`.
 
 ### 4.2 `run_source.py`
 
@@ -282,6 +288,7 @@ The wrapper treats the vendor repos as **read-only**. It patches them in memory,
 - Link validation disabled when `--no-validate` is passed.
 - LinkedIn geo IDs patched for India/Hyderabad/Bangalore.
 - Vendor Playwright search URLs built from the role keywords and cities.
+- For `ba`: replace the shared UI/UX vendor's `SEARCH_KEYWORDS`, `SKILL_SEARCH_KEYWORDS`, `TARGET_ROLES`, `RESUME_PROFILE`, high/medium weight keywords, role/tool scoring and company-page title filter with BA versions.
 
 #### Execution order
 
@@ -326,6 +333,8 @@ Direct, account-free scrapers. Each fetcher returns a list of normalized job dic
 | **Naukri** | Playwright + real Chrome | `https://www.naukri.com/<query>-jobs-in-<city>` | `div.srp-jobtuple-wrapper`; `.title`, `.comp-name`, `.locWdth`, `.job-post-day` |
 | **Indeed** | `curl_cffi` first, Playwright fallback | desktop, mobile and SEO variants of `in.indeed.com` | `div.job_seen_beacon`; `h3.jobTitle a`; job key from `data-jk` or `?jk=` |
 | **SimplyHired** | `curl_cffi` through WARP | `https://www.simplyhired.co.in/search?q=...&l=...` | `div[data-testid="searchSerpJob"]` |
+| **IIBA Career Center** (BA only) | `requests` (HTTP) | `https://careercenter.iiba.org/jobs?keywords=...&location=India` | legacy `div.job-tile` hidden inputs, or v3 `div.job-card[data-job-id]` with `.job-title`, `.company-name`, `.meta-location` |
+| **Wellfound** (BA only) | `requests` (HTTP) | `https://wellfound.com/role/r/business-analyst` | `__NEXT_DATA__` Apollo state: `JobListingSearchResult` + `StartupResult`; India and unrestricted remote only |
 
 #### Browser setup
 
@@ -373,8 +382,14 @@ This module is disabled in the cloud workflow with `--no-apis`. It can be enable
 | Google Jobs (JSearch) | `JSEARCH_API_KEY` | RapidAPI free tier |
 | Remotive | none | Remote roles |
 | Himalayas | none | Remote roles |
+| Remote OK | none | Public remote jobs API (BA API step) |
+| We Work Remotely | none | Public RSS feed (BA API step) |
 
 Missing keys are skipped silently. All results go through `build_job()` and are merged by canonical URL.
+
+For `ba`, the workflow runs this module separately after the main scrape and writes
+`artifacts/ba.apis.json`, so the BA track gets Remote OK, We Work Remotely and ATS results
+even though the main scrape uses `--no-apis`.
 
 ### 4.5 `export.py`
 
@@ -406,6 +421,7 @@ Exports the vendor SQLite database to public JSON:
 
 - `score_job()` starts from a base and adds role-title, skill and snippet matches.
 - Scores are capped below 100.
+- For `ba`, fresher/entry/graduate/junior/associate/1–3 year titles get a boost and senior/lead/manager titles are pushed down. `export.py` applies the same `priority_score()` to vendor rows.
 - UI tiers: Excellent ≥ 85, Strong ≥ 75, Good ≥ 65, Fair ≥ 50, Low < 50.
 - The profile's `min_score` (20) is the hard floor.
 
@@ -444,15 +460,19 @@ artifacts/
 ├─ data.warp.json
 ├─ uiux.json
 ├─ uiux.json.status.json
-└─ uiux.warp.json
+├─ uiux.warp.json
+├─ ba.json
+├─ ba.json.status.json
+├─ ba.apis.json
+└─ ba.warp.json
 ```
 
-`publish.py` globs `<role>*.json`, so both the main and WARP files are included.
+`publish.py` globs `<role>*.json`, so the main, WARP and BA API files are all included.
 
 ### 5.2 Merge algorithm
 
 ```text
-for each role in (genai, data, uiux):
+for each role in (genai, data, uiux, ba):
     candidate = first valid artifact for the role
     for each additional artifact:
         candidate = merge_payloads(candidate, artifact, retention)
@@ -564,6 +584,7 @@ python automation/publish.py \
 | `/jobs/genai` | GET | GenAI dashboard (pre-rendered) |
 | `/jobs/data` | GET | Data Engineering dashboard (pre-rendered) |
 | `/jobs/uiux` | GET | UI/UX dashboard (pre-rendered) |
+| `/jobs/ba` | GET | Business Analyst dashboard (pre-rendered) |
 | `/jobs/<unknown>` | GET | Redirect to `/` |
 | `/api/jobs?role=<role>` | GET | Return `RoleData` JSON |
 | `/api/jobs?role=<role>&fresh=1` | GET | Same, bypassing caches |
@@ -652,7 +673,7 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 
 The public UI does **not** render a refresh button, and there is no admin URL. On any dashboard, press **`Alt` + `Shift` + `R`** to open the confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. The shortcut is ignored while typing in an input, textarea, select or contenteditable element, and `Escape` cancels.
 
-Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepage `/` stays a clean introduction, choosing a destination navigates to its route, and browser back/forward works naturally. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are written to the role URL for shareable filtered views.
+Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and `/jobs/ba`. The homepage `/` stays a clean introduction, choosing a destination navigates to its route, and browser back/forward works naturally. Filter parameters such as `q`, `city`, `source`, `score`, `exp`, `days` and `sort` are written to the role URL for shareable filtered views.
 
 ### 6.6 UI
 
@@ -660,7 +681,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`. The homepa
 - The greeting owns the screen: no role cards are rendered while `HI.` is visible. The three destination gates are hidden during the close-up and appear with the pullback.
 - The first paint before the cinematic bundle is a clean `IntroBoot` (brand, loader, no headline and no role cards). The boot is also used while the GLB is loading, so a slow connection cannot turn the greeting into a selector.
 - Every full page load runs the greeting sequence. Returning visitors use **Skip intro** to jump straight to role selection; there is no localStorage shortcut that bypasses the greeting.
-- Desktop uses a shallow bottom role dock that keeps the character, path and all three gates visible. Phones use a bottom sheet with explicit card rows. The cinematic camera widens with viewport aspect and height; the departure shot pulls back until the selected gate’s width and height fit, so the gate and its surroundings stay visible on portrait phones, tablets and short landscape screens.
+- Desktop uses a shallow bottom role dock that keeps the character, path and all four gates visible. Phones use a bottom sheet with explicit card rows. The cinematic camera widens with viewport aspect and height; the departure shot pulls back until the selected gate’s width and height fit, so the gate and its surroundings stay visible on portrait phones, tablets and short landscape screens.
 - Short portrait screens (720px high or less) hide the explanatory subline and compact the cards; screens 600px high or less also hide card descriptions. Short landscape screens use a compact three-column strip. The sheet scrolls when its content exceeds the viewport and respects safe-area insets.
 - In `selecting`, pointer drag on the canvas rotates a dedicated model turntable around the GLB’s vertical axis. `Auto-rotate` is **off by default** and can be enabled from the dock; a drag pauses it for 2.8 seconds. The camera, floor and lights do not move, and rotation is outside `AnimationMixer`, so walk/run animation is unaffected.
 - `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`: the same wide scene poster, a four-second `HI.` beat first, then the identical destinations. It never shows the greeting and role cards together.
@@ -801,7 +822,8 @@ The token is server-side only. Never prefix it with `NEXT_PUBLIC_`.
       "status": "merged"
     },
     "data": { "...": "..." },
-    "uiux": { "...": "..." }
+    "uiux": { "...": "..." },
+    "ba": { "...": "..." }
   }
 }
 ```
@@ -844,6 +866,30 @@ python automation/run_source.py \
 ```
 
 Add `--no-apis` and `--no-playwright` to match the cloud workflow.
+
+The Business Analyst track reuses the same vendor repo:
+
+```bash
+git clone https://github.com/Dilip457/UI-UX-Job_Hunt.git vendor/ba
+
+python automation/run_source.py \
+  --role ba \
+  --profile profiles/ba.json \
+  --repo-dir vendor/ba \
+  --out artifacts/ba.json \
+  --no-playwright --no-apis --no-validate
+
+# BA-only portal sources
+python automation/portal_scrapers.py \
+  --role ba --profile profiles/ba.json \
+  --out artifacts/ba.portal.json \
+  --sites iiba wellfound --max-days 21 --min-score 18
+
+# BA keyless API sources (Remote OK, We Work Remotely, ATS)
+python automation/api_sources.py \
+  --role ba --profile profiles/ba.json \
+  --out artifacts/ba.apis.json --max-days 21 --min-score 18
+```
 
 ### 8.3 Run only the direct portal scrapers
 

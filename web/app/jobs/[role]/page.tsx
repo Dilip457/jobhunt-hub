@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const meta = getRole(role);
   return {
     title: `${meta.fullLabel} jobs — JobHunt India`,
-    description: `${meta.blurb} Live listings from Naukri, Foundit, Indeed, Shine and LinkedIn.`,
+    description: `${meta.blurb} Live listings from Naukri, Foundit, Indeed, Shine, LinkedIn, Wellfound and more.`,
   };
 }
 

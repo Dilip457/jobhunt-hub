@@ -10,6 +10,9 @@ REPOS = {
     "genai": "Dilip457/Job-Hunt-for-GenAI-Profile",
     "data": "Dilip457/DataEngineer_JobHunt",
     "uiux": "Dilip457/UI-UX-Job_Hunt",
+    # Business Analyst reuses the UI/UX vendor pipeline; the BA profile below
+    # replaces its keywords and skills, so no separate vendor repo is needed.
+    "ba": "Dilip457/UI-UX-Job_Hunt",
 }
 
 

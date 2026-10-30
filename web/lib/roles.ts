@@ -4,6 +4,7 @@ export const ROLES: RoleMeta[] = [
   {
     slug: "genai",
     label: "GenAI",
+    shortLabel: "GenAI",
     fullLabel: "GenAI / AI Engineering",
     description: "LLM, RAG, agentic AI & machine learning roles",
     accent: "#FF304F",
@@ -13,6 +14,7 @@ export const ROLES: RoleMeta[] = [
   {
     slug: "data",
     label: "Data Engineer",
+    shortLabel: "Data",
     fullLabel: "Data Engineering",
     description: "PySpark, Databricks, ETL & cloud data platforms",
     accent: "#287BFF",
@@ -22,11 +24,23 @@ export const ROLES: RoleMeta[] = [
   {
     slug: "uiux",
     label: "UI/UX",
+    shortLabel: "UI/UX",
     fullLabel: "UI / UX Design",
     description: "Product, UX, UI & interaction design roles",
     accent: "#FFFFFF",
     accentSoft: "rgba(255, 255, 255, 0.12)",
     blurb: "Product design, UX research and interaction design roles.",
+  },
+  {
+    slug: "ba",
+    label: "Business Analyst",
+    shortLabel: "BA",
+    fullLabel: "Business Analysis",
+    description: "Requirements, BRD/FRD, SQL, UAT & Agile delivery",
+    accent: "#8B5CF6",
+    accentSoft: "rgba(139, 92, 246, 0.16)",
+    blurb:
+      "Business analysis, requirements, UAT and Agile delivery roles. Fresher, entry-level and 1–3 year roles are ranked first; senior roles stay available below.",
   },
 ];
 
