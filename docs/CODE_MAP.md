@@ -291,8 +291,8 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 | Filter experience | Experience select | `matchesExperience()` in `web/lib/utils.ts` |
 | Filter posted date | Posted select | `job.posted_date` age in days |
 | Sort | Sort select | score / date / company |
-| Load more | Button | `visible += PAGE_SIZE` (`PAGE_SIZE = 24`) |
-| Share filters | Any filter change | `window.history.replaceState` with query params |
+| Change page | Pager (`web/components/Pagination.tsx`) | `setPage(n)`; 8 jobs per page (`PAGE_SIZE = 8`), page numbers from `pageItems()` in `web/lib/utils.ts`; any filter, sort or role change goes back to page 1 |
+| Share filters | Any filter or page change | `window.history.replaceState` with query params (`page` included when > 1) |
 | Switch role | Role tabs | `prefetchRole(next)` + `router.push("/jobs/<role>")` |
 | Retry load | Error state | `setReloadKey(k + 1)` |
 | Open refresh | `Alt+Shift+R` | keydown listener → `setConfirmOpen(true)` |
