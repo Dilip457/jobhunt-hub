@@ -114,7 +114,12 @@ ROLE_TITLE_EXCLUDE = {
     "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee",
              "data center", "data analyst", "data scientist", "data quality",
              "ai trainer", "annotation", "working student", "master data",
-             "intern", "internship", "manager", "director", "head of"],
+             "intern", "internship", "manager", "director", "head of",
+             # Test/QA titles that mention ETL only as the thing under test.
+             "test", "testing", "tester", "qa", "quality assurance", "etl testing",
+             # Platform operations rather than pipeline engineering.
+             "administrator", "dba", "database administrator",
+             "support engineer", "support lead", "support", "iam support"],
     "uiux": ["mechanical", "hardware", "electrical", "civil", "data center",
              "instructional", "graphic designer", "graphic design", "illustrator",
              "motion graphics", "motion designer", "motion design",
@@ -195,6 +200,9 @@ BA_HARD_EXCLUDE = [
     "security analyst", "soc analyst", "research analyst", "research analytics",
     "verification analyst", "hris", "hcm", "workday", "people technology", "benefits",
     "compensation", "support specialist", "ai trainer",
+    # Support/helpdesk analyst families are not business analysis.
+    "support analyst", "product support", "client support",
+    "platform engineering",
 ]
 
 # A domain that can legitimately contain BA work. "Financial Analyst" is out,
