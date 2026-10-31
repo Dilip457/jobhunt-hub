@@ -96,9 +96,7 @@ Hidden dashboard shortcut (Alt+Shift+R)
 jobhunt-hub/
 ├─ .github/workflows/
 │  ├─ scrape.yml                 # daily scrape, WARP, publish
-│  ├─ warp-sources.yml           # manual all-source WARP test
-│  ├─ warp-probe.yml             # manual Indeed/WARP diagnostics
-│  └─ indeed-probe.yml           # manual portal-access diagnostics
+│  └─ ci.yml                     # pytest, lint, typecheck, build on PRs
 ├─ automation/
 │  ├─ run_source.py              # vendor wrapper: config patches, pipeline, export
 │  ├─ export.py                  # vendor SQLite → public job JSON
@@ -106,15 +104,13 @@ jobhunt-hub/
 │  ├─ api_sources.py             # APIs, ATS boards, simple score, build_job
 │  ├─ publish.py                 # merge artifacts + force-push data branch
 │  ├─ matrix.py                  # role → vendor repo matrix
+│  ├─ roles.py                   # role list + vendor repos from profiles/
 │  ├─ agent.py                   # optional local residential-IP agent
 │  ├─ install-agent.ps1          # optional Windows Task Scheduler setup
 │  ├─ run-agent.ps1              # Task Scheduler entry point
 │  ├─ companies.json             # public ATS company tokens
-│  ├─ requirements.txt           # portal scraper dependencies
-│  ├─ indeed_probe.py            # Indeed access probe
-│  ├─ indeed_probe2.py           # Indeed HTTP probe
-│  ├─ warp_probe2.py             # WARP session/browser probe
-│  └─ warp_proxy_test.py         # WARP proxy-mode probe
+│  └─ requirements.txt           # portal scraper dependencies
+├─ tests/                        # pytest suite (export, scoring, publish, roles, run_source)
 ├─ profiles/
 │  ├─ genai.json                 # role search config, NOT a resume, NOT a resume
 │  ├─ data.json
@@ -221,10 +217,10 @@ jobhunt-hub/
 |---|---|---|
 | `web/lib/types.ts` | `RoleSlug`, `ROLE_SLUGS`, `isRoleSlug`, `ScoreParts`, `Job`, `RoleData`, `Manifest`, `StatusResponse`, `RoleMeta` (`shortLabel`) | The public data contract |
 | `web/lib/roles.ts` | `ROLES`, `DEFAULT_ROLE`, `getRole` | Labels, short labels, descriptions, accents and blurbs |
-| `web/lib/service.ts` | `getRoleData`, `getManifest` | Reads the `data` branch, falls back to seed JSON |
-| `web/lib/github.ts` | `readJsonFromDataBranch`, `getRunStatus`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured` | All server-side GitHub access |
+| `web/lib/service.ts` | `getRoleData` | Reads the `data` branch, falls back to seed JSON |
+| `web/lib/github.ts` | `readJsonFromDataBranch` (raw media type, works above 1 MB), `getRunStatus`, `runRole`, `cooldownRemaining`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured`, `isRefreshProtected` | All server-side GitHub access |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
-| `web/lib/fallback.ts` | `fallbackRoleData`, `fallbackManifest` | Seed data with `demo: true` |
+| `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
 | `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
 
 ### 4.4 Static assets
@@ -319,9 +315,9 @@ Read and written in `JobDashboard.tsx`; select options in `Filters.tsx`.
 |---|---|---|---|---|
 | `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data`, `uiux` or `ba`; optional `fresh=1` | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` |
 | `GET /api/status` | `web/app/api/status/route.ts` | optional `role` | `StatusResponse` | Always `no-store`; returns idle message if GitHub is unreachable |
-| `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued" }` | `403` blocked origin; `400` bad body/role; `503` unconfigured; `409` already running; `429` cooldown; `502` dispatch failed |
+| `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued" }` | `403` blocked origin; `401` missing/wrong refresh key (when `REFRESH_TOKEN` is set); `400` bad body/role; `503` unconfigured; `409` already running; `429` cooldown; `502` dispatch failed |
 
-Origin check: localhost, `*.vercel.app`, `NEXT_PUBLIC_SITE_URL` host, or `VERCEL_URL` host.
+Origin check: the `Origin` header is required and must be localhost, the request host, the `NEXT_PUBLIC_SITE_URL` host, or one of `VERCEL_URL` / `VERCEL_BRANCH_URL` / `VERCEL_PROJECT_PRODUCTION_URL`. With `REFRESH_TOKEN` set, the `x-refresh-token` header must match.
 
 Underlying GitHub calls: `web/lib/github.ts`
 
@@ -465,8 +461,8 @@ This is a **title + snippet keyword score**, not the hardcoded resume profile sc
 Consequences:
 
 - Vendor LinkedIn/company-page jobs can carry the resume-style score and `score_parts`.
-- Direct portal and API/ATS jobs carry the simpler score; their `score_parts` are zeroed by `build_job()`.
-- The merged board can therefore contain two scoring methods side by side.
+- Direct portal and API/ATS jobs carry the simpler score. It is capped (2 title hits, 6 skills; at most 64 before BA/SDE nudges) so a keyword match cannot outrank a strong resume match; uncapped, Foundit's skill-tag lists scored up to 97 and filled the first page.
+- The merged board can therefore contain two scoring methods side by side. The constants live at the top of `score_job()` in `api_sources.py`.
 
 ### 8.6 How the score reaches the UI
 
@@ -474,7 +470,7 @@ Consequences:
 |---|---|---|
 | Vendor DB | External SQLite | `match_score`, `role_match`, `skill_match`, `experience_match`, `tool_match`, `domain_match` |
 | Export | `automation/export.py` | `score: round(match_score, 1)`, `score_parts` object |
-| Publish | `automation/publish.py` | `merge_payloads()` preserves the highest score on duplicates |
+| Publish | `automation/publish.py` | `merge_payloads()` keeps the fresh copy; `dedupe_jobs()` keeps the best-scored copy across boards; `finalize_job()` drops `score_parts` |
 | Type | `web/lib/types.ts` | `Job.score`, `ScoreParts` |
 | API | `web/app/api/jobs/route.ts` | returns `RoleData` |
 | Dashboard | `web/components/JobDashboard.tsx` | filter by `score`, sort by `score`, pass `showScore` |
@@ -482,7 +478,7 @@ Consequences:
 | Ring | `web/components/ScoreRing.tsx` | `Math.round(score)` and accessible match label |
 | Tier labels | `web/lib/utils.ts` | `scoreTier()`: ≥85 Excellent, ≥75 Strong, ≥65 Good, ≥50 Fair, else Low |
 
-The UI currently shows only the **overall** score. `score_parts` is available in the data contract but is not rendered as a breakdown.
+The UI shows only the **overall** score. `score_parts` is dropped at publish time because nothing renders it.
 
 ### 8.7 Important limitation
 
@@ -598,9 +594,12 @@ The export deliberately excludes full descriptions, resumes and PII.
 | Symbol | Responsibility |
 |---|---|
 | `_job_key()` | Canonical URL, fallback title/company/location |
-| `merge_payloads()` | Union previous + fresh, highest score wins, oldest `first_seen` preserved, retention filter |
+| `merge_payloads()` | Union previous + fresh, fresh copy wins, oldest `first_seen` / newest `last_seen`, retention + unseen filter, cross-board dedupe |
+| `finalize_job()` | Recompute `is_new` from `first_seen`, drop `score_parts` and redundant `apply_url` |
+| `build_payloads()` | Per-role merge / fresh / kept-previous / missing decision |
 | `previous_file()` | Read previous JSON from `origin/data` |
-| `main()` | Merge all `<role>*.json` artifacts, write `manifest.json` + branch-level `vercel.json`, force-push `data` |
+| `push_data_branch()` | Write `<role>.json`, `manifest.json`, branch-level `vercel.json`; push with `--force-with-lease` |
+| `main()` | Fetch, build, push; retry when another publisher moved the branch; warn on kept-previous roles |
 
 Data branch files:
 
@@ -624,13 +623,9 @@ data/
 
 This is optional; GitHub Actions is the primary scheduler.
 
-### 9.9 Diagnostic workflows
+### 9.9 CI
 
-| Workflow | Scripts | Purpose |
-|---|---|---|
-| `.github/workflows/indeed-probe.yml` | `indeed_probe.py`, `indeed_probe2.py` | Diagnose Indeed access |
-| `.github/workflows/warp-probe.yml` | `indeed_probe2.py`, `warp_probe2.py`, `warp_proxy_test.py` | Diagnose WARP and browser access |
-| `.github/workflows/warp-sources.yml` | `portal_scrapers.py` | Manual all-source WARP test |
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: `python -m pytest -q tests`, then `npm run lint`, `npm run typecheck` and `npm run build` in `web/`. (The one-off Indeed/WARP probe scripts and workflows were removed; they are in git history.)
 
 ---
 
@@ -640,7 +635,7 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 
 | Field | Type | Produced by | Used by |
 |---|---|---|---|
-| `role` | `"genai"`, `"data"`, `"uiux"` or `"ba"` | `automation/export.py`, `automation/publish.py` | `web/lib/types.ts`, dashboard |
+| `role` | `"genai"`, `"data"`, `"uiux"`, `"ba"` or `"sde"` | `automation/export.py`, `automation/publish.py` | `web/lib/types.ts`, dashboard |
 | `generated_at` | ISO string | `export.py`, `publish.py` | `StatsBar` |
 | `count` | number | `export.py`, `publish.py` | `StatsBar`, dashboard |
 | `sources` | name → count | `export.py`, `portal_scrapers.py`, `api_sources.py`, `publish.py` | filters, stats |
@@ -651,17 +646,17 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | `Job.company` | string | export/build_job | search, card |
 | `Job.location` | string | export/build_job | filter, card |
 | `Job.url` | string | export/build_job | dedupe, Apply fallback |
-| `Job.apply_url` | string | export/build_job | Apply |
+| `Job.apply_url` | string, omitted when equal to `url` | export/build_job | Apply |
 | `Job.source` | string | export/build_job | filter, badge |
 | `Job.posted_date` | date/null | export/build_job | date filter, card |
 | `Job.score` | number | vendor engine or `score_job()` | filter, sort, ring |
-| `Job.score_parts` | object | vendor DB via export | data contract; not rendered |
 | `Job.experience_min/max` | number/null | `extract_experience()` | experience label/filter |
 | `Job.snippet` | string | `make_snippet()` | search, card |
-| `Job.is_new` | boolean | vendor DB | NEW badge |
-| `Job.first_seen` | date/null | export/publish merge | “First seen” |
+| `Job.is_new` | boolean | `publish.finalize_job()`: first seen ≤ 2 days ago | NEW badge |
+| `Job.first_seen` | date/null | export/publish merge | “First seen”; date filter fallback |
+| `Job.last_seen` | date | `publish.stamp_seen()` | drops jobs unseen for 7 days |
 
-Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`, `web/data/ba.json`, `web/data/manifest.json` → `web/lib/fallback.ts`.
+Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`, `web/data/ba.json`, `web/data/sde.json` → `web/lib/fallback.ts`.
 
 ---
 

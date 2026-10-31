@@ -402,7 +402,7 @@ Exports the vendor SQLite database to public JSON:
 - Normalizes locations to India/Remote; foreign listings are dropped.
 - Keeps only a **240-character snippet**, not the full description.
 - Extracts experience ranges when available.
-- Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`.
+- Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later drops `score_parts`, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
 - Drops jobs below the score floor, with invalid URLs, with foreign locations, or older than the freshness window.
 - Sorts by score then posted date.
 
@@ -411,6 +411,7 @@ Exports the vendor SQLite database to public JSON:
 **Location normalization**
 
 - Recognizes Indian cities and remote/hybrid/WFH terms.
+- Indian cities and states are matched first, on word boundaries; foreign markers are matched on word boundaries too. (A plain substring check used to drop “Kukatpally” for containing “uk” and “Perungudi” for “peru”.)
 - Drops known foreign locations (for example “Remote - US”, “EMEA”, “APAC”).
 - Unknown locations are kept and labelled “India” so they are not silently lost.
 
@@ -422,8 +423,8 @@ Exports the vendor SQLite database to public JSON:
 
 **Score**
 
-- `score_job()` starts from a base and adds role-title, skill and snippet matches.
-- Scores are capped below 100.
+- `score_job()` starts from a base of 30, adds 8 per role-title token (at most 2) and 3 per skill (at most 6, short skills matched on word boundaries), so a keyword score tops out at 64 before BA/SDE nudges and cannot outrank a strong vendor resume match.
+- Scores are capped at 88.
 - For `ba`, fresher/entry/graduate/junior/associate/1–3 year titles get a boost and senior/lead/manager titles are pushed down. `export.py` applies the same `priority_score()` to vendor rows.
 - UI tiers: Excellent ≥ 85, Strong ≥ 75, Good ≥ 65, Fair ≥ 50, Low < 50.
 - The profile's `min_score` (20) is the hard floor.
@@ -432,7 +433,8 @@ Exports the vendor SQLite database to public JSON:
 
 - Canonical URL first (removes tracking parameters).
 - Then `(company, title, location)` when all three exist.
-- In the publisher, the same canonical URL rule is used; the highest score wins.
+- `dedupe_jobs()` in `export.py` then collapses the same title + company (suffixes such as “Pvt Ltd” ignored) + city across boards, keeping the best-scored copy. It runs in the portal/API merges and in the publisher. Jobs with an unknown company are never collapsed.
+- In the publisher, the canonical URL rule is used first and the fresh copy wins, so scoring changes reach previously published jobs.
 
 ### 4.7 `first_seen` and `is_new`
 
@@ -441,7 +443,9 @@ Exports the vendor SQLite database to public JSON:
 - `publish.merge_payloads()` keeps the **minimum** `first_seen` across previous and fresh data.
 - Therefore, a job that was already known keeps its original first-seen date.
 
-`is_new` is a source-provided flag (primarily from the vendor database). It is **not** recalculated from `first_seen`. The UI's `NEW` badge uses `is_new`; the “First seen” text uses `first_seen`. For reliable scrape history, use `first_seen`.
+`publish.stamp_seen()` sets `last_seen` to the publish date on every job in a fresh artifact, and `merge_payloads()` keeps the newest value. Jobs that no scrape has returned for `--unseen-days` (7) are dropped as closed, unless the fresh run is under 30% of the previous size.
+
+`is_new` is recomputed by `publish.finalize_job()`: true when `first_seen` is within the last 2 days. The UI's `NEW` badge uses `is_new`; the “First seen” text uses `first_seen`.
 
 ---
 
@@ -614,7 +618,9 @@ getRoleData(role, fresh)
    GET /repos/<owner>/<repo>/contents/<file>?ref=data
    ```
 
-   Decode the base64 content.
+   with `Accept: application/vnd.github.raw+json`, which returns the file body
+   directly. (The default JSON media type only inlines files up to 1 MB; role
+   files grew past that and silently fell through to the cached raw CDN.)
 
 2. If that fails or no token exists, fall back to:
 
@@ -631,7 +637,6 @@ This makes the app work even before the first scrape.
 | Layer | Setting |
 |---|---|
 | `getRoleData` | `no-store` (fresh read on every API cache miss) |
-| `getManifest` | `revalidate: 60`, tag `jobs` |
 | `/api/jobs` response | `public, s-maxage=60, stale-while-revalidate=300` |
 | `/api/jobs?fresh=1` | `no-store` (bypasses CDN cache) |
 | `/api/status` | `no-store` |
@@ -659,19 +664,21 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 `getRunStatus(role)`:
 
 - Fetches the latest 12 runs.
-- Matches runs whose `display_title` contains `all` or the role.
+- Parses `display_title` (“Scrape <role>”, from `run-name`) and matches the exact role or `all`.
 - Computes `canRefresh = !active && !onCooldown`.
-- `cooldownMinutesLeft` is based on the latest run's `updated_at` (fallback `created_at`) and `REFRESH_COOLDOWN_MINUTES = 25`.
+- `cooldownMinutesLeft` applies only after a **successful** run, from its `updated_at` (fallback `created_at`) and `REFRESH_COOLDOWN_MINUTES = 25`; a failed or cancelled run can be retried straight away.
+- `refreshProtected` tells the dialog whether to ask for the refresh key.
 
 `POST /api/refresh`:
 
-1. Reject disallowed origins (localhost, `*.vercel.app`, `NEXT_PUBLIC_SITE_URL`, `VERCEL_URL` are allowed).
-2. Validate the role.
-3. Require GitHub configuration.
-4. Return `409` if a run is active.
-5. Return `429` if the 25-minute cooldown is active.
-6. Dispatch `workflow_dispatch` with `{ ref: "main", inputs: { role } }`.
-7. Return `202`.
+1. Reject a missing `Origin` header and any origin other than localhost, the request host, `NEXT_PUBLIC_SITE_URL`, `VERCEL_URL`, `VERCEL_BRANCH_URL` or `VERCEL_PROJECT_PRODUCTION_URL` (`403`).
+2. When `REFRESH_TOKEN` is set, require a matching `x-refresh-token` header (`401`). The dialog asks for it and remembers it in `localStorage`.
+3. Validate the role.
+4. Require GitHub configuration.
+5. Return `409` if a run is active.
+6. Return `502` if the run status could not be read, `429` if the 25-minute cooldown is active.
+7. Dispatch `workflow_dispatch` with `{ ref: "main", inputs: { role } }`.
+8. Return `202`.
 
 `JobDashboard.tsx` polls `/api/status` every 8 seconds while queued/running. On `success`, it reloads jobs with `fresh=1` and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
 
@@ -695,6 +702,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba`
 - Job card date line: `Posted <relative> · First seen <relative>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
 - `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
+- The date-range filter and date sort use `posted_date`, falling back to `first_seen` for boards that publish no date.
 - Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
 - No site footer; the contact link and credits stay inside the explainer card.
 - The explainer card states that the 3D guide is a stylized prototype and credits Grab3D.

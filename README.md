@@ -1,6 +1,6 @@
 # JobHunt India
 
-A public, daily-updated job portal for four role tracks — **GenAI**, **Data Engineering**, **UI/UX** and **Business Analyst** — built from existing Python scrapers.
+A public, daily-updated job portal for five role tracks — **GenAI**, **Data Engineering**, **UI/UX**, **Business Analyst** and **Software Development Engineer (SDE)** — built from existing Python scrapers.
 
 **Live:** <https://jobhunt-hub-web.vercel.app>
 
@@ -57,6 +57,8 @@ The scraper never runs on Vercel. Vercel only serves the UI and small API routes
 ```
 jobhunt-hub/
 ├─ .github/workflows/scrape.yml   # cron + manual dispatch + publish
+├─ .github/workflows/ci.yml       # tests, lint, typecheck, build on every PR
+├─ tests/                         # pytest: export, scoring, publish merge, roles
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
 │  ├─ portal_scrapers.py          # direct Naukri / Foundit / Indeed / Shine / SimplyHired scrapers
@@ -65,6 +67,7 @@ jobhunt-hub/
 │  ├─ export.py                   # SQLite → compact public JSON
 │  ├─ publish.py                  # rebuild the orphan `data` branch (merges)
 │  ├─ matrix.py                   # workflow matrix helper
+│  ├─ roles.py                    # role list + vendor repos, read from profiles/
 │  ├─ agent.py                    # OPTIONAL local PC agent (residential IP)
 │  ├─ install-agent.ps1           # optional PC setup + scheduled task
 │  └─ run-agent.ps1               # optional Task Scheduler entry point
@@ -72,7 +75,8 @@ jobhunt-hub/
 │  ├─ genai.json
 │  ├─ data.json
 │  ├─ uiux.json
-│  └─ ba.json
+│  ├─ ba.json
+│  └─ sde.json
 └─ web/                           # Next.js 15 app (Vercel root)
    ├─ app/
    │  ├─ page.tsx                 # cinematic intro
@@ -306,6 +310,7 @@ full modification record ships at
    | `GITHUB_WORKFLOW` | `scrape.yml` |
    | `GITHUB_DATA_BRANCH` | `data` |
    | `GITHUB_DISPATCH_REF` | `main` |
+   | `REFRESH_TOKEN` | Recommended: a long random secret the refresh dialog asks for |
    | `NEXT_PUBLIC_SITE_URL` | `https://your-project.vercel.app` |
 
 4. **Deploy.** The free `*.vercel.app` domain is enough. Add a custom domain later if you want.
@@ -323,7 +328,15 @@ full modification record ships at
 
 Why: the branch always has **one commit**, so the repository never grows by ~1 MB/day and the main branch never triggers a deploy.
 
-If a role's scrape fails or returns zero jobs, the publisher **keeps the previous JSON** for that role instead of blanking the site. Otherwise it **merges** the new jobs with the previous ones (deduplicated by URL, highest score wins), so a lighter cloud run can never remove jobs found by the local agent.
+If a role's scrape fails or returns zero jobs, the publisher **keeps the previous JSON** for that role instead of blanking the site and raises a warning on the Actions run. Otherwise it **merges** the new jobs with the previous ones:
+
+- Deduplicated by canonical URL, then by title + company + city, so one opening posted on several boards appears once (the best-scored copy is kept).
+- The fresh copy of a job wins, so scoring changes reach old listings; `first_seen` keeps the oldest date and `last_seen` the newest.
+- Jobs that no scrape has returned for 7 days (`--unseen-days`) are treated as closed and dropped, and nothing older than 21 days is kept. Pruning is skipped when a run is much smaller than the previous data, so a blocked run cannot empty a role.
+- `is_new` (the NEW badge) is recomputed at publish time: first collected within the last 2 days.
+- `score_parts`, and `apply_url` when it equals `url`, are dropped to keep each role file well under 1 MB.
+
+The push uses `--force-with-lease`, so if the PC agent and a cloud run publish at the same time, the second one re-reads the data and merges again instead of overwriting.
 
 ---
 
@@ -336,7 +349,7 @@ To run a manual scrape, open the main site and press **`Alt` + `Shift` + `R`**. 
 1. Open any dashboard, e.g. `https://jobhunt-hub-web.vercel.app/jobs/data`.
 2. Press **`Alt` + `Shift` + `R`**.
 3. Confirm in the dialog.
-4. `POST /api/refresh` checks for an active run and a 25-minute cooldown, then calls the GitHub `workflow_dispatch` API.
+4. `POST /api/refresh` checks the origin and refresh key, an active run, and a 25-minute cooldown after the last successful run, then calls the GitHub `workflow_dispatch` API.
 5. The UI polls `/api/status` every 8 seconds.
 6. When the run succeeds, the page re-fetches `/api/jobs?fresh=1` and shows the new `generated_at`.
 
@@ -346,7 +359,8 @@ Protections:
 - Hidden keyboard shortcut (`Alt+Shift+R`) plus a confirmation dialog.
 - GitHub Actions `concurrency: jobhunt-scrape` serialises runs.
 - 25-minute cooldown per role (`lib/github.ts`).
-- Same-origin check on the POST route.
+- Same-origin check on the POST route: only this deployment's own hosts are accepted, and requests without an `Origin` header (scripts) are refused.
+- **Refresh key:** set `REFRESH_TOKEN` on Vercel and the dialog asks for it (it is remembered in that browser). Without it, anyone who finds the shortcut can start a scrape.
 - Seeded data remains visible if GitHub is unreachable.
 - Refresh triggers the **cloud** pass (scrapers + official APIs). Everything runs on
   GitHub's servers; no PC is involved.
@@ -358,22 +372,24 @@ Each destination has a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
 browser history work normally. Filter parameters such as `?q=python&city=Bangalore` are
 written to the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 
-Hiding the control is a UX guard, not an authentication boundary: the API route is still
-reachable. The cooldown and one-run concurrency limit keep accidental or repeated use
-bounded. A secret token can be added to the route if hard access control is needed.
+Hiding the control is a UX guard, not an authentication boundary. Set `REFRESH_TOKEN` for
+real access control; the cooldown and one-run concurrency limit only bound repeated use.
 
 ---
 
 ## Add or change a role
 
-1. Add `profiles/<slug>.json` with `repo`, `db`, `sources`, `min_score`, and optionally
-   `playwright`, `keywords`, `cities`.
-2. Add the slug to `ROLES` in `web/lib/roles.ts` (include a `shortLabel` for the mobile dock).
-3. Add it to `REPOS` in `automation/matrix.py` and the workflow's `workflow_dispatch` choices.
-4. Add seed JSON at `web/data/<slug>.json` (optional but required if `fallback.ts` imports it).
-5. Add it to `ROLES` in `automation/publish.py` and `automation/agent.py`.
-6. For a role that shares another vendor repo, add its config/scoring patch in
+1. Add `profiles/<slug>.json` with `role`, `repo`, `db`, `sources`, `min_score`, and optionally
+   `playwright`, `keywords`, `cities` and `repo_ref` (a commit SHA or tag that pins the vendor
+   repo). The Python side (`automation/roles.py`: matrix, publish, agent) reads roles from here.
+2. Add the slug to `ROLE_SLUGS` in `web/lib/types.ts` and `ROLES` in `web/lib/roles.ts`
+   (include a `shortLabel` for the mobile dock).
+3. Add seed JSON at `web/data/<slug>.json` and import it in `web/lib/fallback.ts`.
+4. Add it to the workflow's `workflow_dispatch` choices.
+5. For a role that shares another vendor repo, add its config/scoring patch in
    `automation/run_source.py` (the BA track is the reference implementation).
+
+`tests/test_roles_consistency.py` fails if any of these lists disagree.
 
 ---
 
@@ -475,6 +491,10 @@ git show origin/data:manifest.json
 
 # local agent (PC, residential IP)
 python automation/agent.py --dry-run --force
+
+# checks (CI runs the same on every pull request)
+pip install pytest requests beautifulsoup4 lxml && python -m pytest -q tests
+cd web && npm run lint && npm run typecheck && npm run build
 ```
 
 ---

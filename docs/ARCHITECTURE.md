@@ -1,11 +1,12 @@
 # Architecture — JobHunt Hub
 
-A zero-cost, cloud-only job board for four role tracks:
+A zero-cost, cloud-only job board for five role tracks:
 
 - **GenAI / AI Engineering**
 - **Data Engineering**
 - **UI / UX Design**
 - **Business Analyst** (entry-level first: fresher and 1–3 year roles rank above senior roles)
+- **Software Development Engineer** (3–8 year roles rank first)
 
 It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company career pages, plus BA-specific sources (IIBA Career Center, Wellfound, Remote OK, We Work Remotely), publishes them as compact JSON, and serves them through a Next.js app on Vercel.
 
@@ -25,7 +26,7 @@ It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company car
 ## 1. What the system does
 
 1. Every morning, GitHub Actions runs the scraping workflow.
-2. Four independent scrapers collect jobs for the four role tracks. Business Analyst reuses the UI/UX vendor pipeline with BA config and scoring, and adds its own portal and API sources.
+2. Five independent scrapers collect jobs for the five role tracks. Business Analyst and SDE reuse the UI/UX vendor pipeline with BA config and scoring, and adds its own portal and API sources.
 3. The results are merged with the previous published data.
 4. The merged JSON is force-pushed to an orphan `data` branch.
 5. Vercel serves a Next.js UI and API routes that read that JSON.
@@ -245,7 +246,7 @@ The `web/` directory is a Next.js 15 app deployed with **Root Directory = `web`*
 
 - `/` is the cinematic entry point: a Three.js close-up greeting, pullback, illuminated path and role selection.
 - `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde` are static, shareable dashboards.
-- `/jobs/[role]` is pre-rendered for the four known roles; any other slug redirects to `/`.
+- `/jobs/[role]` is pre-rendered for the five known roles; any other slug redirects to `/`.
 - The dashboard is a client component with filters, a role switcher and shareable query parameters.
 - `/api/jobs` reads a role's JSON from the `data` branch.
 - `/api/refresh` dispatches the GitHub Actions workflow.
