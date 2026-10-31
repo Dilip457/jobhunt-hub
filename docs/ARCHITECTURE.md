@@ -237,6 +237,7 @@ The publisher is deliberately conservative:
 - It keeps the **highest score** per job.
 - It keeps the **earliest `first_seen`** per job.
 - It drops jobs older than **21 days**.
+- It re-checks every job title against the current role rules (`title_relevant`), including carried-over jobs.
 - If a role produced no fresh jobs, it keeps the previous JSON.
 - It writes one orphan commit and force-pushes it to `data`.
 
@@ -247,7 +248,7 @@ The `web/` directory is a Next.js 15 app deployed with **Root Directory = `web`*
 - `/` is the cinematic entry point: a Three.js close-up greeting, pullback, illuminated path and role selection.
 - `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde` are static, shareable dashboards.
 - `/jobs/[role]` is pre-rendered for the five known roles; any other slug redirects to `/`.
-- The dashboard is a client component with filters, a role switcher and shareable query parameters.
+- The dashboard is a client component with filters, a role switcher, numbered pages of 8 jobs and shareable query parameters (including `page`).
 - `/api/jobs` reads a role's JSON from the `data` branch.
 - `/api/refresh` dispatches the GitHub Actions workflow.
 - `/api/status` reports the latest workflow run for the role.

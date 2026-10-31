@@ -180,6 +180,10 @@ The BA track reuses the UI/UX vendor pipeline (no separate scraper repo). Before
 company-page title filter with BA versions, so the shared pipeline searches for business
 analysts instead of designers.
 
+The BA track keeps **Business Analyst** (including Business Systems Analyst) and **Data Analyst**
+titles only. Product Analyst, Functional Analyst, Systems Analyst and other analyst families are
+left out (`BA_TITLE` in `automation/api_sources.py`).
+
 Two BA-only portal scrapers sit alongside the shared portals:
 
 | Source | How it is read | Notes |

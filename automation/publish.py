@@ -23,6 +23,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
+from api_sources import title_relevant
 from export import canonical_url, dedupe_jobs, states_experience
 
 EXPERIENCE_FIELDS = ("experience_min", "experience_max", "experience_source", "experience_level")
@@ -286,10 +287,29 @@ def build_payloads(
             statuses[role] = "missing"
             continue
 
+        drop_offrole(payloads[role], role)
         for job in payloads[role]["jobs"]:
             finalize_job(job)
 
     return payloads, statuses
+
+
+def drop_offrole(payload: Dict[str, Any], role: str) -> int:
+    """Re-apply today's title rules to every job, including carried-over ones.
+
+    Collectors already filter fresh jobs, but merged and kept-previous jobs
+    were filtered by whatever rules were live when they were scraped. Without
+    this, a tightened role definition (BA dropping Product Analyst) would only
+    take effect as old jobs age out.
+    """
+    jobs = payload.get("jobs") or []
+    kept = [job for job in jobs if title_relevant(role, job.get("title") or "")]
+    dropped = len(jobs) - len(kept)
+    if dropped:
+        payload["jobs"] = kept
+        payload["count"] = len(kept)
+        print(f"[publish] {role}: dropped {dropped} jobs whose titles no longer match the role")
+    return dropped
 
 
 def build_manifest(payloads: Dict[str, Dict[str, Any]], statuses: Dict[str, str], now: str) -> Dict[str, Any]:

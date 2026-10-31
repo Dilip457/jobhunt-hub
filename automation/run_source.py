@@ -97,9 +97,9 @@ BA_RESUME_PROFILE = {
     ],
     "portfolio_keywords": [],
     "target_role_keywords": [
-        "Business Analyst", "Functional Analyst", "Business Systems Analyst",
-        "Product Analyst", "Process Analyst", "Requirements Analyst",
+        "Business Analyst", "Business Systems Analyst", "Data Analyst",
         "Junior Business Analyst", "Associate Business Analyst",
+        "Junior Data Analyst",
     ],
     "experience_highlights": ["Fresher-friendly", "1-3 years", "Agile delivery"],
 }
@@ -120,15 +120,15 @@ BA_MEDIUM_WEIGHT_KEYWORDS = [
 ]
 
 BA_ROLE_KEYWORDS = {
+    # Business Analyst and Data Analyst only; export.py applies the same
+    # api_sources.title_relevant gate, so other analyst titles are dropped.
     "high": [
-        "business analyst", "business systems analyst", "functional analyst",
-        "requirements analyst", "process analyst", "product analyst",
+        "business analyst", "business systems analyst", "data analyst",
         "junior business analyst", "associate business analyst",
-        "business process analyst", "it business analyst", "bpa",
+        "it business analyst", "junior data analyst",
     ],
     "medium": [
-        "systems analyst", "analyst", "business analysis", "product owner",
-        "uat analyst", "business consultant",
+        "business analysis", "data analysis", "analyst",
     ],
     "low": ["business", "analysis", "requirements", "process"],
 }
@@ -227,7 +227,7 @@ ROLE_MEDIUM_WEIGHT = {"ba": BA_MEDIUM_WEIGHT_KEYWORDS, "sde": SDE_MEDIUM_WEIGHT_
 ROLE_KEYWORD_TABLES = {"ba": BA_ROLE_KEYWORDS, "sde": SDE_ROLE_KEYWORDS}
 # Titles the shared company-pages scraper should keep for each patched role.
 ROLE_COMPANY_TITLE_KEYWORDS = {
-    "ba": list(BA_ROLE_KEYWORDS["high"]) + ["analyst"],
+    "ba": list(BA_ROLE_KEYWORDS["high"]),
     "sde": list(SDE_ROLE_KEYWORDS["high"]) + ["engineer", "developer"],
 }
 
