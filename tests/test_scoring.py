@@ -28,3 +28,25 @@ def test_title_relevance_gate():
     assert title_relevant("data", "Data Engineer")
     assert not title_relevant("data", "Data Analyst")
     assert title_relevant("ba", "Business Analyst - Finance")
+
+
+def test_ba_track_is_business_analyst_and_data_analyst_only():
+    keep = [
+        "Business Analyst", "Junior Business Analyst", "IT Business Analyst",
+        "Senior Associate IS Business Systems Analyst", "Business Analyst - Risk",
+        "Data Analyst", "Junior Data Analyst (SQL, Power BI)", "Business Data Analyst",
+        "Associate, Business Analysis", "Data Analyst - Finance", "Business Analyst_3471",
+        "Billable-PG_Business Analyst", "Lead Business System Analyst - Atlassian Products",
+    ]
+    drop = [
+        "Product Analyst", "Functional Analyst", "Systems Analyst", "Process Analyst",
+        "Requirements Analyst", "Business Process Analyst", "IT Analyst", "Analyst",
+        "Financial Analyst", "QA Analyst", "Security Analyst", "Research Analyst",
+        "HRIS Functional Analyst", "Product Owner", "Business Intelligence Developer",
+        "Data Engineer", "Scrum Master", "Business Intelligence Analyst",
+        "Business Analytics Analyst", "Business Functional Analyst",
+    ]
+    for title in keep:
+        assert title_relevant("ba", title), title
+    for title in drop:
+        assert not title_relevant("ba", title), title

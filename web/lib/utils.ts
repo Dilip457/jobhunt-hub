@@ -275,3 +275,23 @@ const SOURCE_COLORS: Record<string, string> = {
 export function sourceColor(source: string): string {
   return SOURCE_COLORS[source.toLowerCase()] ?? "#64748b";
 }
+
+/**
+ * Page buttons to show for a pager: always the first and last page, the
+ * current page with one neighbour each side, and "gap" where pages are skipped.
+ * pageItems(6, 20) -> [1, "gap", 5, 6, 7, "gap", 20]
+ */
+export function pageItems(current: number, count: number): Array<number | "gap"> {
+  if (count <= 7) return Array.from({ length: count }, (_, index) => index + 1);
+  const pages = new Set<number>([1, count, current - 1, current, current + 1]);
+  // Near either end, show a run of five so the pager does not jump in width.
+  if (current <= 4) [2, 3, 4, 5].forEach((page) => pages.add(page));
+  if (current >= count - 3) [count - 4, count - 3, count - 2, count - 1].forEach((page) => pages.add(page));
+  const sorted = [...pages].filter((page) => page >= 1 && page <= count).sort((a, b) => a - b);
+  const items: Array<number | "gap"> = [];
+  sorted.forEach((page, index) => {
+    if (index > 0 && page - sorted[index - 1] > 1) items.push("gap");
+    items.push(page);
+  });
+  return items;
+}

@@ -270,7 +270,7 @@ Current values:
 | `genai` | `playwright`, `linkedin`, `company_pages` | yes | Generative AI Engineer, LLM Engineer, Machine Learning Engineer, AI Engineer |
 | `data` | `playwright`, `linkedin`, `company_pages` | yes | Data Engineer, Big Data Engineer, PySpark Developer, Cloud Data Engineer |
 | `uiux` | `linkedin`, `company_pages` | no | Product Designer, UX Designer, UI Designer, Interaction Designer |
-| `ba` | `linkedin`, `company_pages` | no | Business Analyst, Functional Analyst, Business Systems Analyst, Product Analyst, Junior Business Analyst, Business Analyst Fresher |
+| `ba` | `linkedin`, `company_pages` | no | Business Analyst, Data Analyst, Business Systems Analyst, Junior Business Analyst, Business Analyst Fresher, Junior Data Analyst |
 
 `ba` also has `skill_keywords` (requirement gathering, BRD/FRD, user stories, GAP analysis, process mapping, UAT, SQL, Power BI, Tableau, JIRA/Confluence, Agile/Scrum) and four cities (Hyderabad, Bangalore, Pune, Mumbai). It uses `min_score: 18` and `max_days: 21`.
 
@@ -418,7 +418,8 @@ Exports the vendor SQLite database to public JSON:
 **Title relevance**
 
 - `ROLE_TITLE_TOKENS` and `ROLE_TITLE_EXCLUDE` in `api_sources.py`.
-- `title_relevant()` rejects obviously unrelated titles.
+- `title_relevant()` rejects obviously unrelated titles. For BA it is an allow-list (`BA_TITLE`): only Business Analyst (incl. Business Systems Analyst) and Data Analyst titles are kept; Product, Functional, Systems, Process and other analyst families are left out.
+- `publish.py` (`drop_offrole`) re-applies `title_relevant()` to every published job, so a tightened rule also removes jobs carried over from earlier runs.
 - `looks_foreign()` rejects foreign-language/region titles.
 
 **Score**

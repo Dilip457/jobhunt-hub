@@ -26,11 +26,12 @@ import BrandMark from "./BrandMark";
 import { AlertIcon, MailIcon, RouteIcon, SparkIcon } from "./Icons";
 import ConfirmRefresh from "./ConfirmRefresh";
 import JobCard from "./JobCard";
+import Pagination from "./Pagination";
 import RefreshPanel from "./RefreshPanel";
 import RoleSwitcher from "./RoleSwitcher";
 import StatsBar from "./StatsBar";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 8;
 const REFRESH_KEY_STORAGE = "jobhunt.refreshKey";
 
 interface Toast {
@@ -62,7 +63,12 @@ export default function JobDashboard({ role }: Props) {
   const [dateRange, setDateRange] = useState("all");
   const [sort, setSort] = useState("score");
   const [showScores, setShowScores] = useState(true);
-  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [page, setPage] = useState(1);
+  // Filters and page are read from the URL once on mount. Until then a filter
+  // change must not reset the page, or a shared "?page=3" link would land on 1.
+  const [hydrated, setHydrated] = useState(false);
+  const lastFilterKey = useRef<string | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -91,6 +97,9 @@ export default function JobDashboard({ role }: Props) {
     if (exp) setExperience(exp as ExperienceBucket);
     setDateRange(params.get("days") ?? "all");
     setSort(params.get("sort") ?? "score");
+    const urlPage = Number.parseInt(params.get("page") ?? "1", 10);
+    setPage(Number.isFinite(urlPage) && urlPage > 1 ? urlPage : 1);
+    setHydrated(true);
   }, []);
 
   // Hidden admin shortcut: no visible refresh control and no separate admin URL.
@@ -131,7 +140,6 @@ export default function JobDashboard({ role }: Props) {
       .then((payload) => {
         if (!cancelled) {
           setData(payload);
-          setVisible(PAGE_SIZE);
         }
       })
       .catch((err: Error) => {
@@ -156,10 +164,11 @@ export default function JobDashboard({ role }: Props) {
     if (experience !== "all") params.set("exp", experience);
     if (dateRange !== "all") params.set("days", dateRange);
     if (sort !== "score") params.set("sort", sort);
+    if (page > 1) params.set("page", String(page));
     const next = params.toString();
     const base = pathname || `/jobs/${role}`;
     window.history.replaceState(null, "", next ? `${base}?${next}` : base);
-  }, [city, dateRange, experience, pathname, query, role, score, sort, source]);
+  }, [city, dateRange, experience, page, pathname, query, role, score, sort, source]);
 
   // ── Status + polling ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -357,11 +366,24 @@ export default function JobDashboard({ role }: Props) {
     });
   }, [jobs, query, city, source, score, experience, dateRange, sort, role]);
 
+  // Any filter, sort or role change starts again from page 1.
+  const filterKey = [role, query, city, source, score, experience, dateRange, sort].join("\u0000");
   useEffect(() => {
-    setVisible(PAGE_SIZE);
-  }, [query, city, source, score, experience, dateRange, sort, role]);
+    if (!hydrated) return;
+    if (lastFilterKey.current !== null && lastFilterKey.current !== filterKey) setPage(1);
+    lastFilterKey.current = filterKey;
+  }, [filterKey, hydrated]);
 
-  const shownJobs = filtered.slice(0, visible);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Clamp rather than store: a refresh that shrinks the list keeps a valid page.
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const shownJobs = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  function goToPage(next: number) {
+    setPage(Math.min(Math.max(1, next), pageCount));
+    resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function resetFilters() {
     setQuery("");
@@ -450,7 +472,7 @@ export default function JobDashboard({ role }: Props) {
 
         {data ? <StatsBar data={data} role={roleMeta} status={status} /> : null}
 
-        <div id="jobs" className="dashboard-jobs-anchor" />
+        <div id="jobs" ref={resultsRef} className="dashboard-jobs-anchor" />
 
         <Filters
           query={query}
@@ -522,17 +544,13 @@ export default function JobDashboard({ role }: Props) {
               ))}
             </div>
 
-            {visible < filtered.length ? (
-              <div className="load-more">
-                <button
-                  type="button"
-                  className="ghost-btn"
-                  onClick={() => setVisible((count) => count + PAGE_SIZE)}
-                >
-                  Load {Math.min(PAGE_SIZE, filtered.length - visible)} more
-                </button>
-              </div>
-            ) : null}
+            <Pagination
+              page={currentPage}
+              pageCount={pageCount}
+              pageSize={PAGE_SIZE}
+              total={filtered.length}
+              onChange={goToPage}
+            />
           </>
         )}
 

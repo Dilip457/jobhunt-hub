@@ -74,8 +74,9 @@ ROLE_SEARCH_TERMS = {
     "genai": ["machine learning engineer", "generative ai engineer", "llm engineer", "ai engineer"],
     "data": ["data engineer", "big data engineer", "etl developer", "cloud data engineer"],
     "uiux": ["ux designer", "ui designer", "product designer", "interaction designer"],
-    "ba": ["business analyst", "functional analyst", "business systems analyst",
-           "product analyst", "business analyst fresher"],
+    # The BA track is Business Analyst plus Data Analyst only (see BA_TITLE).
+    "ba": ["business analyst", "data analyst", "business analyst fresher",
+           "business systems analyst", "junior data analyst"],
     "sde": ["software engineer", "software development engineer", "backend engineer",
             "full stack developer", ".net developer"],
 }
@@ -88,13 +89,9 @@ ROLE_TITLE_TOKENS = {
              "spark", "pyspark", "data warehouse", "databricks", "snowflake", "sql"],
     "uiux": ["ux", "ui", "designer", "design", "interaction", "visual", "figma",
              "user experience", "product design"],
-    # BA-specific titles plus a broad `analyst` token. The broad token keeps
-    # IIBA's generic listings alive; ROLE_TITLE_EXCLUDE below removes the
-    # finance, data, QA, security and ops analyst families.
-    "ba": ["business analyst", "business analysis", "functional analyst",
-           "business systems analyst", "systems analyst", "process analyst",
-           "requirements analyst", "product analyst", "it analyst",
-           "business process analyst", "bpa", "analyst"],
+    # Score tokens only: BA relevance is decided by BA_TITLE, not by these.
+    "ba": ["business analyst", "business analysis", "business systems analyst",
+           "data analyst", "data analysis", "analyst"],
     # SDE titles. `developer` and `engineer` are broad tokens, so
     # ROLE_TITLE_EXCLUDE below removes the families that are clearly not
     # software engineering.
@@ -134,11 +131,7 @@ ROLE_TITLE_EXCLUDE = {
              "semiconductor", "micro-architect", "soc design", "vlsi",
              "rtl design", "physical design", "cubicle", "locomotive",
              "cab cars", "chip design"],
-    # `analyst` is a broad token (it keeps IIBA's generic titles alive), so
-    # exclude the analyst families that are clearly not business analysis.
-    # A title that explicitly says "business analyst" bypasses both lists, so a
-    # BA in a finance/risk/sales domain is still kept. See BA_HARD_EXCLUDE and
-    # BA_SOFT_EXCLUDE below for the two-stage check.
+    # BA uses an allow-list (BA_TITLE below), so it needs no exclusions.
     "ba": [],
     # `developer`/`engineer` are broad tokens, so drop the non-software families.
     "sde": ["sales", "account executive", "recruiter", "marketing",
@@ -180,44 +173,17 @@ ROLE_SKILLS = {
             "unit test", "system design", "data structure", "algorithm"],
 }
 
-# Titles that unambiguously describe BA work. The core phrase wins over every
-# exclusion, so "Business Analyst - Finance" and "Business Analyst - Risk" stay.
-BA_CORE_TITLE = re.compile(
-    r"\b(business analyst|business analysis|business systems analyst|bpa)\b",
+# The BA track keeps only Business Analyst and Data Analyst titles. Any other
+# analyst family (product, functional, systems, process, QA, financial, ...) is
+# left out, even when the work overlaps. Domain words do not matter:
+# "Business Analyst - Finance" and "Data Analyst, Risk" both stay.
+# Letter lookarounds instead of \b, so ATS titles such as "Business Analyst_3471"
+# or "PG_Business Analyst" still match.
+BA_TITLE = re.compile(
+    r"(?<![a-z])(business analysts?|business analysis|business systems? analysts?|"
+    r"data analysts?|data analysis)(?![a-z])",
     re.I,
 )
-# BA-adjacent titles. They survive domain words ("Business Process Analyst -
-# Logistics") but not a non-BA family word ("HRIS Functional Analyst").
-BA_STRONG_TITLE = re.compile(
-    r"\b(functional analyst|requirements analyst|process analyst|"
-    r"business process analyst|product analyst|systems analyst|it analyst)\b",
-    re.I,
-)
-# Another job family entirely: even a "Functional Analyst" title in one of
-# these domains is not a BA role.
-BA_HARD_EXCLUDE = [
-    "data analyst", "business intelligence", "bi analyst", "bi developer",
-    "power bi", "quality analyst", "quality assurance analyst", "qa analyst",
-    "qa engineer", "qa", "test analyst", "automation analyst",
-    "security analyst", "soc analyst", "research analyst", "research analytics",
-    "verification analyst", "hris", "hcm", "workday", "people technology", "benefits",
-    "compensation", "support specialist", "ai trainer",
-    # Support/helpdesk analyst families are not business analysis.
-    "support analyst", "product support", "client support",
-    "platform engineering",
-]
-
-# A domain that can legitimately contain BA work. "Financial Analyst" is out,
-# but "Business Analyst - Finance" is kept by the core-title check above.
-BA_SOFT_EXCLUDE = [
-    "financial analyst", "finance", "fp&a", "investment analyst",
-    "credit analyst", "risk", "lending", "marketing", "sales",
-    "business development", "account executive", "recruiter",
-    "order management", "order to cash", "o2c", "billing", "payroll",
-    "accounts payable", "accounts receivable", "logistics", "inventory",
-    "finops", "procurement", "supply chain", "payment operations",
-    "revenue analyst", "banking", "healthcare analyst",
-]
 
 # A hybrid title such as "Data Scientist / AI Engineer" is still a GenAI
 # engineering role. An explicit AI-engineering phrase wins over the
@@ -343,17 +309,7 @@ def _hit_word(token: str, text: str) -> bool:
 def title_relevant(role: str, title: str) -> bool:
     low = (title or "").lower()
     if role == "ba":
-        # An explicit "business analyst" title is authoritative: a finance,
-        # risk or sales domain word must not turn it into a non-BA listing.
-        if BA_CORE_TITLE.search(low):
-            return True
-        if any(_hit_word(token, low) for token in BA_HARD_EXCLUDE):
-            return False
-        if BA_STRONG_TITLE.search(low):
-            return True
-        if any(_hit_word(token, low) for token in BA_SOFT_EXCLUDE):
-            return False
-        return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get("ba", []))
+        return BA_TITLE.search(low) is not None
     # Internships are not full-time openings for the engineering/design tracks.
     if ENTRY_LEVEL_TITLE.search(low):
         return False

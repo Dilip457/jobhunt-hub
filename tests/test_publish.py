@@ -103,3 +103,23 @@ def test_finalize_clears_guessed_experience_on_old_data():
     assert (guessed["experience_min"], guessed["experience_max"]) == (None, None)
     assert stated["experience_min"] == 7
     assert (tagged["experience_min"], tagged["experience_max"]) == (5, 9)
+
+
+def test_publish_drops_previously_published_offrole_titles(tmp_path):
+    import json
+
+    def ba(jobs):
+        return {**payload(jobs), "role": "ba"}
+
+    fresh = [job("a", title="Business Analyst")]
+    old = [
+        job("b", title="Product Analyst", last_seen=day(1)),
+        job("c", title="Data Analyst", last_seen=day(1)),
+        job("d", title="Functional Analyst", last_seen=day(1)),
+    ]
+    (tmp_path / "ba.json").write_text(json.dumps(ba(fresh)))
+    previous = {"ba": json.dumps(ba(old))}
+    payloads, _ = publish.build_payloads(str(tmp_path), previous, 21, 7, False)
+    titles = sorted(j["title"] for j in payloads["ba"]["jobs"])
+    assert titles == ["Business Analyst", "Data Analyst"]
+    assert payloads["ba"]["count"] == 2
