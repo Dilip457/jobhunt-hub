@@ -40,6 +40,7 @@ from export import (
     canonical_url,
     clean_company,
     clean_title,
+    dedupe_jobs,
     extract_experience,
     looks_foreign,
     make_snippet,
@@ -324,7 +325,8 @@ def search_terms(role: str) -> List[str]:
 
 def _hit(token: str, text: str) -> bool:
     if len(token) <= 3:
-        return re.search(rf"\b{re.escape(token)}\b", text) is not None
+        # Lookarounds instead of \b so tokens ending in a symbol ("c#") match.
+        return re.search(rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])", text) is not None
     return token in text
 
 
@@ -404,16 +406,31 @@ def sde_band_adjust(title: str, snippet: str) -> float:
     return 0.0
 
 
+# Portal and API listings have no resume match, so score_job approximates one.
+# Its range is kept close to the vendor pipeline's resume-match scores (which
+# top out in the 70s): base + a few title hits + a capped number of skills,
+# so a keyword match (max 64 before BA/SDE nudges) cannot outrank a strong
+# resume match.
+# Uncapped, a board that pastes its whole skill-tag list into the description
+# (Foundit) scored up to 97 and buried better LinkedIn matches.
+SCORE_BASE = 30.0
+TITLE_POINTS = 8.0
+MAX_TITLE_HITS = 2
+SKILL_POINTS = 3.0
+MAX_SKILL_HITS = 6
+SCORE_CAP = 88.0
+
+
 def score_job(role: str, title: str, snippet: str) -> float:
     text = f"{title} {snippet}".lower()
     title_l = (title or "").lower()
-    score = 30.0
-    for token in ROLE_TITLE_TOKENS.get(role, []):
-        if _hit(token, title_l):
-            score += 8
-    for skill in ROLE_SKILLS.get(role, []):
-        if skill in text:
-            score += 3
+    score = SCORE_BASE
+    title_hits = sum(1 for token in ROLE_TITLE_TOKENS.get(role, []) if _hit(token, title_l))
+    score += TITLE_POINTS * min(title_hits, MAX_TITLE_HITS)
+    # Short skills ("ui", "ux", "sql") need word boundaries: as substrings
+    # "ui" matched "build" and "ux" matched "linux".
+    skill_hits = sum(1 for skill in ROLE_SKILLS.get(role, []) if _hit(skill, text))
+    score += SKILL_POINTS * min(skill_hits, MAX_SKILL_HITS)
     if role == "ba":
         if BA_ENTRY_TITLE.search(title or ""):
             score += 9
@@ -421,7 +438,7 @@ def score_job(role: str, title: str, snippet: str) -> float:
             score -= 10
     elif role == "sde":
         score += sde_band_adjust(title or "", snippet or "")
-    return round(max(0.0, min(score, 97.0)), 1)
+    return round(max(0.0, min(score, SCORE_CAP)), 1)
 
 
 def build_job(
@@ -932,6 +949,8 @@ def merge_api_jobs(payload: Dict[str, Any], api_jobs: Iterable[Dict[str, Any]]) 
         seen.add(key)
         jobs.append(job)
 
+    # The same opening is often on several boards under different URLs.
+    jobs = dedupe_jobs(jobs)
     jobs.sort(key=lambda j: (-(j.get("score") or 0), j.get("posted_date") or ""))
 
     sources: Dict[str, int] = {}

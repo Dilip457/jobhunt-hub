@@ -34,7 +34,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from api_sources import ROLE_SEARCH_TERMS, build_job, title_relevant, to_date
-from export import canonical_url, normalize_location
+from export import canonical_url, dedupe_jobs, normalize_location
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -842,6 +842,8 @@ def merge_portal_jobs(payload: Dict[str, Any], portal_jobs: List[Dict[str, Any]]
             continue
         seen.add(key)
         jobs.append(job)
+    # The same opening is often on several boards under different URLs.
+    jobs = dedupe_jobs(jobs)
     jobs.sort(key=lambda j: (-(j.get("score") or 0), j.get("posted_date") or ""))
 
     sources: Dict[str, int] = {}
