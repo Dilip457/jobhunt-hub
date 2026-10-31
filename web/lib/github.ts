@@ -168,8 +168,14 @@ export async function dispatchWorkflow(role: RoleSlug): Promise<boolean> {
 
   const response = await ghFetch(`/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ref: DISPATCH_REF, inputs: { role } }),
   });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error(`[github] dispatch failed ${response.status}: ${detail.slice(0, 300)}`);
+  }
 
   return response.ok || response.status === 204;
 }
