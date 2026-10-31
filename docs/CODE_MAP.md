@@ -580,7 +580,7 @@ Company tokens: `automation/companies.json`.
 |---|---|
 | `normalize_location()` | India city aliases, remote/hybrid, foreign filtering |
 | `looks_foreign()` | Reject foreign-language/region titles |
-| `extract_experience()` | Parse experience ranges from title/description |
+| `extract_experience_with_source()` | Years from a board's experience field, then title/description ("stated"); only intern/fresher/entry-level words count as a title signal; level words such as "associate" or "senior" never produce numbers |
 | `canonical_url()` | Remove tracking params for deduplication |
 | `make_snippet()` | 240-character public snippet |
 | `clean_company()`, `clean_title()`, `valid_url()` | Public-field cleanup |
@@ -650,7 +650,8 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | `Job.source` | string | export/build_job | filter, badge |
 | `Job.posted_date` | date/null | export/build_job | date filter, card |
 | `Job.score` | number | vendor engine or `score_job()` | filter, sort, ring |
-| `Job.experience_min/max` | number/null | `extract_experience()` | experience label/filter |
+| `Job.experience_min/max` | number/null | `extract_experience_with_source()` | experience label/filter |
+| `Job.experience_source` | `"stated"`, `"title"` or null | export/build_job | tells publish which old values were guesses |
 | `Job.snippet` | string | `make_snippet()` | search, card |
 | `Job.is_new` | boolean | `publish.finalize_job()`: first seen ≤ 2 days ago | NEW badge |
 | `Job.first_seen` | date/null | export/publish merge | “First seen”; date filter fallback |

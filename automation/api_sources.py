@@ -42,6 +42,7 @@ from export import (
     clean_title,
     dedupe_jobs,
     extract_experience,
+    extract_experience_with_source,
     looks_foreign,
     make_snippet,
     normalize_location,
@@ -451,7 +452,10 @@ def build_job(
     description: str,
     posted: Optional[str],
     job_id: Optional[str] = None,
+    experience: str = "",
 ) -> Optional[Dict[str, Any]]:
+    """Build one public job. `experience` is the board's own experience field
+    (e.g. Naukri "5-9 Yrs"); it beats anything guessed from the title."""
     if not valid_url(url):
         return None
     if not title_relevant(role, title):
@@ -464,7 +468,7 @@ def build_job(
     if not keep:
         return None
     snippet = make_snippet(description)
-    exp_min, exp_max = extract_experience(title, description)
+    exp_min, exp_max, exp_source = extract_experience_with_source(title, description, experience)
     return {
         "id": str(job_id or canonical_url(url)),
         "title": clean_title(title),
@@ -478,6 +482,7 @@ def build_job(
         "score_parts": {"role": 0.0, "skill": 0.0, "experience": 0.0, "tool": 0.0, "domain": 0.0},
         "experience_min": exp_min,
         "experience_max": exp_max,
+        "experience_source": exp_source,
         "snippet": snippet,
         "is_new": False,
         # When *we* first scraped this job, not when the portal posted it.

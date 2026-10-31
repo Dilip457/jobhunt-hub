@@ -92,3 +92,14 @@ def test_role_artifacts_are_merged(tmp_path):
     assert statuses["data"] == "fresh"
     assert payloads["data"]["count"] == 2
     assert all(j["last_seen"] == day(0) for j in payloads["data"]["jobs"])
+
+
+def test_finalize_clears_guessed_experience_on_old_data():
+    guessed = publish.finalize_job(job("a", title="Associate - BA", snippet="", experience_min=0, experience_max=2))
+    stated = publish.finalize_job(job("b", title="Associate - BA", snippet="needs 7+ years", experience_min=7,
+                                      experience_max=None))
+    tagged = publish.finalize_job(job("c", title="Associate - BA", snippet="", experience_min=5, experience_max=9,
+                                      experience_source="stated"))
+    assert (guessed["experience_min"], guessed["experience_max"]) == (None, None)
+    assert stated["experience_min"] == 7
+    assert (tagged["experience_min"], tagged["experience_max"]) == (5, 9)

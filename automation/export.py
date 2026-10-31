@@ -202,15 +202,17 @@ def looks_foreign(text: str) -> bool:
 
 EXP_RANGE_RE = re.compile(r"(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
 EXP_PLUS_RE = re.compile(r"(\d{1,2})\s*\+\s*(?:years?|yrs?)", re.I)
-EXP_MIN_RE = re.compile(r"(?:minimum|min|at\s+least|atleast)\s+(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
-EXP_OF_RE = re.compile(r"(?:experience|exp)\s*(?:of|:|=)?\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
+EXP_MIN_RE = re.compile(r"(?:minimum|min|at\s+least|atleast)\s+(?:of\s+)?(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
+EXP_OF_RE = re.compile(r"(?:experience|exp)\s*(?:of|:|=|-)?\s*(\d{1,2})\s*\+?\s*(?:years?|yrs?)", re.I)
 
+# Title words that genuinely state the experience level. Everything else that
+# used to be here ("associate", "senior", "manager", ...) was a guess, and the
+# guess was often wrong: "Associate" at JPMorgan is a 7+ year grade and
+# "Senior Associate" at Amgen asks for 5-9 years, yet both showed "0-2 yrs".
+# A listing that states no years now shows none.
 TITLE_EXP = [
-    (re.compile(r"\b(intern|internship|trainee|fresher|graduate)\b", re.I), (0, 0)),
-    (re.compile(r"\b(junior|jr\.?|associate|entry)\b", re.I), (0, 2)),
-    (re.compile(r"\b(principal|staff|director|head|vp|vice president|fellow)\b", re.I), (8, None)),
-    (re.compile(r"\b(architect|manager)\b", re.I), (6, None)),
-    (re.compile(r"\b(lead|senior|sr\.?)\b", re.I), (5, None)),
+    (re.compile(r"\b(intern|internship|trainee|fresher|freshers)\b", re.I), (0, 0)),
+    (re.compile(r"\b(entry[\s-]?level|new\s+grad(?:uate)?|campus\s+hire)\b", re.I), (0, 1)),
 ]
 
 # Business Analyst is an entry-level-first track. The vendor DB score is kept,
@@ -306,33 +308,52 @@ def priority_score(
     return score
 
 
-def extract_experience(title: str, description: str) -> Tuple[Optional[int], Optional[int]]:
-    text = f"{title or ''}. {description or ''}"
+ExperienceSource = Optional[str]  # "stated" | "title" | None
 
-    m = EXP_RANGE_RE.search(text)
-    if m:
-        lo, hi = int(m.group(1)), int(m.group(2))
-        if lo > hi:
-            lo, hi = hi, lo
-        return (lo, hi)
 
-    m = EXP_MIN_RE.search(text)
-    if m:
-        return (int(m.group(1)), None)
+def extract_experience_with_source(
+    title: str, description: str, experience: str = ""
+) -> Tuple[Optional[int], Optional[int], ExperienceSource]:
+    """Years of experience a listing asks for, and where that came from.
 
-    m = EXP_PLUS_RE.search(text)
-    if m:
-        return (int(m.group(1)), None)
+    `experience` is a board's own experience field (Naukri "5-9 Yrs", Foundit
+    min/max). It is checked first, then the title and description. "stated"
+    means the numbers were written in the listing; "title" means only an
+    unambiguous level word (intern, fresher, entry level) was found.
+    """
+    for text in (experience or "", f"{title or ''}. {description or ''}"):
+        if not text.strip():
+            continue
+        m = EXP_RANGE_RE.search(text)
+        if m:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            if lo > hi:
+                lo, hi = hi, lo
+            return (lo, hi, "stated")
 
-    m = EXP_OF_RE.search(text)
-    if m:
-        return (int(m.group(1)), None)
+        for pattern in (EXP_MIN_RE, EXP_PLUS_RE, EXP_OF_RE):
+            m = pattern.search(text)
+            if m:
+                return (int(m.group(1)), None, "stated")
 
     for pattern, span in TITLE_EXP:
         if pattern.search(title or ""):
-            return span
+            return (span[0], span[1], "title")
 
-    return (None, None)
+    return (None, None, None)
+
+
+def extract_experience(
+    title: str, description: str, experience: str = ""
+) -> Tuple[Optional[int], Optional[int]]:
+    lo, hi, _source = extract_experience_with_source(title, description, experience)
+    return (lo, hi)
+
+
+def states_experience(title: str, snippet: str) -> bool:
+    """True when title or snippet spells out years (used to repair old data)."""
+    _lo, _hi, source = extract_experience_with_source(title, snippet)
+    return source == "stated"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -517,7 +538,9 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
 
         seen.add(key)
 
-        exp_min, exp_max = extract_experience(row["title"], row["description"])
+        exp_min, exp_max, exp_source = extract_experience_with_source(
+            row["title"], row["description"]
+        )
         source = (row["source"] or "Unknown").strip() or "Unknown"
         sources[source] = sources.get(source, 0) + 1
 
@@ -554,6 +577,7 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             },
             "experience_min": exp_min,
             "experience_max": exp_max,
+            "experience_source": exp_source,
             "snippet": make_snippet(row["description"]),
             "is_new": bool(row["is_new"]),
             "first_seen": (row["first_seen"] or "")[:10] or None,

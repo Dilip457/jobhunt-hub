@@ -401,7 +401,7 @@ Exports the vendor SQLite database to public JSON:
 - Reads the `jobs` table ordered by score and posted date.
 - Normalizes locations to India/Remote; foreign listings are dropped.
 - Keeps only a **240-character snippet**, not the full description.
-- Extracts experience ranges when available.
+- Extracts experience ranges only when the listing states them (board experience field, title or description). "Associate", "Senior", "Manager" and similar level words no longer turn into years: at JPMorgan an Associate role asked for 7+ years and at Amgen a Senior Associate role for 5-9, while the cards showed 0-2. Naukri's per-card "5-9 Yrs" and Foundit's min/max fields are read directly. `experience_source` records whether the value was stated; `publish.finalize_job()` clears older guessed values.
 - Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later drops `score_parts`, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
 - Drops jobs below the score floor, with invalid URLs, with foreign locations, or older than the freshness window.
 - Sorts by score then posted date.

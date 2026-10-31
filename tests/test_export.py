@@ -33,7 +33,8 @@ def test_foreign_locations_are_dropped(raw):
 
 def test_experience_range_and_title_fallback():
     assert extract_experience("Data Engineer", "Needs 3-5 years of experience") == (3, 5)
-    assert extract_experience("Senior Data Engineer", "") == (5, None)
+    # "Senior" alone states no years; see tests/test_experience.py.
+    assert extract_experience("Senior Data Engineer", "") == (None, None)
     assert extract_experience("Graduate Trainee", "") == (0, 0)
 
 

@@ -27,6 +27,8 @@ export interface Job {
   score_parts?: ScoreParts;
   experience_min?: number | null;
   experience_max?: number | null;
+  /** "stated": years written in the listing; "title": from a level word like "intern". */
+  experience_source?: "stated" | "title" | null;
   snippet?: string;
   is_new?: boolean;
   first_seen?: string | null;
