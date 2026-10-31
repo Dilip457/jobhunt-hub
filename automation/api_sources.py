@@ -48,6 +48,23 @@ from export import (
 )
 
 USER_AGENT = "Mozilla/5.0 (compatible; jobhunt-hub/1.0; +https://github.com/Dilip457/jobhunt-hub)"
+
+# A remote posting can be region-restricted in the title alone: "Senior AI
+# Engineer - EU". The location field says just "Remote", so reject the title
+# suffix instead of surfacing a role we cannot take.
+TITLE_FOREIGN_REGION = re.compile(
+    r"[-–—(\[]\s*(us|usa|u\.s\.|united states|uk|united kingdom|eu|europe|emea|"
+    r"apac|canada|australia|latam|brazil|mexico|singapore|uae|dubai|germany|"
+    r"france|netherlands|ireland|poland|spain|italy|japan|china)\s*[)\]]?\s*$",
+    re.I,
+)
+
+# Internships are not full-time openings. Matched as whole words so "internal
+# tools engineer" survives, but "Intern", "Interns" and "Internships" do not.
+ENTRY_LEVEL_TITLE = re.compile(
+    r"\b(intern|interns|internship|internships|trainee|trainees|working student)\b",
+    re.I,
+)
 TIMEOUT = 25
 
 # Query terms sent to the APIs.
@@ -87,27 +104,43 @@ ROLE_TITLE_TOKENS = {
 
 # Titles that contain a role token but are clearly a different job family.
 ROLE_TITLE_EXCLUDE = {
-    "genai": ["sales", "account executive", "recruiter", "marketing", "support specialist"],
-    "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee", "data center"],
-    "uiux": ["mechanical", "hardware", "electrical", "civil", "data center", "instructional"],
+    "genai": ["sales", "account executive", "recruiter", "marketing",
+              "support specialist", "ai trainer", "annotation", "data quality",
+              "governance", "intern", "internship", "working student", "trainee",
+              "pflichtpraktikum", "praktikum", "werkstudent", "data scientist",
+              "security", "admin", "coding tasks", "product manager",
+              "program manager", "product owner", "product designer",
+              "designer", "design strategist"],
+    "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee",
+             "data center", "data analyst", "data scientist", "data quality",
+             "ai trainer", "annotation", "working student", "master data",
+             "intern", "internship", "manager", "director", "head of"],
+    "uiux": ["mechanical", "hardware", "electrical", "civil", "data center",
+             "instructional", "graphic designer", "graphic design", "illustrator",
+             "motion graphics", "motion designer", "motion design",
+             "brand designer", "brand design", "intern", "internship",
+             "working student", "trainee", "premaster", "support engineer",
+             "mold", "tool design", "communication design",
+             "kommunikationsdesign", "advertising", "marketing manager",
+             "sales manager", "program manager", "project manager",
+             "product manager"],
     # `analyst` is a broad token (it keeps IIBA's generic titles alive), so
     # exclude the analyst families that are clearly not business analysis.
-    "ba": ["data analyst", "business intelligence", "financial analyst", "finance",
-           "fp&a", "investment analyst", "credit analyst", "risk", "lending",
-           "quality analyst", "qa analyst", "security analyst", "soc analyst",
-           "research analyst", "benefits", "compensation", "hris", "workday",
-           "people technology", "sec analyst", "finops", "procurement",
-           "supply chain", "payment operations", "revenue analyst",
-           "marketing", "sales", "business development", "account executive",
-           "recruiter", "support specialist"],
+    # A title that explicitly says "business analyst" bypasses both lists, so a
+    # BA in a finance/risk/sales domain is still kept. See BA_HARD_EXCLUDE and
+    # BA_SOFT_EXCLUDE below for the two-stage check.
+    "ba": [],
     # `developer`/`engineer` are broad tokens, so drop the non-software families.
     "sde": ["sales", "account executive", "recruiter", "marketing",
             "business development", "support specialist", "mechanical",
             "civil", "electrical", "hardware", "data entry", "intern",
-            "trainee", "qa", "manual testing", "test engineer",
-            "network engineer", "devops engineer", "site reliability",
-            "solutions engineer", "salesforce", "servicenow", "sap ",
-            "warehouse", "driver", "technician"],
+            "trainee", "qa", "manual testing", "test engineer", "in test",
+            "sdet", "quality assurance", "power bi", "powerbi",
+            "data engineer", "data scientist", "data analyst", "embedded",
+            "career fair", "manager", "product analyst", "business analyst",
+            "test", "testing", "network engineer", "devops engineer",
+            "site reliability", "solutions engineer", "salesforce",
+            "servicenow", "sap ", "warehouse", "driver", "technician"],
 }
 
 ROLE_SKILLS = {
@@ -134,6 +167,42 @@ ROLE_SKILLS = {
             "git", "flask", "entity framework", "mongodb", "redis",
             "unit test", "system design", "data structure", "algorithm"],
 }
+
+# Titles that unambiguously describe BA work. The core phrase wins over every
+# exclusion, so "Business Analyst - Finance" and "Business Analyst - Risk" stay.
+BA_CORE_TITLE = re.compile(
+    r"\b(business analyst|business analysis|business systems analyst|bpa)\b",
+    re.I,
+)
+# BA-adjacent titles. They survive domain words ("Business Process Analyst -
+# Logistics") but not a non-BA family word ("HRIS Functional Analyst").
+BA_STRONG_TITLE = re.compile(
+    r"\b(functional analyst|requirements analyst|process analyst|"
+    r"business process analyst|product analyst|systems analyst|it analyst)\b",
+    re.I,
+)
+# Another job family entirely: even a "Functional Analyst" title in one of
+# these domains is not a BA role.
+BA_HARD_EXCLUDE = [
+    "data analyst", "business intelligence", "bi analyst", "bi developer",
+    "power bi", "quality analyst", "quality assurance analyst", "qa analyst",
+    "qa engineer", "qa", "test analyst", "automation analyst",
+    "security analyst", "soc analyst", "research analyst", "research analytics",
+    "verification analyst", "hris", "hcm", "workday", "people technology", "benefits",
+    "compensation", "support specialist", "ai trainer",
+]
+
+# A domain that can legitimately contain BA work. "Financial Analyst" is out,
+# but "Business Analyst - Finance" is kept by the core-title check above.
+BA_SOFT_EXCLUDE = [
+    "financial analyst", "finance", "fp&a", "investment analyst",
+    "credit analyst", "risk", "lending", "marketing", "sales",
+    "business development", "account executive", "recruiter",
+    "order management", "order to cash", "o2c", "billing", "payroll",
+    "accounts payable", "accounts receivable", "logistics", "inventory",
+    "finops", "procurement", "supply chain", "payment operations",
+    "revenue analyst", "banking",
+]
 
 # Business Analyst is an entry-level-first track: fresher/entry/1–3 year roles
 # get a score boost and senior/lead titles are pushed down.
@@ -213,9 +282,8 @@ def to_date(value: Any) -> Optional[str]:
 
 
 def norm_location(raw: str) -> tuple[str, bool]:
-    low = (raw or "").strip().lower()
-    if any(word in low for word in REMOTE_WORDS):
-        return ("Remote", True)
+    # normalize_location already understands remote wording and rejects
+    # country-restricted remote roles such as "Remote - US".
     return normalize_location(raw)
 
 
@@ -229,9 +297,33 @@ def _hit(token: str, text: str) -> bool:
     return token in text
 
 
+def _hit_word(token: str, text: str) -> bool:
+    """Whole-word match for exclusion tokens.
+
+    A substring check would let "intern" drop "internal tools engineer" and
+    "sales" drop "salesforce"; exclusions need word boundaries.
+    """
+    return re.search(rf"(?<![a-z]){re.escape(token)}(?![a-z])", text) is not None
+
+
 def title_relevant(role: str, title: str) -> bool:
     low = (title or "").lower()
-    if any(_hit(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
+    if role == "ba":
+        # An explicit "business analyst" title is authoritative: a finance,
+        # risk or sales domain word must not turn it into a non-BA listing.
+        if BA_CORE_TITLE.search(low):
+            return True
+        if any(_hit_word(token, low) for token in BA_HARD_EXCLUDE):
+            return False
+        if BA_STRONG_TITLE.search(low):
+            return True
+        if any(_hit_word(token, low) for token in BA_SOFT_EXCLUDE):
+            return False
+        return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get("ba", []))
+    # Internships are not full-time openings for the engineering/design tracks.
+    if ENTRY_LEVEL_TITLE.search(low):
+        return False
+    if any(_hit_word(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
         return False
     return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
 
@@ -239,7 +331,8 @@ def title_relevant(role: str, title: str) -> bool:
 # SDE targets 3-8 years; titles are the fallback when no range is stated.
 SDE_BAND = (3, 8)
 SDE_OVER_TITLE = re.compile(
-    r"\b(principal|architect|director|vp|vice president|head of|distinguished)\b", re.I
+    r"\b(principal|staff|architect|director|vp|vice president|head of|distinguished)\b",
+    re.I,
 )
 SDE_UNDER_TITLE = re.compile(
     r"\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b", re.I
@@ -249,6 +342,13 @@ SDE_UNDER_TITLE = re.compile(
 def sde_band_adjust(title: str, snippet: str) -> float:
     """Bias SDE listings toward the 3-8 year band the profile targets."""
     band_lo, band_hi = SDE_BAND
+    # Title overrides first. A "Principal" title extracts (8, None) from the
+    # title fallback, which would otherwise look perfectly in-band and get the
+    # boost meant for 3-8 year engineers.
+    if SDE_OVER_TITLE.search(title or ""):
+        return -7.0
+    if SDE_UNDER_TITLE.search(title or ""):
+        return -9.0
     exp_min, exp_max = extract_experience(title, snippet)
     if exp_min is not None or exp_max is not None:
         start = exp_min if exp_min is not None else exp_max
@@ -264,10 +364,6 @@ def sde_band_adjust(title: str, snippet: str) -> float:
         if high < band_lo:
             return -9.0
         return -7.0
-    if SDE_OVER_TITLE.search(title or ""):
-        return -7.0
-    if SDE_UNDER_TITLE.search(title or ""):
-        return -9.0
     return 0.0
 
 
@@ -307,6 +403,8 @@ def build_job(
     if not title_relevant(role, title):
         return None
     if looks_foreign(title):
+        return None
+    if TITLE_FOREIGN_REGION.search(title or ""):
         return None
     city, keep = norm_location(location)
     if not keep:
@@ -700,12 +798,23 @@ SOURCES = (
 
 # ── Collection / merging ──────────────────────────────────────────────────────
 
+def _run_api_source(name: str, fetcher, role: str, max_days: int):
+    """Fetch one API source without letting its failure abort the others."""
+    try:
+        return name, fetcher(role, max_days) or [], None
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
+        return name, [], str(exc)
+    except Exception as exc:  # never let one source break the run
+        return name, [], f"error ({exc})"
+
+
 def collect_api_jobs(
     role: str,
     profile: Dict[str, Any],
     max_days: int,
     min_score: float = 20.0,
     include_ats: bool = True,
+    parallel: int = 1,
 ) -> List[Dict[str, Any]]:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=max_days)).date().isoformat()
     seen = set()
@@ -713,18 +822,39 @@ def collect_api_jobs(
     collected: List[Dict[str, Any]] = []
     counts: Dict[str, int] = {}
 
-    for name, fetcher in SOURCES:
-        if name == "ats" and not include_ats:
-            continue
-        try:
-            found = fetcher(role, max_days) or []
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
-            print(f"[apis] {name}: failed ({exc})", file=sys.stderr)
-            continue
-        except Exception as exc:  # never let one source break the run
-            print(f"[apis] {name}: error ({exc})", file=sys.stderr)
-            continue
+    selected = [
+        (name, fetcher)
+        for name, fetcher in SOURCES
+        if not (name == "ats" and not include_ats)
+    ]
+    results: Dict[str, List[Dict[str, Any]]] = {}
 
+    if parallel > 1 and len(selected) > 1:
+        print(
+            f"[apis] fetching {len(selected)} sources in parallel (up to {parallel})",
+            file=sys.stderr,
+        )
+        with cf.ThreadPoolExecutor(max_workers=min(parallel, len(selected))) as pool:
+            futures = {
+                pool.submit(_run_api_source, name, fetcher, role, max_days): name
+                for name, fetcher in selected
+            }
+            for future in cf.as_completed(futures):
+                name, found, error = future.result()
+                if error:
+                    print(f"[apis] {name}: {error}", file=sys.stderr)
+                results[name] = found
+    else:
+        for name, fetcher in selected:
+            name, found, error = _run_api_source(name, fetcher, role, max_days)
+            if error:
+                print(f"[apis] {name}: {error}", file=sys.stderr)
+            results[name] = found
+
+    # Merge in registry order, not completion order, so the output is stable
+    # between parallel and sequential runs.
+    for name, _fetcher in selected:
+        found = results.get(name, [])
         kept = 0
         for job in found:
             if (job.get("score") or 0) < min_score:
@@ -790,6 +920,12 @@ def main() -> None:
     parser.add_argument("--max-days", type=int, default=14)
     parser.add_argument("--min-score", type=float, default=20.0)
     parser.add_argument("--no-ats", action="store_true", help="Skip company ATS boards")
+    parser.add_argument(
+        "--parallel-sources",
+        type=int,
+        default=1,
+        help="Fetch this many API sources at once (default 1, sequential).",
+    )
     args = parser.parse_args()
 
     profile: Dict[str, Any] = {}
@@ -800,7 +936,14 @@ def main() -> None:
     if args.min_score == 20.0 and profile.get("min_score") is not None:
         args.min_score = float(profile["min_score"])
 
-    jobs = collect_api_jobs(args.role, profile, args.max_days, args.min_score, include_ats=not args.no_ats)
+    jobs = collect_api_jobs(
+        args.role,
+        profile,
+        args.max_days,
+        args.min_score,
+        include_ats=not args.no_ats,
+        parallel=args.parallel_sources,
+    )
     payload = merge_api_jobs({"role": args.role, "jobs": []}, jobs)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

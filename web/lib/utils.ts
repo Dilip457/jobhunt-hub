@@ -172,6 +172,14 @@ export function experiencePriority(job: Job): number {
 export function experienceBandPriority(job: Job): number {
   const BAND_LO = 3;
   const BAND_HI = 8;
+  const text = `${job.title} ${job.snippet ?? ""}`.toLowerCase();
+  // Title overrides first: a "Principal" title extracts an 8-year fallback,
+  // which would otherwise look squarely in-band.
+  if (/\b(principal|staff|architect|director|vp|vice president|head of|distinguished)\b/.test(text)) {
+    return 2;
+  }
+  if (/\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b/.test(text)) return 3;
+
   const min = job.experience_min ?? null;
   const max = job.experience_max ?? null;
 
@@ -188,11 +196,6 @@ export function experienceBandPriority(job: Job): number {
     return 2;
   }
 
-  const text = `${job.title} ${job.snippet ?? ""}`.toLowerCase();
-  if (/\b(principal|architect|director|vp|vice president|head of|distinguished)\b/.test(text)) {
-    return 2;
-  }
-  if (/\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b/.test(text)) return 3;
   if (/\b(senior|lead|sde\s*(?:ii|2|iii|3)|engineer\s*(?:ii|2|iii|3)|specialist)\b/.test(text)) {
     return 0;
   }

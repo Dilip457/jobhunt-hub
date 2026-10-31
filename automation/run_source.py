@@ -664,6 +664,34 @@ def run(args) -> int:
     started = time.time()
     stats: dict = {}
     payload = None
+
+    # Direct portal scrapers are independent of the vendor pipeline (different
+    # sites, no shared state), so start them now and join after export. That
+    # overlaps the two slowest phases instead of paying for them back to back.
+    portal_future = None
+    portal_pool = None
+    portal_merge = None
+    if not getattr(args, "no_portal", False):
+        try:
+            from concurrent.futures import ThreadPoolExecutor
+
+            from portal_scrapers import collect_portal_jobs, merge_portal_jobs
+
+            portal_merge = merge_portal_jobs
+            portal_pool = ThreadPoolExecutor(max_workers=1)
+            portal_future = portal_pool.submit(
+                collect_portal_jobs,
+                args.role,
+                getattr(args, "profile_data", {}) or {},
+                args.max_days,
+                args.min_score,
+                None,
+                getattr(args, "parallel_portals", 1),
+            )
+            print("[run_source] portal scrapers started alongside the vendor pipeline")
+        except Exception as exc:
+            print(f"[run_source] portal scrapers could not start: {exc}")
+
     try:
         pipeline = main_module.JobSearchPipeline(sources=sources)
         stats = pipeline.run()
@@ -691,22 +719,17 @@ def run(args) -> int:
             "jobs": [],
         }
 
-    # Direct portal scrapers (Naukri, Foundit, Indeed, Shine). These are the
-    # primary sources: no API keys, no accounts, no signups.
-    if not getattr(args, "no_portal", False):
+    # Collect the portal result started above. They are the primary sources:
+    # no API keys, no accounts, no signups.
+    if portal_future is not None:
         try:
-            from portal_scrapers import collect_portal_jobs, merge_portal_jobs
-
-            portal_jobs = collect_portal_jobs(
-                args.role,
-                getattr(args, "profile_data", {}) or {},
-                args.max_days,
-                args.min_score,
-            )
-            payload = merge_portal_jobs(payload, portal_jobs)
+            portal_jobs = portal_future.result()
+            payload = portal_merge(payload, portal_jobs)
             print(f"[run_source] portal scrapers merged: {len(portal_jobs)} jobs")
         except Exception as exc:
             print(f"[run_source] portal scrapers skipped: {exc}")
+        finally:
+            portal_pool.shutdown(wait=False)
 
     # Cloud-safe API sources (Adzuna, Jooble, Google Jobs, Remotive, Himalayas).
     # Always attempted, so the portal still gets data even when every scraper is blocked.
@@ -766,7 +789,13 @@ def main() -> None:
         "--parallel-sources",
         type=int,
         default=4,
-        help="Scrape this many sources concurrently (1 = sequential)",
+        help="Scrape this many vendor sources concurrently (1 = sequential)",
+    )
+    parser.add_argument(
+        "--parallel-portals",
+        type=int,
+        default=1,
+        help="Scrape this many direct portal sources concurrently (1 = sequential)",
     )
     parser.add_argument("--no-validate", action="store_true")
     args = parser.parse_args()

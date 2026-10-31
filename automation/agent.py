@@ -185,6 +185,8 @@ def main() -> int:
             "--repo-dir", os.path.join(vendor_dir, role),
             "--out", os.path.join("artifacts", f"{role}.json"),
             "--no-validate",
+            "--parallel-sources", "4",
+            "--parallel-portals", "4",
         ]
 
     if args.dry_run:

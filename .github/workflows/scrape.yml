@@ -90,6 +90,10 @@ jobs:
         working-directory: portal
         env:
           PYTHONUNBUFFERED: "1"
+          # The dedicated WARP job retries Indeed through a clean exit IP. Here
+          # the fast curl_cffi path is enough; a headed browser fallback would
+          # add minutes for inventory the WARP job already collects.
+          INDEED_HTTP_ONLY: "1"
         run: |
           python automation/run_source.py \
             --role "${{ matrix.role }}" \
@@ -99,7 +103,8 @@ jobs:
             --no-playwright \
             --no-apis \
             --no-validate \
-            --parallel-sources 4
+            --parallel-sources 4 \
+            --parallel-portals 4
 
       - name: Fetch extra keyless sources (BA, SDE)
         if: matrix.role == 'ba' || matrix.role == 'sde'
@@ -113,7 +118,8 @@ jobs:
             --profile "profiles/${{ matrix.role }}.json" \
             --out "artifacts/${{ matrix.role }}.apis.json" \
             --max-days 21 \
-            --min-score 18
+            --min-score 18 \
+            --parallel-sources 4
 
       - name: Upload role artifact
         if: always()

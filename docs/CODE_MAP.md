@@ -380,7 +380,7 @@ These are different preloaded profiles, one per role track. They are **not** the
 | 3. Load role search config | `profiles/<role>.json` | `repo`, `db`, `sources`, `keywords`, `cities`, `min_score`, `max_days` (search config, not the resume) |
 | 4. Import vendor config | `automation/run_source.py` | `run()` → `importlib.import_module("config")` |
 | 5. Patch search/scoring | `automation/run_source.py` | `_patch_config()`, `_patch_scoring()` |
-| 5b. Patch concurrency | `automation/run_source.py` | `_patch_parallel_scrapers()` → threaded `JobSearchPipeline._run_scrapers` (`--parallel-sources`) |
+| 5b. Patch concurrency | `automation/run_source.py` | `_patch_parallel_scrapers()` → threaded `JobSearchPipeline._run_scrapers` (`--parallel-sources`); portal collection starts in a background thread before step 6 and merges after step 9 (`--parallel-portals`, `INDEED_HTTP_ONLY`) |
 | 6. Run vendor pipeline | `automation/run_source.py` | `main_module.JobSearchPipeline(sources=...)` |
 | 7. Score each job | Vendor `scoring_engine.py` | `ScoringEngine.compute_score()`, `score_batch()` |
 | 8. Store in vendor DB | Vendor `main.py` / `config.py` | SQLite `DB_PATH` |

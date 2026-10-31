@@ -179,7 +179,8 @@ python automation/run_source.py \
   --no-playwright \
   --no-apis \
   --no-validate \
-  --parallel-sources 4
+  --parallel-sources 4 \
+  --parallel-portals 4
 ```
 
 6. Upload the artifact (always, even on failure):

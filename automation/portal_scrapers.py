@@ -19,6 +19,7 @@ Usage (usually called by run_source.py):
 from __future__ import annotations
 
 import argparse
+import concurrent.futures as cf
 import html
 import json
 import os
@@ -489,6 +490,12 @@ def fetch_indeed(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
     if os.environ.get("WARP_SYSTEM") == "1":
         print("[portal] indeed: HTTP path empty under WARP; skipping browser", file=sys.stderr)
         return jobs
+    if os.environ.get("INDEED_HTTP_ONLY") == "1":
+        # The scrape job runs alongside the dedicated WARP job, which retries
+        # Indeed through a clean exit IP. A headed browser here would add
+        # several minutes for the same inventory.
+        print("[portal] indeed: HTTP path empty; browser fallback disabled", file=sys.stderr)
+        return jobs
     print("[portal] indeed: HTTP path empty; trying browser", file=sys.stderr)
     return _fetch_indeed_browser(role, profile)
 
@@ -747,12 +754,21 @@ SOURCES = (
 )
 
 
+def _run_one(name: str, fetcher, role: str, profile: Dict[str, Any], max_days: int):
+    """Fetch one portal without letting its failure abort the others."""
+    try:
+        return name, fetcher(role, profile, max_days) or [], None
+    except Exception as exc:
+        return name, [], str(exc)
+
+
 def collect_portal_jobs(
     role: str,
     profile: Dict[str, Any],
     max_days: int,
     min_score: float = 20.0,
     sites: Optional[List[str]] = None,
+    parallel: int = 1,
 ) -> List[Dict[str, Any]]:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=max_days)).date().isoformat()
     seen = set()
@@ -760,15 +776,35 @@ def collect_portal_jobs(
     collected: List[Dict[str, Any]] = []
     counts: Dict[str, int] = {}
 
-    for name, fetcher in SOURCES:
-        if sites and name not in sites:
-            continue
-        try:
-            found = fetcher(role, profile or {}, max_days) or []
-        except Exception as exc:
-            print(f"[portal] {name}: failed ({exc})", file=sys.stderr)
-            found = []
+    selected = [(name, fetcher) for name, fetcher in SOURCES if not sites or name in sites]
+    results: Dict[str, List[Dict[str, Any]]] = {}
 
+    if parallel > 1 and len(selected) > 1:
+        print(
+            f"[portal] scraping {len(selected)} sources in parallel (up to {parallel})",
+            file=sys.stderr,
+        )
+        with cf.ThreadPoolExecutor(max_workers=min(parallel, len(selected))) as pool:
+            futures = {
+                pool.submit(_run_one, name, fetcher, role, profile or {}, max_days): name
+                for name, fetcher in selected
+            }
+            for future in cf.as_completed(futures):
+                name, found, error = future.result()
+                if error:
+                    print(f"[portal] {name}: failed ({error})", file=sys.stderr)
+                results[name] = found
+    else:
+        for name, fetcher in selected:
+            name, found, error = _run_one(name, fetcher, role, profile or {}, max_days)
+            if error:
+                print(f"[portal] {name}: failed ({error})", file=sys.stderr)
+            results[name] = found
+
+    # Merge in registry order, not completion order, so the output is stable
+    # between parallel and sequential runs.
+    for name, _fetcher in selected:
+        found = results.get(name, [])
         kept = 0
         for job in found:
             if (job.get("score") or 0) < min_score:
@@ -830,6 +866,12 @@ def main() -> None:
     parser.add_argument("--max-days", type=int, default=21)
     parser.add_argument("--min-score", type=float, default=20.0)
     parser.add_argument("--sites", nargs="*", default=None)
+    parser.add_argument(
+        "--parallel-sources",
+        type=int,
+        default=1,
+        help="Run this many portal sources at once (default 1, sequential).",
+    )
     args = parser.parse_args()
 
     profile: Dict[str, Any] = {}
@@ -837,7 +879,14 @@ def main() -> None:
         with open(args.profile, encoding="utf-8-sig") as handle:
             profile = json.load(handle)
 
-    jobs = collect_portal_jobs(args.role, profile, args.max_days, args.min_score, args.sites)
+    jobs = collect_portal_jobs(
+        args.role,
+        profile,
+        args.max_days,
+        args.min_score,
+        args.sites,
+        parallel=args.parallel_sources,
+    )
     payload = merge_portal_jobs({"role": args.role, "jobs": []}, jobs)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

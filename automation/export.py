@@ -118,6 +118,20 @@ FOREIGN_MARKERS = {
 }
 
 
+REMOTE_WORDS = ("remote", "work from home", "wfh", "anywhere", "worldwide", "global")
+
+# A remote role can still be restricted to a country we cannot work from.
+# Strip the generic remote words, then look for a foreign country/region.
+REMOTE_FOREIGN_RE = re.compile(
+    r"\b(us|usa|u\.s\.|united states|uk|united kingdom|england|canada|emea|apac|"
+    r"europe|australia|singapore|uae|dubai|germany|france|netherlands|ireland|"
+    r"poland|spain|italy|japan|china|brazil|latam|latin america|mexico|argentina|"
+    r"colombia|chile|peru|philippines|malaysia|thailand|vietnam|indonesia|"
+    r"hong kong|taiwan|korea|saudi|qatar|new zealand)\b",
+    re.I,
+)
+
+
 def normalize_location(raw: str) -> Tuple[str, bool]:
     """Return (city, is_india_or_remote). Foreign jobs are excluded."""
     if not raw:
@@ -129,8 +143,13 @@ def normalize_location(raw: str) -> Tuple[str, bool]:
     if low in ("unknown", "n/a", "-", "none"):
         return ("India", True)
 
-    is_remote = any(k in low for k in ("remote", "work from home", "wfh", "anywhere"))
+    is_remote = any(k in low for k in REMOTE_WORDS)
     if is_remote:
+        remainder = low
+        for word in REMOTE_WORDS:
+            remainder = remainder.replace(word, " ")
+        if REMOTE_FOREIGN_RE.search(remainder) or looks_foreign(remainder):
+            return (text, False)
         return ("Remote", True)
 
     if any(marker in low for marker in FOREIGN_MARKERS):
@@ -149,10 +168,23 @@ def normalize_location(raw: str) -> Tuple[str, bool]:
     return ("India", True)
 
 
+NON_ENGLISH_MARKERS = {
+    "pflichtpraktikum", "werkstudent", "praktikum", "stagiaire", "alternance",
+    "becario", "practicas", "prácticas", "praticas",
+}
+
+
 def looks_foreign(text: str) -> bool:
-    """True when a free-text field names a non-India place we recognise."""
+    """True when a free-text field names a non-India place we recognise.
+
+    Also rejects titles written in a language the India-facing board does not
+    target (e.g. Bosch's German "Pflichtpraktikum" listing).
+    """
     low = unescape(str(text or "")).lower()
     for marker in FOREIGN_MARKERS:
+        if re.search(rf"(?<![a-z]){re.escape(marker)}(?![a-z])", low):
+            return True
+    for marker in NON_ENGLISH_MARKERS:
         if re.search(rf"(?<![a-z]){re.escape(marker)}(?![a-z])", low):
             return True
     return False
@@ -195,7 +227,8 @@ SDE_IN_BAND_TITLE = re.compile(
     re.I,
 )
 SDE_OVER_TITLE = re.compile(
-    r"\b(principal|architect|director|vp|vice president|head of|distinguished)\b", re.I
+    r"\b(principal|staff|architect|director|vp|vice president|head of|distinguished)\b",
+    re.I,
 )
 SDE_UNDER_TITLE = re.compile(
     r"\b(fresher|entry[\s-]?level|graduate|intern|trainee|junior)\b", re.I
@@ -217,6 +250,13 @@ def sde_band_score(
     band_lo, band_hi = SDE_BAND
     value = float(score or 0)
 
+    # Title overrides first: "Principal" extracts (8, None) from the title
+    # fallback and would otherwise be treated as squarely in-band.
+    if SDE_OVER_TITLE.search(title or ""):
+        return max(0.0, min(value - 10, 100.0))
+    if SDE_UNDER_TITLE.search(title or ""):
+        return max(0.0, min(value - 12, 100.0))
+
     if exp_min is not None or exp_max is not None:
         start = exp_min if exp_min is not None else exp_max
         end = exp_max if exp_max is not None else exp_min
@@ -234,11 +274,7 @@ def sde_band_score(
             value -= 10
         return max(0.0, min(value, 100.0))
 
-    if SDE_OVER_TITLE.search(title or ""):
-        value -= 10
-    if SDE_UNDER_TITLE.search(title or ""):
-        value -= 12
-    elif SDE_IN_BAND_TITLE.search(title or ""):
+    if SDE_IN_BAND_TITLE.search(title or ""):
         value += 5
     return max(0.0, min(value, 100.0))
 
@@ -354,6 +390,15 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
     if not os.path.exists(db_path):
         raise SystemExit(f"[export] DB not found: {db_path}")
 
+    # The vendor scrapers do their own keyword matching, which is loose enough
+    # to keep "Scrum Master" or "QA Analyst" in a BA search. Apply the same
+    # title-relevance gate the portal and API collectors use so every source
+    # lands on the same role definition.
+    try:
+        from api_sources import title_relevant
+    except Exception:
+        title_relevant = None
+
     cutoff = (datetime.now(timezone.utc) - timedelta(days=max_days)).date().isoformat()
 
     conn = sqlite3.connect(db_path)
@@ -378,6 +423,7 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
     sources: Dict[str, int] = {}
     dropped_foreign = 0
     dropped_stale = 0
+    dropped_offrole = 0
 
     for row in rows:
         url = (row["url"] or "").strip()
@@ -385,6 +431,10 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             continue
         key = canonical_url(url)
         if not key or key in seen:
+            continue
+
+        if title_relevant is not None and not title_relevant(role, row["title"] or ""):
+            dropped_offrole += 1
             continue
 
         city, keep = normalize_location(row["location"] or "")
@@ -453,7 +503,8 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
 
     print(
         f"[export] role={role} jobs={len(jobs)} sources={len(sources)} "
-        f"dropped_foreign={dropped_foreign} dropped_stale={dropped_stale}",
+        f"dropped_foreign={dropped_foreign} dropped_stale={dropped_stale} "
+        f"dropped_offrole={dropped_offrole}",
         file=sys.stderr,
     )
     return payload
