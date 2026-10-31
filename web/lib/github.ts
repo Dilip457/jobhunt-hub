@@ -94,14 +94,20 @@ export interface ActionsRun {
   html_url: string;
 }
 
-async function fetchRuns(perPage = 12): Promise<ActionsRun[]> {
+async function fetchRuns(perPage = 12): Promise<{ runs: ActionsRun[]; error?: string }> {
   const response = await ghFetch(
     `/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?per_page=${perPage}`,
     cacheInit({ noStore: true }),
   );
-  if (!response.ok) return [];
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return {
+      runs: [],
+      error: `GitHub API ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`,
+    };
+  }
   const payload = (await response.json()) as { workflow_runs?: ActionsRun[] };
-  return payload.workflow_runs ?? [];
+  return { runs: payload.workflow_runs ?? [] };
 }
 
 function runMatchesRole(run: ActionsRun, role: RoleSlug | null): boolean {
@@ -130,7 +136,19 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
     };
   }
 
-  const runs = (await fetchRuns()).filter((run) => runMatchesRole(run, role));
+  const { runs: allRuns, error } = await fetchRuns();
+
+  if (error) {
+    return {
+      configured: true,
+      state: "idle",
+      role,
+      canRefresh: false,
+      message: `GitHub is not reachable with the configured token (${error}).`,
+    };
+  }
+
+  const runs = allRuns.filter((run) => runMatchesRole(run, role));
 
   if (runs.length === 0) {
     return {
