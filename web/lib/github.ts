@@ -181,7 +181,7 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
   };
 }
 
-export async function dispatchWorkflow(role: RoleSlug): Promise<boolean> {
+export async function dispatchWorkflow(role: RoleSlug | "all"): Promise<boolean> {
   if (!isConfigured()) return false;
 
   const response = await ghFetch(`/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {

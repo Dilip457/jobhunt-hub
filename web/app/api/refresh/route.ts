@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { dispatchWorkflow, getRunStatus, isConfigured, REFRESH_COOLDOWN_MINUTES } from "@/lib/github";
-import { isRoleSlug } from "@/lib/types";
+import { isRoleSlug, type RoleSlug } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  if (!isRoleSlug(role)) {
+  if (role !== "all" && !isRoleSlug(role)) {
     return Response.json({ error: "Unknown role" }, { status: 400 });
   }
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const status = await getRunStatus(role);
+  const status = await getRunStatus(role === "all" ? null : role);
 
   if (status.state === "queued" || status.state === "running") {
     return Response.json(
@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ok = await dispatchWorkflow(role);
+  const target: RoleSlug | "all" = role === "all" ? "all" : (role as RoleSlug);
+  const ok = await dispatchWorkflow(target);
   if (!ok) {
     return Response.json({ error: "Could not start the scrape." }, { status: 502 });
   }
