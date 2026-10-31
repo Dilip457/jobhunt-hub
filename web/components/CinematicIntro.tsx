@@ -541,8 +541,8 @@ function installCleanClothing(model: THREE.Object3D): void {
     };
     jacket.customProgramCacheKey = () => "body-mask";
     const pants = new THREE.MeshStandardMaterial({
-      color: 0x2b416b,
-      roughness: 0.92,
+      color: 0x1d2a44,
+      roughness: 0.95,
       metalness: 0,
       envMapIntensity: 0.25,
       side: THREE.DoubleSide,
@@ -553,10 +553,30 @@ function installCleanClothing(model: THREE.Object3D): void {
     // textured group, and the groups are split by a triangle's average y, so
     // running the mask everywhere keeps the shirt panel and collar seamless
     // across the split and lets the hem move without a code change.
-    for (const material of [main, pants]) {
-      material.onBeforeCompile = jacket.onBeforeCompile;
-      material.customProgramCacheKey = () => "body-mask";
-    }
+    main.onBeforeCompile = jacket.onBeforeCompile;
+    main.customProgramCacheKey = () => "body-mask";
+    // Jeans: dark indigo base with a fine diagonal twill and a lighter worn
+    // fade down the front of the thighs and knees, like stonewashed denim.
+    // The fade and twill live in bind space, so they ride the walk cycle.
+    pants.onBeforeCompile = (shader, renderer) => {
+      jacket.onBeforeCompile(shader, renderer);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "diffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour * teeRib * teeHem, teeMask);",
+        [
+          "diffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour * teeRib * teeHem, teeMask);",
+          "\tfloat denimFront = smoothstep(-0.01, 0.05, vTeePos.z);",
+          "\tfloat denimThigh = exp(-pow((vTeePos.y + 0.3) / 0.16, 2.0));",
+          "\tfloat denimKnee = exp(-pow((vTeePos.y + 0.5) / 0.06, 2.0)) * 0.6;",
+          "\tfloat denimFade = denimFront * clamp(denimThigh + denimKnee, 0.0, 1.0);",
+          "\tdiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.25, 0.42), denimFade * 0.55);",
+          "\tfloat denimAA = max(fwidth(vTeePos.x + vTeePos.y), 1e-4);",
+          "\tfloat denimTwillFade = 1.0 - smoothstep(0.0015, 0.004, denimAA);",
+          "\tfloat denimTwill = 0.5 + 0.5 * sin((vTeePos.x + vTeePos.y) * 1400.0);",
+          "\tdiffuseColor.rgb *= 1.0 - denimTwillFade * 0.08 * denimTwill;",
+        ].join("\n"),
+      );
+    };
+    pants.customProgramCacheKey = () => "body-mask-denim";
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
     geometry.clearGroups();
     groups.forEach((group, groupIndex) => {
