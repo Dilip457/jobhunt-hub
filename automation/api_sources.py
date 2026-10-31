@@ -110,7 +110,7 @@ ROLE_TITLE_EXCLUDE = {
               "pflichtpraktikum", "praktikum", "werkstudent", "data scientist",
               "security", "admin", "coding tasks", "product manager",
               "program manager", "product owner", "product designer",
-              "designer", "design strategist"],
+              "designer", "design strategist", "analyst"],
     "data": ["warehouse associate", "delivery", "driver", "mechanic", "trainee",
              "data center", "data analyst", "data scientist", "data quality",
              "ai trainer", "annotation", "working student", "master data",
@@ -123,7 +123,10 @@ ROLE_TITLE_EXCLUDE = {
              "mold", "tool design", "communication design",
              "kommunikationsdesign", "advertising", "marketing manager",
              "sales manager", "program manager", "project manager",
-             "product manager"],
+             "product manager", "art director", "analog design",
+             "semiconductor", "micro-architect", "soc design", "vlsi",
+             "rtl design", "physical design", "cubicle", "locomotive",
+             "cab cars", "chip design"],
     # `analyst` is a broad token (it keeps IIBA's generic titles alive), so
     # exclude the analyst families that are clearly not business analysis.
     # A title that explicitly says "business analyst" bypasses both lists, so a
@@ -137,8 +140,10 @@ ROLE_TITLE_EXCLUDE = {
             "trainee", "qa", "manual testing", "test engineer", "in test",
             "sdet", "quality assurance", "power bi", "powerbi",
             "data engineer", "data scientist", "data analyst", "embedded",
-            "career fair", "manager", "product analyst", "business analyst",
-            "test", "testing", "network engineer", "devops engineer",
+            "career fair", "manager", "director", "product analyst",
+            "business analyst", "test", "testing", "support engineer",
+            "database", "reporting", "admin", "network engineer",
+            "devops engineer",
             "site reliability", "solutions engineer", "salesforce",
             "servicenow", "sap ", "warehouse", "driver", "technician"],
 }
@@ -201,7 +206,7 @@ BA_SOFT_EXCLUDE = [
     "order management", "order to cash", "o2c", "billing", "payroll",
     "accounts payable", "accounts receivable", "logistics", "inventory",
     "finops", "procurement", "supply chain", "payment operations",
-    "revenue analyst", "banking",
+    "revenue analyst", "banking", "healthcare analyst",
 ]
 
 # A hybrid title such as "Data Scientist / AI Engineer" is still a GenAI
@@ -211,6 +216,14 @@ GENAI_CORE_TITLE = re.compile(
     r"\b(ai engineer|ai developer|ai scientist|applied ai|ml engineer|"
     r"machine learning engineer|generative ai|genai|llm engineer|"
     r"ai/ml|ml/ai)\b",
+    re.I,
+)
+
+# People-management and non-engineering families win over the hybrid rule:
+# "Manager, Machine Learning Engineer" is a manager job, not an IC role.
+GENAI_HARD_TITLE = re.compile(
+    r"\b(manager|director|head of|vp|vice president|recruiter|sales|marketing|"
+    r"support specialist|ai trainer|annotation)\b",
     re.I,
 )
 
@@ -333,8 +346,12 @@ def title_relevant(role: str, title: str) -> bool:
     # Internships are not full-time openings for the engineering/design tracks.
     if ENTRY_LEVEL_TITLE.search(low):
         return False
+    if role == "genai" and GENAI_HARD_TITLE.search(low):
+        return False
     if role == "genai" and GENAI_CORE_TITLE.search(low):
         return True
+    if role == "sde" and re.fullmatch(r"\s*data engineering\s*", low):
+        return False
     if any(_hit_word(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
         return False
     return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
