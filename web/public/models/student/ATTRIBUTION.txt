@@ -17,8 +17,8 @@ Modifications made for JobHunt India:
   crop.
 - The source atlas has scrambled garment UV islands: jacket, knit top, hair and skin share
   texture space, so sampling it directly produced brown “tears” and dark flecks. The
-  runtime now splits the body geometry into clean materials: a blue bomber, navy jeans, a
-  white t-shirt and a feathered skin tint around the neck. The neck boundary is a
+  runtime now splits the body geometry into clean materials: a dark navy bomber, blue jeans, a
+  cream ribbed sweater and a feathered skin tint around the neck. The neck boundary is a
   per-vertex colour blend; the t-shirt panel and the collar skin band are masked per fragment
   in the body shader, from the bind-pose position, so their edges stay crisp instead of
   following the chest's coarse triangle size. The same masks run on every body material, so

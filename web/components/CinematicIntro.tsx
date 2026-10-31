@@ -340,10 +340,10 @@ const SKIN_BAND = { y0: 0.605, y1: 0.72, halfWidth: 0.076 };
 // painted”. Rebuilding the panel in the fragment shader, from the bind-pose
 // position, gives an edge that is crisp at any zoom while still deforming with
 // the rig, because the mask lives in bind space and rides the skin transform.
-const TEE_V = { y0: 0.04, y1: 0.648, bottomHalfWidth: 0.084, topHalfWidth: 0.080 };
+const TEE_V = { y0: 0.04, y1: 0.67, bottomHalfWidth: 0.092, topHalfWidth: 0.086 };
 // The t-shirt neckline rises from a shallow dip at the sternum up to the
 // shoulders instead of a flat cut straight across the chest.
-const TEE_NECK_DROP = 0.042;
+const TEE_NECK_DROP = 0.022;
 // The shirt only faces the camera on the front of the torso, so the mask is
 // limited to the forward half of the bind-pose depth. Without it the same x/y
 // window also catches the back and paints a matching white panel between the
@@ -431,7 +431,7 @@ function installCleanClothing(model: THREE.Object3D): void {
     }
     if (groups[1].length + groups[2].length === 0) return;
 
-    const jacketColour = new THREE.Color(0x275285);
+    const jacketColour = new THREE.Color(0x161b29);
     const vertexColour = new THREE.Color();
     const colours = new Float32Array(position.count * 3);
     for (let vertex = 0; vertex < position.count; vertex += 1) {
@@ -456,9 +456,9 @@ function installCleanClothing(model: THREE.Object3D): void {
     const jacket = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       vertexColors: true,
-      roughness: 0.88,
+      roughness: 0.8,
       metalness: 0,
-      envMapIntensity: 0.35,
+      envMapIntensity: 0.3,
       side: THREE.DoubleSide,
       dithering: true,
     });
@@ -478,7 +478,7 @@ function installCleanClothing(model: THREE.Object3D): void {
       },
       uTeeFacing: { value: new THREE.Vector2(TEE_FACING.z0, TEE_FACING.z1) },
       uTeeNeck: { value: TEE_NECK_DROP },
-      uTeeColour: { value: new THREE.Color(0xffffff) },
+      uTeeColour: { value: new THREE.Color(0xe8e1d3) },
       uSkinBounds: {
         value: new THREE.Vector3(SKIN_BAND.y0, SKIN_BAND.y1, SKIN_BAND.halfWidth),
       },
@@ -529,15 +529,20 @@ function installCleanClothing(model: THREE.Object3D): void {
             "\tfloat skinFront = smoothstep(-0.07, 0.0, vTeePos.z);",
             "\tfloat skinMask = skinAcross * skinBottom * skinTop * skinFront;",
             "\tdiffuseColor.rgb = mix(diffuseColor.rgb, uSkinColour, skinMask);",
-            "\tdiffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour, teeMask);",
+            "\tfloat teeEdge = teeTop * teeBottom * teeFacing * (1.0 - smoothstep(teeHalf + 0.004, teeHalf + 0.004 + teeAAx * 2.0, abs(vTeePos.x))) * (1.0 - teeAcross);",
+            "\tdiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.45, teeEdge);",
+            "\tfloat teeRibFade = 1.0 - smoothstep(0.0015, 0.004, teeAAx);",
+            "\tfloat teeRib = 1.0 - teeRibFade * 0.06 * (1.0 - smoothstep(-0.35, 0.35, sin(vTeePos.x * 520.0)));",
+            "\tfloat teeHem = 1.0 - 0.07 * (1.0 - smoothstep(teeY0 + 0.012, teeY0 + 0.016, vTeePos.y));",
+            "\tdiffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour * teeRib * teeHem, teeMask);",
             "}",
           ].join("\n"),
         );
     };
     jacket.customProgramCacheKey = () => "body-mask";
     const pants = new THREE.MeshStandardMaterial({
-      color: 0x1b2b4a,
-      roughness: 0.94,
+      color: 0x2b416b,
+      roughness: 0.92,
       metalness: 0,
       envMapIntensity: 0.25,
       side: THREE.DoubleSide,
@@ -758,8 +763,8 @@ export default function CinematicIntro({ onComplete }: Props) {
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x05060a);
-      scene.fog = new THREE.FogExp2(0x05060a, isMobile ? 0.034 : 0.029);
+      scene.background = new THREE.Color(0x020306);
+      scene.fog = new THREE.FogExp2(0x020306, isMobile ? 0.04 : 0.035);
 
       const camera = new THREE.PerspectiveCamera(
         cameraFovForAspect(window.innerWidth / window.innerHeight, window.innerHeight),
@@ -780,7 +785,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         // Environment reflections are a nice-to-have.
       }
 
-      scene.add(new THREE.HemisphereLight(0xa8bbff, 0x08090d, isMobile ? 0.78 : 0.9));
+      scene.add(new THREE.HemisphereLight(0x8ea4e8, 0x030406, isMobile ? 0.5 : 0.56));
       // Neutral key + soft fill keep the skin clean. The red/blue accents are
       // now behind the character as rim lights instead of tinting the face.
       const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 1.25 : 1.32);
@@ -824,11 +829,15 @@ export default function CinematicIntro({ onComplete }: Props) {
       faceFill.position.set(0.28, 1.72, 1.55);
       scene.add(faceFill);
 
-      const floorMaterial = new THREE.MeshStandardMaterial({
-        color: 0x04050a,
-        roughness: 0.78,
-        metalness: 0.12,
-        envMapIntensity: 0.36,
+      // The floor, runway and gate frames damp their specular response. With
+      // the default F0 the four character lights put a broad grey sheen over
+      // the whole floor, which read as a light theme instead of a dark stage.
+      const floorMaterial = new THREE.MeshPhysicalMaterial({
+        specularIntensity: 0.18,
+        color: 0x010205,
+        roughness: 0.86,
+        metalness: 0.04,
+        envMapIntensity: 0.03,
       });
       const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMaterial);
       floor.rotation.x = -Math.PI / 2;
@@ -839,16 +848,17 @@ export default function CinematicIntro({ onComplete }: Props) {
       grid.position.y = 0.008;
       const gridMaterial = grid.material as THREE.Material;
       gridMaterial.transparent = true;
-      gridMaterial.opacity = 0.18;
+      gridMaterial.opacity = 0.12;
       scene.add(grid);
 
       const path = new THREE.Group();
       scene.add(path);
-      const pathMaterial = new THREE.MeshStandardMaterial({
-        color: 0x060810,
-        roughness: 0.68,
-        metalness: 0.16,
-        envMapIntensity: 0.4,
+      const pathMaterial = new THREE.MeshPhysicalMaterial({
+        specularIntensity: 0.25,
+        color: 0x020307,
+        roughness: 0.8,
+        metalness: 0.06,
+        envMapIntensity: 0.05,
       });
       // Thin, flush runway. The old 35mm slab was high enough to swallow the
       // shoe soles and the emissive markers.
@@ -899,11 +909,12 @@ export default function CinematicIntro({ onComplete }: Props) {
         group.scale.setScalar(0.86);
         scene?.add(group);
 
-        const frameMaterial = new THREE.MeshStandardMaterial({
-          color: 0x090c13,
-          roughness: 0.38,
-          metalness: 0.62,
-          envMapIntensity: 0.7,
+        const frameMaterial = new THREE.MeshPhysicalMaterial({
+          specularIntensity: 0.4,
+          color: 0x030409,
+          roughness: 0.55,
+          metalness: 0.45,
+          envMapIntensity: 0.18,
         });
         const stripMaterial = new THREE.MeshStandardMaterial({
           color: 0x05060a,
@@ -940,6 +951,13 @@ export default function CinematicIntro({ onComplete }: Props) {
           innerStrip.position.set(side * 1.055, 1.72, 0.07);
           group.add(innerStrip);
           strips.push(innerStrip);
+          // Short dashes on the pillar faces, like panel markings.
+          for (const [y, length] of [[2.95, 0.14], [1.1, 0.1]] as const) {
+            const dash = new THREE.Mesh(new THREE.BoxGeometry(length, 0.022, 0.02), stripMaterial.clone());
+            dash.position.set(side * (1.18 - 0.02 * side), y, 0.222);
+            group.add(dash);
+            strips.push(dash);
+          }
         }
 
         const arch = new THREE.Mesh(new THREE.TorusGeometry(1.18, 0.085, 8, 40, Math.PI), frameMaterial);
@@ -980,8 +998,25 @@ export default function CinematicIntro({ onComplete }: Props) {
         ring.position.set(0, 2.2, 0.28);
         group.add(ring);
 
+        // Short HUD ticks around the ring, two inside and two outside. They
+        // are children of the ring and share its material, so they rotate and
+        // brighten with it.
+        const tickGeometry = new THREE.BoxGeometry(0.15, 0.024, 0.02);
+        const ticks: Array<[number, number]> = [
+          [Math.PI * 0.32, 0.4],
+          [-Math.PI * 0.56, 0.38],
+          [Math.PI * 0.9, 0.67],
+          [-Math.PI * 0.12, 0.66],
+        ];
+        ticks.forEach(([angle, radius]) => {
+          const tick = new THREE.Mesh(tickGeometry, ring.material);
+          tick.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+          tick.rotation.z = angle;
+          ring.add(tick);
+        });
+
         const core = new THREE.Mesh(
-          new THREE.SphereGeometry(0.085, 16, 12),
+          new THREE.SphereGeometry(0.1, 20, 14),
           new THREE.MeshStandardMaterial({
             color: 0x05060a,
             emissive: color,
@@ -1029,9 +1064,10 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       monoliths.forEach(([x, z, width, height, depth, color]) => {
         const material = new THREE.MeshStandardMaterial({
-          color: 0x070910,
-          roughness: 0.58,
-          metalness: 0.32,
+          color: 0x040509,
+          roughness: 0.6,
+          metalness: 0.3,
+          envMapIntensity: 0.3,
         });
         const monolith = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
         monolith.position.set(x, height / 2, z);
