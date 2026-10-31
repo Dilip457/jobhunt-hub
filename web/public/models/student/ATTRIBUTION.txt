@@ -13,7 +13,7 @@ Modifications made for JobHunt India:
 - Basecolour atlas embedded at 2048px; normal and metallic-roughness maps at 1024px, all
   encoded as WebP. `scene.webp` is a wide render of the modified asset used by the
   loading/static background; `portrait.webp` is a close-up reference render. Both were
-  regenerated from the clean-clothing runtime on 2026-10-22. Neither is a raw source-photo
+  regenerated from the clean-clothing runtime on 2026-10-22; `scene.webp` was re-captured from the live selector on 2026-10-31 after the denim and lighting update. Neither is a raw source-photo
   crop.
 - The source atlas has scrambled garment UV islands: jacket, knit top, hair and skin share
   texture space, so sampling it directly produced brown “tears” and dark flecks. The
@@ -24,8 +24,11 @@ Modifications made for JobHunt India:
   following the chest's coarse triangle size. The same masks run on every body material, so
   the panel and collar stay seamless wherever the group split falls. Head, hair, beard,
   hands and white sneakers keep the original textured atlas.
-- Textured material finish: `metalness: 0`, roughness `0.86`, normal scale `0.38`,
-  environment intensity `0.42`. Clothing groups use matte `MeshStandardMaterial` with
+- Textured material finish: `metalness: 0`, environment intensity `0.42`; head, hands and
+  shoes roughness `0.74`, normal scale `1.15`, plus a fine object-space grain for skin and
+  stubble; jacket roughness `0.86`, normal scale `1.25`; jeans roughness `0.92`, normal
+  scale `1.4`, with shader-built deep indigo denim (twill, inseam and knee shading,
+  whiskers and a soft front fade). Clothing groups use matte `MeshStandardMaterial` with
   per-vertex colours and dithering.
 - The atlas was also cleaned of bright/orange flecks; the embedded 2048px basecolour is a
   cleaned variant. Normal and roughness maps remain at 1024px. The cleaned atlas is sampled

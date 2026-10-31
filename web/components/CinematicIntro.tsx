@@ -65,7 +65,7 @@ function renderPixelRatio(): number {
   // Supersample 1x displays instead of accepting a soft canvas. Cap mobile
   // separately so high-density phones do not render a 4K frame buffer.
   if (window.innerWidth < 760) return Math.min(1.8, Math.max(1.35, dpr));
-  return Math.min(2, Math.max(1.75, dpr));
+  return Math.min(2.25, Math.max(2, dpr));
 }
 
 function smoothstep(value: number): number {
@@ -545,20 +545,46 @@ function installCleanClothing(model: THREE.Object3D): void {
     // textured group, and the groups are split by a triangle's average y, so
     // running the mask everywhere keeps the shirt panel and collar seamless
     // across the split and lets the hem move without a code change.
-    main.onBeforeCompile = jacket.onBeforeCompile;
-    main.customProgramCacheKey = () => "body-mask";
+    // Head, hands and shoes also get a fine object-space grain so the skin and
+    // beard read as pores and stubble rather than airbrushed plastic. It fades
+    // out once a fragment covers more than a few millimetres, so it never
+    // shimmers when the guide is small on screen.
+    main.onBeforeCompile = (shader, renderer) => {
+      jacket.onBeforeCompile(shader, renderer);
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "diffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour * teeRib * teeHem, teeMask);",
+        [
+          "diffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour * teeRib * teeHem, teeMask);",
+          "\tvec3 grainCell = floor(vTeePos * 900.0);",
+          "\tfloat grain = fract(sin(dot(grainCell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);",
+          "\tfloat grainFade = 1.0 - smoothstep(0.0008, 0.0025, max(fwidth(vTeePos.y), 1e-4));",
+          "\tdiffuseColor.rgb *= 1.0 + grainFade * (grain - 0.5) * 0.12;",
+        ].join("\n"),
+      );
+    };
+    main.customProgramCacheKey = () => "body-mask-grain";
+    (main as THREE.MeshStandardMaterial).roughness = 0.74;
+    (main as THREE.MeshStandardMaterial).normalScale.set(1.15, 1.15);
     // Jacket and jeans keep the original textured atlas so the fabric keeps
     // its folds, seams and weave instead of reading as smooth plastic. The
-    // jacket islands are already a dark navy bomber. The jeans are tinted to
-    // a saturated indigo and get a lighter worn fade down the front of the
-    // thighs and knees, like the reference denim. Both still run the sweater
-    // and collar masks.
+    // jacket islands are already a dark navy bomber. Both still run the
+    // sweater and collar masks, and both get a stronger normal map so the
+    // creases catch the key light.
     const jacketTextured = main.clone() as THREE.MeshStandardMaterial;
     jacketTextured.color.setRGB(0.45, 0.5, 0.62);
+    jacketTextured.normalScale.set(1.25, 1.25);
+    jacketTextured.roughness = 0.86;
     jacketTextured.onBeforeCompile = jacket.onBeforeCompile;
     jacketTextured.customProgramCacheKey = () => "body-mask";
+    // The atlas under the jeans is one flat navy, so the denim is built here: a
+    // deep, only slightly blue indigo, a fine diagonal twill, darker inseams and
+    // backs of the knees, horizontal whiskers at the hips and behind the knees,
+    // and a soft grey-blue fade on the front of the thighs and knees. The old
+    // tint multiplied the fade by 2.5x, which read as flat saturated paint.
     const pants = main.clone() as THREE.MeshStandardMaterial;
-    pants.color.setRGB(0.42, 0.66, 1.05);
+    pants.color.setRGB(1.1, 1.18, 1.32);
+    pants.normalScale.set(1.4, 1.4);
+    pants.roughness = 0.92;
     pants.onBeforeCompile = (shader, renderer) => {
       jacket.onBeforeCompile(shader, renderer);
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -566,10 +592,23 @@ function installCleanClothing(model: THREE.Object3D): void {
         [
           "diffuseColor.rgb = mix(diffuseColor.rgb, uTeeColour * teeRib * teeHem, teeMask);",
           "\tfloat denimFront = smoothstep(-0.01, 0.05, vTeePos.z);",
-          "\tfloat denimThigh = exp(-pow((vTeePos.y + 0.3) / 0.16, 2.0));",
-          "\tfloat denimKnee = exp(-pow((vTeePos.y + 0.5) / 0.06, 2.0)) * 0.6;",
+          "\tfloat denimBack = 1.0 - smoothstep(-0.06, 0.0, vTeePos.z);",
+          "\tfloat denimThigh = exp(-pow((vTeePos.y + 0.3) / 0.14, 2.0));",
+          "\tfloat denimKnee = exp(-pow((vTeePos.y + 0.5) / 0.06, 2.0)) * 0.7;",
           "\tfloat denimFade = denimFront * clamp(denimThigh + denimKnee, 0.0, 1.0);",
-          "\tdiffuseColor.rgb *= 1.0 + denimFade * 1.5;",
+          "\tfloat denimLegX = abs(abs(vTeePos.x) - 0.085);",
+          "\tdenimFade *= 1.0 - smoothstep(0.02, 0.06, denimLegX);",
+          "\tfloat denimInseam = 1.0 - smoothstep(0.0, 0.035, abs(vTeePos.x));",
+          "\tfloat denimKneeBack = denimBack * exp(-pow((vTeePos.y + 0.5) / 0.05, 2.0));",
+          "\tfloat denimAA = max(fwidth(vTeePos.y), 1e-4);",
+          "\tfloat denimDetail = 1.0 - smoothstep(0.0015, 0.004, denimAA);",
+          "\tfloat denimWhiskerBand = denimFront * exp(-pow((vTeePos.y + 0.12) / 0.06, 2.0)) + denimKneeBack;",
+          "\tfloat denimWhisker = smoothstep(0.55, 1.0, sin(vTeePos.y * 210.0 + abs(vTeePos.x) * 60.0));",
+          "\tfloat denimTwill = sin((vTeePos.x + vTeePos.y) * 1400.0) * 0.5 + 0.5;",
+          "\tdiffuseColor.rgb *= 1.0 - 0.3 * denimInseam - 0.35 * denimKneeBack - 0.15 * denimBack;",
+          "\tdiffuseColor.rgb *= 1.0 - denimDetail * (0.08 * denimTwill + 0.18 * denimWhisker * denimWhiskerBand);",
+          "\tvec3 denimWorn = diffuseColor.rgb * vec3(1.9, 1.85, 1.6) + vec3(0.004, 0.005, 0.007);",
+          "\tdiffuseColor.rgb = mix(diffuseColor.rgb, denimWorn, denimFade * 0.6);",
         ].join("\n"),
       );
     };
@@ -802,10 +841,11 @@ export default function CinematicIntro({ onComplete }: Props) {
         // Environment reflections are a nice-to-have.
       }
 
-      scene.add(new THREE.HemisphereLight(0x8ea4e8, 0x030406, isMobile ? 0.5 : 0.56));
-      // Neutral key + soft fill keep the skin clean. The red/blue accents are
+      scene.add(new THREE.HemisphereLight(0x8ea4e8, 0x030406, isMobile ? 0.36 : 0.38));
+      // A strong neutral key over weak fills gives the body real shadow sides,
+      // so folds, seams and the face read with depth. The red/blue accents are
       // now behind the character as rim lights instead of tinting the face.
-      const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 1.25 : 1.32);
+      const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 1.7 : 1.85);
       key.position.set(-2.5, 4.5, 4.5);
       if (!isMobile) {
         key.castShadow = true;
@@ -823,13 +863,13 @@ export default function CinematicIntro({ onComplete }: Props) {
       }
       scene.add(key);
       scene.add(key.target);
-      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.8 : 0.98);
+      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.45 : 0.5);
       frontFill.position.set(0, 2.1, 5.2);
       scene.add(frontFill);
-      const rim = new THREE.DirectionalLight(0x6f9bff, 0.95);
+      const rim = new THREE.DirectionalLight(0x6f9bff, 1.2);
       rim.position.set(2.2, 3.2, -3.8);
       scene.add(rim);
-      const fill = new THREE.DirectionalLight(0xffe4d8, isMobile ? 0.85 : 1.02);
+      const fill = new THREE.DirectionalLight(0xffe4d8, isMobile ? 0.5 : 0.55);
       fill.position.set(2.2, 2.4, 3.8);
       scene.add(fill);
       const redLight = new THREE.PointLight(0xff304f, 7, 8, 2);
@@ -1182,7 +1222,7 @@ export default function CinematicIntro({ onComplete }: Props) {
           standard.roughness = 0.86;
           standard.roughnessMap = null;
           standard.dithering = true;
-          if (standard.normalMap) standard.normalScale.set(0.75, 0.75);
+          if (standard.normalMap) standard.normalScale.set(1, 1);
           Object.entries(standard).forEach(([key, value]) => {
             if (!(value instanceof THREE.Texture)) return;
             value.anisotropy = anisotropy;
