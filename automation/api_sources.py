@@ -204,6 +204,16 @@ BA_SOFT_EXCLUDE = [
     "revenue analyst", "banking",
 ]
 
+# A hybrid title such as "Data Scientist / AI Engineer" is still a GenAI
+# engineering role. An explicit AI-engineering phrase wins over the
+# data-scientist exclusion; a pure "Data Scientist" title does not.
+GENAI_CORE_TITLE = re.compile(
+    r"\b(ai engineer|ai developer|ai scientist|applied ai|ml engineer|"
+    r"machine learning engineer|generative ai|genai|llm engineer|"
+    r"ai/ml|ml/ai)\b",
+    re.I,
+)
+
 # Business Analyst is an entry-level-first track: fresher/entry/1–3 year roles
 # get a score boost and senior/lead titles are pushed down.
 BA_ENTRY_TITLE = re.compile(
@@ -323,6 +333,8 @@ def title_relevant(role: str, title: str) -> bool:
     # Internships are not full-time openings for the engineering/design tracks.
     if ENTRY_LEVEL_TITLE.search(low):
         return False
+    if role == "genai" and GENAI_CORE_TITLE.search(low):
+        return True
     if any(_hit_word(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
         return False
     return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
