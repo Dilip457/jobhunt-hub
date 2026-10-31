@@ -540,14 +540,6 @@ function installCleanClothing(model: THREE.Object3D): void {
         );
     };
     jacket.customProgramCacheKey = () => "body-mask";
-    const pants = new THREE.MeshStandardMaterial({
-      color: 0x1d2a44,
-      roughness: 0.95,
-      metalness: 0,
-      envMapIntensity: 0.25,
-      side: THREE.DoubleSide,
-      dithering: true,
-    });
     // The masks are installed on every body material, not just the jacket. The
     // collar band has to cover the neck's textured triangles, which land in the
     // textured group, and the groups are split by a triangle's average y, so
@@ -555,9 +547,18 @@ function installCleanClothing(model: THREE.Object3D): void {
     // across the split and lets the hem move without a code change.
     main.onBeforeCompile = jacket.onBeforeCompile;
     main.customProgramCacheKey = () => "body-mask";
-    // Jeans: dark indigo base with a fine diagonal twill and a lighter worn
-    // fade down the front of the thighs and knees, like stonewashed denim.
-    // The fade and twill live in bind space, so they ride the walk cycle.
+    // Jacket and jeans keep the original textured atlas so the fabric keeps
+    // its folds, seams and weave instead of reading as smooth plastic. The
+    // jacket islands are already a dark navy bomber. The jeans are tinted to
+    // a saturated indigo and get a lighter worn fade down the front of the
+    // thighs and knees, like the reference denim. Both still run the sweater
+    // and collar masks.
+    const jacketTextured = main.clone() as THREE.MeshStandardMaterial;
+    jacketTextured.color.setRGB(0.45, 0.5, 0.62);
+    jacketTextured.onBeforeCompile = jacket.onBeforeCompile;
+    jacketTextured.customProgramCacheKey = () => "body-mask";
+    const pants = main.clone() as THREE.MeshStandardMaterial;
+    pants.color.setRGB(0.42, 0.66, 1.05);
     pants.onBeforeCompile = (shader, renderer) => {
       jacket.onBeforeCompile(shader, renderer);
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -568,11 +569,7 @@ function installCleanClothing(model: THREE.Object3D): void {
           "\tfloat denimThigh = exp(-pow((vTeePos.y + 0.3) / 0.16, 2.0));",
           "\tfloat denimKnee = exp(-pow((vTeePos.y + 0.5) / 0.06, 2.0)) * 0.6;",
           "\tfloat denimFade = denimFront * clamp(denimThigh + denimKnee, 0.0, 1.0);",
-          "\tdiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.25, 0.42), denimFade * 0.55);",
-          "\tfloat denimAA = max(fwidth(vTeePos.x + vTeePos.y), 1e-4);",
-          "\tfloat denimTwillFade = 1.0 - smoothstep(0.0015, 0.004, denimAA);",
-          "\tfloat denimTwill = 0.5 + 0.5 * sin((vTeePos.x + vTeePos.y) * 1400.0);",
-          "\tdiffuseColor.rgb *= 1.0 - denimTwillFade * 0.08 * denimTwill;",
+          "\tdiffuseColor.rgb *= 1.0 + denimFade * 1.5;",
         ].join("\n"),
       );
     };
@@ -582,7 +579,7 @@ function installCleanClothing(model: THREE.Object3D): void {
     groups.forEach((group, groupIndex) => {
       if (group.length > 0) geometry.addGroup(starts[groupIndex], counts[groupIndex], groupIndex);
     });
-    mesh.material = [main, jacket, pants];
+    mesh.material = [main, jacketTextured, pants];
   });
 }
 
@@ -1185,7 +1182,7 @@ export default function CinematicIntro({ onComplete }: Props) {
           standard.roughness = 0.86;
           standard.roughnessMap = null;
           standard.dithering = true;
-          if (standard.normalMap) standard.normalScale.set(0.38, 0.38);
+          if (standard.normalMap) standard.normalScale.set(0.75, 0.75);
           Object.entries(standard).forEach(([key, value]) => {
             if (!(value instanceof THREE.Texture)) return;
             value.anisotropy = anisotropy;
