@@ -70,9 +70,12 @@ export async function POST(request: NextRequest) {
   }
 
   const target: RoleSlug | "all" = role === "all" ? "all" : (role as RoleSlug);
-  const ok = await dispatchWorkflow(target);
-  if (!ok) {
-    return Response.json({ error: "Could not start the scrape." }, { status: 502 });
+  const result = await dispatchWorkflow(target);
+  if (!result.ok) {
+    return Response.json(
+      { error: "Could not start the scrape.", status: result.status, detail: result.detail },
+      { status: 502 },
+    );
   }
 
   return Response.json({ ok: true, role, state: "queued" }, { status: 202 });

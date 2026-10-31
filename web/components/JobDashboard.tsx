@@ -244,7 +244,15 @@ export default function JobDashboard({ role }: Props) {
         pushToast("error", "Refresh is not configured on this deployment yet.");
       } else {
         setRefreshOpen(false);
-        pushToast("error", "Could not start the scrape.");
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          detail?: string;
+          status?: number;
+        };
+        const reason = payload.detail
+          ? ` — ${payload.status ?? "GitHub"}: ${payload.detail.slice(0, 140)}`
+          : "";
+        pushToast("error", `${payload.error ?? "Could not start the scrape."}${reason}`);
       }
     } catch {
       setRefreshOpen(false);

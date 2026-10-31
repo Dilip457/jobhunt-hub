@@ -181,19 +181,33 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
   };
 }
 
-export async function dispatchWorkflow(role: RoleSlug | "all"): Promise<boolean> {
-  if (!isConfigured()) return false;
+export interface DispatchResult {
+  ok: boolean;
+  status?: number;
+  detail?: string;
+}
 
-  const response = await ghFetch(`/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ref: DISPATCH_REF, inputs: { role } }),
-  });
+export async function dispatchWorkflow(role: RoleSlug | "all"): Promise<DispatchResult> {
+  if (!isConfigured()) return { ok: false, detail: "GitHub is not configured on this deployment." };
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error(`[github] dispatch failed ${response.status}: ${detail.slice(0, 300)}`);
+  try {
+    const response = await ghFetch(`/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: DISPATCH_REF, inputs: { role } }),
+    });
+
+    if (response.ok || response.status === 204) return { ok: true };
+
+    // A 401/403 here is almost always the token scope: the same token can read
+    // runs (the status endpoint) but needs Actions: write to dispatch one.
+    const body = await response.text().catch(() => "");
+    const detail = body.replace(/\s+/g, " ").trim().slice(0, 300);
+    console.error(`[github] dispatch failed ${response.status}: ${detail}`);
+    return { ok: false, status: response.status, detail: detail || "GitHub returned no detail." };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Network error";
+    console.error(`[github] dispatch threw: ${detail}`);
+    return { ok: false, detail };
   }
-
-  return response.ok || response.status === 204;
 }
