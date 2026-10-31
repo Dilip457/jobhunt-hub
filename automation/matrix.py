@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-"""Emit the GitHub Actions matrix for the requested roles."""
+"""Emit the GitHub Actions matrix for the requested roles.
+
+Roles and their vendor repos come from profiles/*.json (see roles.py). A
+profile can pin its vendor repo with "repo_ref": "<commit sha or tag>"; an
+empty ref checks out the default branch.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 
-REPOS = {
-    "genai": "Dilip457/Job-Hunt-for-GenAI-Profile",
-    "data": "Dilip457/DataEngineer_JobHunt",
-    "uiux": "Dilip457/UI-UX-Job_Hunt",
-    # Business Analyst reuses the UI/UX vendor pipeline; the BA profile below
-    # replaces its keywords and skills, so no separate vendor repo is needed.
-    "ba": "Dilip457/UI-UX-Job_Hunt",
-    # Software Development Engineer reuses the same generic pipeline for the
-    # same reason: profiles/sde.json and the SDE patch in run_source.py replace
-    # its search keywords, resume profile and scoring.
-    "sde": "Dilip457/UI-UX-Job_Hunt",
-}
+from roles import REFS, REPOS
+
+
+def build_matrix(role: str) -> dict:
+    roles = list(REPOS) if role in ("", "all", None) else [role]
+    include = [
+        {"role": slug, "repo": REPOS[slug], "ref": REFS.get(slug, "")}
+        for slug in roles
+        if slug in REPOS
+    ]
+    if not include:
+        include = [{"role": slug, "repo": REPOS[slug], "ref": REFS.get(slug, "")} for slug in REPOS]
+    return {"include": include}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--role", default="all")
     args = parser.parse_args()
-
-    roles = list(REPOS) if args.role in ("", "all", None) else [args.role]
-    include = [{"role": role, "repo": REPOS[role]} for role in roles if role in REPOS]
-    if not include:
-        include = [{"role": role, "repo": REPOS[role]} for role in REPOS]
-
-    print("matrix=" + json.dumps({"include": include}))
+    print("matrix=" + json.dumps(build_matrix(args.role)))
 
 
 if __name__ == "__main__":

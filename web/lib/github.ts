@@ -14,6 +14,10 @@ export function isConfigured(): boolean {
   return Boolean(REPO && TOKEN);
 }
 
+export function isRefreshProtected(): boolean {
+  return Boolean(process.env.REFRESH_TOKEN);
+}
+
 export function hasRepo(): boolean {
   return Boolean(REPO);
 }
@@ -59,22 +63,24 @@ export async function readJsonFromDataBranch<T>(
 ): Promise<T | null> {
   if (!hasRepo()) return null;
 
-  // With a token, use the Contents API (rate-limit friendly, private-safe).
-  // Without a token, fall back to the public raw CDN so a public repo still works.
+  // With a token, use the Contents API with the raw media type. The default
+  // JSON media type only inlines files up to 1 MB and returns an empty
+  // `content` above that; role files are past 1 MB, which used to push every
+  // read onto the minutes-cached raw CDN. The raw media type serves files up
+  // to 100 MB and works for private repositories.
   if (TOKEN) {
-    const response = await ghFetch(
-      `/repos/${REPO}/contents/${file}?ref=${DATA_BRANCH}`,
-      cacheInit(options),
-    );
+    const response = await ghFetch(`/repos/${REPO}/contents/${file}?ref=${DATA_BRANCH}`, {
+      ...cacheInit(options),
+      headers: { Accept: "application/vnd.github.raw+json" },
+    });
     if (response.ok) {
-      const payload = (await response.json()) as { content?: string; encoding?: string };
-      if (payload.content) {
-        const text = Buffer.from(payload.content, "base64").toString("utf-8");
-        return JSON.parse(text) as T;
-      }
+      return (await response.json()) as T;
     }
+    console.error(`[github] contents read failed for ${file}: ${response.status}`);
   }
 
+  // Without a token (or if the API call failed), fall back to the public raw
+  // CDN so a public repo still works. It is cached for a few minutes.
   const raw = await fetch(
     `https://raw.githubusercontent.com/${REPO}/${DATA_BRANCH}/${file}`,
     cacheInit(options),
@@ -110,11 +116,21 @@ async function fetchRuns(perPage = 12): Promise<{ runs: ActionsRun[]; error?: st
   return { runs: payload.workflow_runs ?? [] };
 }
 
-function runMatchesRole(run: ActionsRun, role: RoleSlug | null): boolean {
+/**
+ * The workflow names each run "Scrape <role>" (run-name in scrape.yml), and
+ * scheduled runs are "Scrape all". Parse that exact shape instead of looking
+ * for substrings, so a role slug that happens to appear inside another word
+ * can never match the wrong run.
+ */
+export function runRole(run: Pick<ActionsRun, "display_title">): string | null {
+  const match = /^scrape\s+([a-z0-9_-]+)\s*$/i.exec((run.display_title ?? "").trim());
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function runMatchesRole(run: Pick<ActionsRun, "display_title">, role: RoleSlug | null): boolean {
   if (!role) return true;
-  const title = (run.display_title ?? "").toLowerCase();
-  if (title.includes("all")) return true;
-  return title.includes(role);
+  const target = runRole(run);
+  return target === "all" || target === role;
 }
 
 function toState(run: ActionsRun): StatusResponse["state"] {
@@ -124,6 +140,22 @@ function toState(run: ActionsRun): StatusResponse["state"] {
   if (run.conclusion === "cancelled") return "cancelled";
   if (run.conclusion) return "failed";
   return "idle";
+}
+
+/**
+ * Minutes left before another refresh is allowed. The cooldown only follows a
+ * successful run: a failed or cancelled run published nothing, so retrying it
+ * straight away is the useful thing to do.
+ */
+export function cooldownRemaining(
+  state: StatusResponse["state"],
+  lastRunAt: string,
+  now: number = Date.now(),
+): number {
+  if (state !== "success") return 0;
+  const ageMinutes = (now - new Date(lastRunAt).getTime()) / 60000;
+  if (!(ageMinutes < REFRESH_COOLDOWN_MINUTES)) return 0;
+  return Math.ceil(REFRESH_COOLDOWN_MINUTES - ageMinutes);
 }
 
 export async function getRunStatus(role: RoleSlug | null): Promise<StatusResponse> {
@@ -143,6 +175,7 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
       configured: true,
       state: "idle",
       role,
+      refreshProtected: isRefreshProtected(),
       canRefresh: false,
       message: `GitHub is not reachable with the configured token (${error}).`,
     };
@@ -155,6 +188,7 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
       configured: true,
       state: "idle",
       role,
+      refreshProtected: isRefreshProtected(),
       canRefresh: true,
       cooldownMinutesLeft: 0,
       message: "No scrape has run yet.",
@@ -164,20 +198,21 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
   const latest = runs[0];
   const state = toState(latest);
   const lastRunAt = latest.updated_at ?? latest.created_at;
-  const ageMinutes = (Date.now() - new Date(lastRunAt).getTime()) / 60000;
-  const onCooldown = ageMinutes < REFRESH_COOLDOWN_MINUTES;
   const active = state === "queued" || state === "running";
+  const cooldownMinutesLeft = cooldownRemaining(state, lastRunAt);
+  const onCooldown = cooldownMinutesLeft > 0;
 
   return {
     configured: true,
     state,
     role,
+    refreshProtected: isRefreshProtected(),
     startedAt: latest.run_started_at ?? latest.created_at,
     updatedAt: latest.updated_at,
     lastRunAt,
     runUrl: latest.html_url,
     canRefresh: !active && !onCooldown,
-    cooldownMinutesLeft: onCooldown ? Math.ceil(REFRESH_COOLDOWN_MINUTES - ageMinutes) : 0,
+    cooldownMinutesLeft,
   };
 }
 

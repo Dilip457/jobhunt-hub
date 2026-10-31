@@ -4,11 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
-import type { Job, RoleData, RoleSlug, RunState, StatusResponse } from "@/lib/types";
+import {
+  REFRESH_TOKEN_HEADER,
+  type Job,
+  type RoleData,
+  type RoleSlug,
+  type RunState,
+  type StatusResponse,
+} from "@/lib/types";
 import {
   cityCounts,
   experienceBandPriority,
   experiencePriority,
+  jobDate,
   matchesExperience,
   type ExperienceBucket,
 } from "@/lib/utils";
@@ -23,6 +31,7 @@ import RoleSwitcher from "./RoleSwitcher";
 import StatsBar from "./StatsBar";
 
 const PAGE_SIZE = 24;
+const REFRESH_KEY_STORAGE = "jobhunt.refreshKey";
 
 interface Toast {
   id: number;
@@ -57,6 +66,7 @@ export default function JobDashboard({ role }: Props) {
 
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState("");
   const [refreshOpen, setRefreshOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -219,15 +229,44 @@ export default function JobDashboard({ role }: Props) {
     return () => window.clearInterval(timer);
   }, [refreshOpen, status?.startedAt]);
 
-  async function triggerRefresh() {
+  // The refresh key is remembered on this browser only, so the owner types it once.
+  useEffect(() => {
+    try {
+      setRefreshKey(window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "");
+    } catch {
+      /* storage can be unavailable (private mode) */
+    }
+  }, []);
+
+  function rememberRefreshKey(value: string) {
+    setRefreshKey(value);
+    try {
+      if (value) window.localStorage.setItem(REFRESH_KEY_STORAGE, value);
+      else window.localStorage.removeItem(REFRESH_KEY_STORAGE);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function triggerRefresh(key: string) {
     refreshStartRef.current = Date.now();
     setRefreshOpen(true);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (key) headers[REFRESH_TOKEN_HEADER] = key;
       const response = await fetch("/api/refresh", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ role }),
       });
+
+      if (response.status === 401) {
+        setRefreshOpen(false);
+        rememberRefreshKey("");
+        pushToast("error", "That refresh key was not accepted.");
+        return;
+      }
+      if (key) rememberRefreshKey(key);
 
       if (response.status === 202) {
         pushToast("info", "Scrape queued. This usually takes 10–15 minutes.");
@@ -290,15 +329,18 @@ export default function JobDashboard({ role }: Props) {
       if (score !== "all" && job.score < Number(score)) return false;
       if (!matchesExperience(job, experience)) return false;
       if (dateRange !== "all") {
-        if (!job.posted_date) return false;
-        const days = (now - new Date(`${job.posted_date}T00:00:00`).getTime()) / 86_400_000;
+        // Some boards publish no date; fall back to when we first saw the job
+        // instead of hiding it from every date filter.
+        const day = jobDate(job);
+        if (!day) return false;
+        const days = (now - new Date(`${day}T00:00:00`).getTime()) / 86_400_000;
         if (days > Number(dateRange)) return false;
       }
       return true;
     });
 
     return list.sort((a, b) => {
-      if (sort === "date") return (b.posted_date ?? "").localeCompare(a.posted_date ?? "");
+      if (sort === "date") return (jobDate(b) ?? "").localeCompare(jobDate(a) ?? "");
       if (sort === "company") return a.company.localeCompare(b.company);
       // Business Analyst is an entry/1–3 year track: keep those roles first
       // even when a senior listing has a slightly higher raw match score.
@@ -536,10 +578,12 @@ export default function JobDashboard({ role }: Props) {
       <ConfirmRefresh
         open={confirmOpen}
         roleLabel={roleMeta.label}
+        needsKey={Boolean(status?.refreshProtected)}
+        initialKey={refreshKey}
         onCancel={() => setConfirmOpen(false)}
-        onConfirm={() => {
+        onConfirm={(key) => {
           setConfirmOpen(false);
-          void triggerRefresh();
+          void triggerRefresh(key);
         }}
       />
 

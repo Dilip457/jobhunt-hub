@@ -2458,6 +2458,28 @@ button:disabled {
   color: var(--red);
 }
 
+.refresh-key {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.refresh-key input {
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--charcoal-2);
+  color: var(--white);
+  font: inherit;
+}
+
+.refresh-key input:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -3274,4 +3296,9 @@ button:disabled {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+.primary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

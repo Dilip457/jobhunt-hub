@@ -152,20 +152,28 @@ def normalize_location(raw: str) -> Tuple[str, bool]:
             return (text, False)
         return ("Remote", True)
 
-    if any(marker in low for marker in FOREIGN_MARKERS):
-        # "remote - us" already handled above; genuine foreign locations drop out
-        return (text, False)
-
+    # Indian places are matched first and on word boundaries. A plain
+    # substring check against FOREIGN_MARKERS used to drop real localities:
+    # "Kukatpally" contains "uk", "Perungudi" and "Sriperumbudur" contain "peru".
     for alias, canonical in CITY_ALIASES.items():
-        if alias in low:
+        if _has_word(alias, low):
             return (canonical, True)
 
     for state in INDIA_STATES:
-        if re.search(rf"\b{re.escape(state)}\b", low):
+        if _has_word(state, low):
             return ("India", True)
+
+    if looks_foreign(low):
+        # "remote - us" already handled above; genuine foreign locations drop out
+        return (text, False)
 
     # Unknown location: keep it, tagged India so it is not silently lost.
     return ("India", True)
+
+
+def _has_word(token: str, text: str) -> bool:
+    """True when token appears in text as a whole word (letters on neither side)."""
+    return re.search(rf"(?<![a-z]){re.escape(token)}(?![a-z])", text) is not None
 
 
 NON_ENGLISH_MARKERS = {
@@ -347,6 +355,71 @@ def canonical_url(url: str) -> str:
         return urlunsplit((parts.scheme, parts.netloc.lower(), path, urlencode(query), ""))
     except Exception:
         return url.strip()
+
+
+COMPANY_SUFFIX_RE = re.compile(
+    r"\b(private limited|pvt\.? ltd\.?|pvt|ltd\.?|limited|llp|inc\.?|corp\.?|"
+    r"corporation|technologies|technology|solutions|services|india)\b",
+    re.I,
+)
+
+
+def _norm_text(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", unescape(str(value or "")).lower()).strip()
+
+
+def job_fingerprint(job: Dict[str, Any]) -> str:
+    """Identity of a listing independent of the board it was found on.
+
+    The same opening is often posted on Naukri, Shine and LinkedIn with
+    different URLs. Title + company + city catches those copies. Jobs with an
+    unknown company never collapse, because "Unknown" would merge unrelated
+    listings.
+    """
+    title = _norm_text(job.get("title"))
+    company = _norm_text(COMPANY_SUFFIX_RE.sub(" ", unescape(str(job.get("company") or ""))))
+    location = _norm_text(job.get("location"))
+    if not title or not company or company == "unknown":
+        return ""
+    return f"{title}|{company}|{location}"
+
+
+def _better_copy(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+    """Pick which of two copies of the same listing to keep."""
+    def rank(job: Dict[str, Any]):
+        return (
+            float(job.get("score") or 0),
+            1 if job.get("posted_date") else 0,
+            len(job.get("snippet") or ""),
+        )
+
+    return b if rank(b) > rank(a) else a
+
+
+def dedupe_jobs(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse cross-board copies of one listing, keeping the best copy.
+
+    The kept copy inherits the earliest first_seen and the latest last_seen of
+    the group, so merging never makes a known job look new or stale.
+    """
+    kept: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    for index, job in enumerate(jobs):
+        key = job_fingerprint(job) or f"__unique__{index}"
+        current = kept.get(key)
+        if current is None:
+            kept[key] = job
+            order.append(key)
+            continue
+        best = dict(_better_copy(current, job))
+        firsts = [v for v in (current.get("first_seen"), job.get("first_seen")) if v]
+        if firsts:
+            best["first_seen"] = min(firsts)
+        lasts = [v for v in (current.get("last_seen"), job.get("last_seen")) if v]
+        if lasts:
+            best["last_seen"] = max(lasts)
+        kept[key] = best
+    return [kept[key] for key in order]
 
 
 def make_snippet(description: str, limit: int = 240) -> str:

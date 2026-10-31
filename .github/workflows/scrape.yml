@@ -66,6 +66,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repo }}
+          # Pin with "repo_ref" in profiles/<role>.json; empty = default branch.
+          # run_source.py patches the vendor modules by name, so an unpinned
+          # upstream change can silently break a role.
+          ref: ${{ matrix.ref }}
           path: vendor/${{ matrix.role }}
 
       - name: Set up Python
@@ -219,4 +223,4 @@ jobs:
           merge-multiple: true
 
       - name: Publish to data branch (merges with existing data)
-        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21
+        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21 --unseen-days 7

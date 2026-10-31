@@ -1,6 +1,6 @@
 import { readJsonFromDataBranch } from "./github";
-import { fallbackManifest, fallbackRoleData } from "./fallback";
-import type { Manifest, RoleData, RoleSlug } from "./types";
+import { fallbackRoleData } from "./fallback";
+import type { RoleData, RoleSlug } from "./types";
 
 /** Load a role's jobs: live `data` branch first, seeded JSON as fallback. */
 export async function getRoleData(role: RoleSlug): Promise<RoleData> {
@@ -16,17 +16,4 @@ export async function getRoleData(role: RoleSlug): Promise<RoleData> {
     // fall through to seed data
   }
   return fallbackRoleData(role);
-}
-
-export async function getManifest(): Promise<Manifest> {
-  try {
-    const live = await readJsonFromDataBranch<Manifest>("manifest.json", {
-      revalidate: 60,
-      tags: ["jobs"],
-    });
-    if (live?.roles) return live;
-  } catch {
-    // fall through to seed data
-  }
-  return fallbackManifest();
 }

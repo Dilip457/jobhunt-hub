@@ -664,6 +664,9 @@ def run(args) -> int:
     started = time.time()
     stats: dict = {}
     payload = None
+    # Each phase records what went wrong, so the status file tells the truth
+    # instead of always saying "success".
+    problems: list[str] = []
 
     # Direct portal scrapers are independent of the vendor pipeline (different
     # sites, no shared state), so start them now and join after export. That
@@ -700,6 +703,7 @@ def run(args) -> int:
     except Exception as exc:
         elapsed = time.time() - started
         print(f"[run_source] pipeline failed after {elapsed:.0f}s: {exc}")
+        problems.append(f"pipeline: {exc}")
 
     db_path = getattr(config, "DB_PATH", os.path.join(repo_dir, args.db))
     if os.path.exists(db_path):
@@ -707,8 +711,10 @@ def run(args) -> int:
             payload = export_db(db_path, args.role, args.min_score, args.limit, args.max_days)
         except Exception as exc:
             print(f"[run_source] export failed: {exc}")
+            problems.append(f"export: {exc}")
     else:
         print(f"[run_source] DB not found at {db_path}")
+        problems.append(f"db not found: {db_path}")
 
     if payload is None:
         payload = {
@@ -728,6 +734,7 @@ def run(args) -> int:
             print(f"[run_source] portal scrapers merged: {len(portal_jobs)} jobs")
         except Exception as exc:
             print(f"[run_source] portal scrapers skipped: {exc}")
+            problems.append(f"portals: {exc}")
         finally:
             portal_pool.shutdown(wait=False)
 
@@ -755,9 +762,16 @@ def run(args) -> int:
     size_kb = os.path.getsize(out_path) / 1024
     print(f"[run_source] wrote {out_path} ({size_kb:.0f} KB, {payload['count']} jobs)")
 
+    if payload["count"] == 0:
+        outcome = "empty"
+    elif problems:
+        outcome = "partial"
+    else:
+        outcome = "success"
     status = {
         "role": args.role,
-        "status": "success",
+        "status": outcome,
+        "problems": problems,
         "count": payload["count"],
         "sources": payload["sources"],
         "elapsed_seconds": round(elapsed),
@@ -765,6 +779,11 @@ def run(args) -> int:
     }
     with open(f"{out_path}.status.json", "w", encoding="utf-8") as handle:
         json.dump(status, handle, ensure_ascii=False, indent=2)
+
+    if outcome != "success":
+        # Shows as a warning annotation on the GitHub Actions run.
+        detail = "; ".join(problems) or "no jobs collected"
+        print(f"::warning title={args.role} scrape {outcome}::{detail[:500]}")
 
     return 0
 
