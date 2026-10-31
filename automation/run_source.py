@@ -755,6 +755,16 @@ def run(args) -> int:
         except Exception as exc:
             print(f"[run_source] API sources skipped: {exc}")
 
+    # Read the posting page for jobs whose card and text state no experience.
+    if not getattr(args, "no_enrich", False):
+        try:
+            from enrich_experience import enrich_payload
+
+            enrich_payload(payload, getattr(args, "max_page_fetches", 300))
+        except Exception as exc:
+            print(f"[run_source] experience lookup skipped: {exc}")
+            problems.append(f"experience: {exc}")
+
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
@@ -817,6 +827,8 @@ def main() -> None:
         help="Scrape this many direct portal sources concurrently (1 = sequential)",
     )
     parser.add_argument("--no-validate", action="store_true")
+    parser.add_argument("--no-enrich", action="store_true", help="Skip posting-page experience lookup")
+    parser.add_argument("--max-page-fetches", type=int, default=300)
     args = parser.parse_args()
 
     args.keywords = None

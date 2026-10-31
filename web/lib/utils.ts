@@ -100,10 +100,28 @@ export function cityCounts(jobs: Job[]): CityCount[] {
     .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
 }
 
+/**
+ * LinkedIn's seniority labels, mapped to the filter buckets. The label itself
+ * is what the card shows; this only decides which filter it answers to.
+ */
+const LEVEL_BUCKET: Record<string, Exclude<ExperienceBucket, "all">> = {
+  internship: "fresher",
+  "entry level": "fresher",
+  associate: "mid",
+  "mid-senior level": "senior",
+  director: "lead",
+  executive: "lead",
+};
+
+export function levelBucket(job: Pick<Job, "experience_level">): Exclude<ExperienceBucket, "all"> | null {
+  const level = (job.experience_level ?? "").trim().toLowerCase();
+  return level ? (LEVEL_BUCKET[level] ?? null) : null;
+}
+
 export function experienceLabel(job: Job): string {
   const min = job.experience_min;
   const max = job.experience_max;
-  if (min == null && max == null) return "Experience not specified";
+  if (min == null && max == null) return job.experience_level || "Not stated in posting";
   if (min === 0 && (max === 0 || max == null)) return "Fresher / entry level";
   if (min != null && max != null && min === max) return `${min} yrs`;
   if (min != null && max != null) return `${min}–${max} yrs`;
@@ -117,6 +135,12 @@ export function matchesExperience(job: Job, bucket: ExperienceBucket): boolean {
   if (bucket === "all") return true;
   const min = job.experience_min ?? null;
   const max = job.experience_max ?? null;
+  if (min == null && max == null) {
+    // No years stated: a LinkedIn level answers its bucket; a posting that
+    // states nothing is only listed under "Any level", never under "Fresher".
+    const fromLevel = levelBucket(job);
+    return fromLevel === bucket;
+  }
   const lower = min ?? 0;
   const upper = max ?? (min != null ? min + 2 : 99);
 
@@ -155,6 +179,12 @@ export function experiencePriority(job: Job): number {
     if (max >= 6) return 3;
     return 2;
   }
+
+  const level = levelBucket(job);
+  if (level === "fresher") return 0;
+  if (level === "mid") return 1;
+  if (level === "lead") return 3;
+  if (level === "senior") return 2;
 
   const text = `${job.title} ${job.snippet ?? ""}`.toLowerCase();
   if (/\b(fresher|entry[\s-]?level|graduate|intern|trainee|0\s*[-–]\s*1)\b/.test(text)) return 0;
@@ -201,6 +231,12 @@ export function experienceBandPriority(job: Job): number {
     if (high < BAND_LO) return 3;
     return 2;
   }
+
+  const level = levelBucket(job);
+  if (level === "senior") return 0;
+  if (level === "mid") return 1;
+  if (level === "lead") return 2;
+  if (level === "fresher") return 3;
 
   if (/\b(senior|lead|sde\s*(?:ii|2|iii|3)|engineer\s*(?:ii|2|iii|3)|specialist)\b/.test(text)) {
     return 0;

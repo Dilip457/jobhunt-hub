@@ -36,7 +36,7 @@ def test_extract_experience(title, description, expected):
 
 
 def test_source_is_recorded():
-    assert extract_experience_with_source("Analyst", "3-5 years")[2] == "stated"
+    assert extract_experience_with_source("Analyst", "3-5 years")[2] == "text"
     assert extract_experience_with_source("Analyst Intern", "")[2] == "title"
     assert extract_experience_with_source("Senior Analyst", "")[2] is None
 
@@ -53,7 +53,7 @@ def test_states_experience():
 def test_build_job_uses_board_experience():
     job = build_job("ba", "Naukri", "Senior Associate Business Analyst", "Amgen", "Hyderabad",
                     "https://x.test/1", "ChatGPT, Copilot", None, experience="5-9 Yrs")
-    assert (job["experience_min"], job["experience_max"], job["experience_source"]) == (5, 9, "stated")
+    assert (job["experience_min"], job["experience_max"], job["experience_source"]) == (5, 9, "board")
     job = build_job("ba", "Foundit", "Senior Associate Business Analyst", "Amgen", "Hyderabad",
                     "https://x.test/2", "ChatGPT, Copilot", None)
     assert (job["experience_min"], job["experience_max"], job["experience_source"]) == (None, None, None)

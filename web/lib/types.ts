@@ -27,8 +27,13 @@ export interface Job {
   score_parts?: ScoreParts;
   experience_min?: number | null;
   experience_max?: number | null;
-  /** "stated": years written in the listing; "title": from a level word like "intern". */
-  experience_source?: "stated" | "title" | null;
+  /**
+   * Where the experience came from: the board's field, the listing text, the
+   * posting page, LinkedIn's seniority level, or only a fresher/intern title word.
+   */
+  experience_source?: "board" | "text" | "page" | "level" | "title" | null;
+  /** LinkedIn's "Seniority level" label when the posting states no years. */
+  experience_level?: string | null;
   snippet?: string;
   is_new?: boolean;
   first_seen?: string | null;

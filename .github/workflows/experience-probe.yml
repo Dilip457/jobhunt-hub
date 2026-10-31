@@ -1,0 +1,55 @@
+name: Experience probe
+
+# Fetches a few live postings per source for one role and writes a table to
+# the run summary: title, what the card will say, and where it came from.
+# Use it to check the posting-page parsers against the real boards.
+
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: "Role track"
+        required: true
+        default: ba
+        type: choice
+        options:
+          - genai
+          - data
+          - uiux
+          - ba
+          - sde
+      limit:
+        description: "Jobs per source"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml
+
+      - name: Read the published role file
+        run: |
+          git fetch origin data
+          git show origin/data:${{ inputs.role }}.json > /tmp/${{ inputs.role }}.json
+
+      - name: Probe live postings
+        run: |
+          python automation/enrich_experience.py --probe \
+            --input /tmp/${{ inputs.role }}.json \
+            --limit "${{ inputs.limit }}"

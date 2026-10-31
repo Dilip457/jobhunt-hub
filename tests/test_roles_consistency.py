@@ -41,3 +41,6 @@ def test_workflow_dispatch_choices_match():
     block = workflow.split("options:", 1)[1].split("permissions:", 1)[0]
     choices = re.findall(r"^\s*-\s*([a-z]+)\s*$", block, re.M)
     assert choices == ["all", *ROLES]
+    probe = read(".github", "workflows", "experience-probe.yml")
+    block = probe.split("options:", 1)[1].split("limit:", 1)[0]
+    assert re.findall(r"^\s*-\s*([a-z]+)\s*$", block, re.M) == list(ROLES)

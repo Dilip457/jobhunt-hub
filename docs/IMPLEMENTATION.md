@@ -436,6 +436,18 @@ Exports the vendor SQLite database to public JSON:
 - `dedupe_jobs()` in `export.py` then collapses the same title + company (suffixes such as “Pvt Ltd” ignored) + city across boards, keeping the best-scored copy. It runs in the portal/API merges and in the publisher. Jobs with an unknown company are never collapsed.
 - In the publisher, the canonical URL rule is used first and the fresh copy wins, so scoring changes reach previously published jobs.
 
+### 4.6.1 Experience from the posting page (`automation/enrich_experience.py`)
+
+Cards show only what the posting states. The lookup order, recorded in `experience_source`:
+
+1. `board`: the board's own field (Naukri card "5-9 Yrs", Foundit search JSON, Wellfound min/max).
+2. `text`: years written in the title or scraped description.
+3. `page`: the posting page, fetched once per job for jobs still unresolved. LinkedIn uses the public `/jobs-guest/jobs/api/jobPosting/<id>` endpoint (full description + "Seniority level"); Foundit's page embeds min/max in `__NEXT_DATA__` and prints "5-9 Years"; other boards are parsed as page text.
+4. `level`: LinkedIn's seniority label (`experience_level`) when the posting states a level but no years. Shown as the label; never converted to years.
+5. `title`: only intern/trainee/fresher/entry-level words.
+
+Nothing found: the job keeps no years, is stamped `experience_checked`, and is looked at again after 7 days. Naukri (card already has it) and Indeed (blocks server fetches) are never fetched. Budget: 300 fetches per role per run (200 in the WARP job), best-scored jobs first, 4 in parallel, one request per host every 0.5 s. `publish.merge_payloads()` keeps a `page`/`level` answer when a later scrape of the same job has none, so each posting is read once. The `Experience probe` workflow fetches a few live postings per source and writes what the card will say to the run summary.
+
 ### 4.7 `first_seen` and `is_new`
 
 - `build_job()` sets `first_seen` to the **current UTC date** at scrape time.
@@ -702,6 +714,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba`
 - Job card date line: `Posted <relative> · First seen <relative>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
 - `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
+- Experience line: stated years (`5–9 yrs`, `7+ yrs`), else LinkedIn's level label, else “Not stated in posting”. The experience filter treats a level by its bucket (Internship/Entry → Fresher, Associate → Mid, Mid-Senior → Senior, Director/Executive → Lead); a job with nothing stated is listed only under “Any level”.
 - The date-range filter and date sort use `posted_date`, falling back to `first_seen` for boards that publish no date.
 - Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
 - No site footer; the contact link and credits stay inside the explainer card.

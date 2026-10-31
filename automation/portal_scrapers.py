@@ -780,10 +780,10 @@ def fetch_wellfound(role: str, profile: Dict[str, Any], max_days: int) -> List[D
         # relying only on the regex extraction from the description.
         if item.get("yearsExperienceMin") is not None:
             job["experience_min"] = int(item["yearsExperienceMin"])
-            job["experience_source"] = "stated"
+            job["experience_source"] = "board"
         if item.get("yearsExperienceMax") is not None:
             job["experience_max"] = int(item["yearsExperienceMax"])
-            job["experience_source"] = "stated"
+            job["experience_source"] = "board"
         jobs.append(job)
 
     print(f"[portal] wellfound: {len(jobs)} raw jobs", file=sys.stderr)
@@ -923,6 +923,8 @@ def main() -> None:
         default=1,
         help="Run this many portal sources at once (default 1, sequential).",
     )
+    parser.add_argument("--no-enrich", action="store_true", help="Skip posting-page experience lookup")
+    parser.add_argument("--max-page-fetches", type=int, default=300)
     args = parser.parse_args()
 
     profile: Dict[str, Any] = {}
@@ -939,6 +941,14 @@ def main() -> None:
         parallel=args.parallel_sources,
     )
     payload = merge_portal_jobs({"role": args.role, "jobs": []}, jobs)
+
+    if not args.no_enrich:
+        try:
+            from enrich_experience import enrich_payload
+
+            enrich_payload(payload, args.max_page_fetches)
+        except Exception as exc:
+            print(f"[portal] experience lookup skipped: {exc}", file=sys.stderr)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:

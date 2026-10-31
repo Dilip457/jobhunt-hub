@@ -308,7 +308,8 @@ def priority_score(
     return score
 
 
-ExperienceSource = Optional[str]  # "stated" | "title" | None
+ExperienceSource = Optional[str]  # "board" | "text" | "page" | "level" | "title" | None
+STATED_SOURCES = ("board", "text", "page")
 
 
 def extract_experience_with_source(
@@ -317,11 +318,11 @@ def extract_experience_with_source(
     """Years of experience a listing asks for, and where that came from.
 
     `experience` is a board's own experience field (Naukri "5-9 Yrs", Foundit
-    min/max). It is checked first, then the title and description. "stated"
-    means the numbers were written in the listing; "title" means only an
-    unambiguous level word (intern, fresher, entry level) was found.
+    min/max). It is checked first ("board"), then the title and description
+    ("text"). "title" means only an unambiguous level word (intern, fresher,
+    entry level) was found. enrich_experience.py adds "page" and "level".
     """
-    for text in (experience or "", f"{title or ''}. {description or ''}"):
+    for origin, text in (("board", experience or ""), ("text", f"{title or ''}. {description or ''}")):
         if not text.strip():
             continue
         m = EXP_RANGE_RE.search(text)
@@ -329,12 +330,12 @@ def extract_experience_with_source(
             lo, hi = int(m.group(1)), int(m.group(2))
             if lo > hi:
                 lo, hi = hi, lo
-            return (lo, hi, "stated")
+            return (lo, hi, origin)
 
         for pattern in (EXP_MIN_RE, EXP_PLUS_RE, EXP_OF_RE):
             m = pattern.search(text)
             if m:
-                return (int(m.group(1)), None, "stated")
+                return (int(m.group(1)), None, origin)
 
     for pattern, span in TITLE_EXP:
         if pattern.search(title or ""):
@@ -353,7 +354,7 @@ def extract_experience(
 def states_experience(title: str, snippet: str) -> bool:
     """True when title or snippet spells out years (used to repair old data)."""
     _lo, _hi, source = extract_experience_with_source(title, snippet)
-    return source == "stated"
+    return source in STATED_SOURCES
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

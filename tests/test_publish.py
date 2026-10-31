@@ -99,7 +99,7 @@ def test_finalize_clears_guessed_experience_on_old_data():
     stated = publish.finalize_job(job("b", title="Associate - BA", snippet="needs 7+ years", experience_min=7,
                                       experience_max=None))
     tagged = publish.finalize_job(job("c", title="Associate - BA", snippet="", experience_min=5, experience_max=9,
-                                      experience_source="stated"))
+                                      experience_source="board"))
     assert (guessed["experience_min"], guessed["experience_max"]) == (None, None)
     assert stated["experience_min"] == 7
     assert (tagged["experience_min"], tagged["experience_max"]) == (5, 9)
