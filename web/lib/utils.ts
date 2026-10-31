@@ -63,6 +63,12 @@ export function dateAgo(value?: string | null): string {
   return formatDate(value);
 }
 
+/** The listing's date for filtering and sorting: posted date, else first seen. */
+export function jobDate(job: Pick<Job, "posted_date" | "first_seen">): string | null {
+  const value = job.posted_date || job.first_seen || null;
+  return value ? value.slice(0, 10) : null;
+}
+
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-IN").format(value);
 }

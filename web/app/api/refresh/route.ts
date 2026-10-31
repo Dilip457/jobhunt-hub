@@ -1,34 +1,61 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { dispatchWorkflow, getRunStatus, isConfigured, REFRESH_COOLDOWN_MINUTES } from "@/lib/github";
-import { isRoleSlug, type RoleSlug } from "@/lib/types";
+import { isRoleSlug, REFRESH_TOKEN_HEADER, type RoleSlug } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function originAllowed(request: NextRequest): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-
+function hostOf(value: string | undefined | null): string | null {
+  if (!value) return null;
   try {
-    const host = new URL(origin).hostname;
-    if (host === "localhost" || host === "127.0.0.1") return true;
-    if (host.endsWith(".vercel.app")) return true;
-
-    const site = process.env.NEXT_PUBLIC_SITE_URL;
-    if (site && new URL(site).hostname === host) return true;
-
-    const vercelHost = process.env.VERCEL_URL;
-    if (vercelHost && vercelHost === host) return true;
-
-    return false;
+    return new URL(value.includes("://") ? value : `https://${value}`).hostname;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Same-origin check. A browser always sends Origin on a cross-site POST, so a
+ * missing Origin means a script (curl), not the dashboard, and is refused.
+ * Only this deployment's own hosts are accepted; the old blanket
+ * `*.vercel.app` rule let any Vercel-hosted page trigger a scrape.
+ */
+function originAllowed(request: NextRequest): boolean {
+  const host = hostOf(request.headers.get("origin"));
+  if (!host) return false;
+  if (host === "localhost" || host === "127.0.0.1") return true;
+
+  const allowed = [
+    hostOf(request.headers.get("x-forwarded-host") ?? request.headers.get("host")),
+    hostOf(process.env.NEXT_PUBLIC_SITE_URL),
+    hostOf(process.env.VERCEL_URL),
+    hostOf(process.env.VERCEL_BRANCH_URL),
+    hostOf(process.env.VERCEL_PROJECT_PRODUCTION_URL),
+  ];
+  return allowed.includes(host);
+}
+
+/**
+ * When REFRESH_TOKEN is set on the deployment, a refresh must carry it. Hiding
+ * the button was only a UX guard; this is the actual access control.
+ */
+function tokenAllowed(request: NextRequest): boolean {
+  const expected = process.env.REFRESH_TOKEN ?? "";
+  if (!expected) return true;
+  const given = request.headers.get(REFRESH_TOKEN_HEADER) ?? "";
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export async function POST(request: NextRequest) {
   if (!originAllowed(request)) {
     return Response.json({ error: "Blocked origin" }, { status: 403 });
+  }
+
+  if (!tokenAllowed(request)) {
+    return Response.json({ error: "A valid refresh key is required." }, { status: 401 });
   }
 
   let role: string;
@@ -56,6 +83,14 @@ export async function POST(request: NextRequest) {
     return Response.json(
       { error: "A scrape is already running.", runUrl: status.runUrl },
       { status: 409 },
+    );
+  }
+
+  if (status.canRefresh === false && !status.cooldownMinutesLeft) {
+    // Not a cooldown: the status check itself failed (e.g. a bad token).
+    return Response.json(
+      { error: status.message ?? "Could not check the current run.", status: 502 },
+      { status: 502 },
     );
   }
 

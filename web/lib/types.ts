@@ -30,6 +30,8 @@ export interface Job {
   snippet?: string;
   is_new?: boolean;
   first_seen?: string | null;
+  /** Last day any scrape returned this job (set by publish.py). */
+  last_seen?: string | null;
 }
 
 export interface RoleData {
@@ -57,6 +59,9 @@ export interface Manifest {
   roles: Partial<Record<RoleSlug, ManifestRole>>;
 }
 
+/** Header the dashboard sends with the refresh key (see REFRESH_TOKEN). */
+export const REFRESH_TOKEN_HEADER = "x-refresh-token";
+
 export type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelled";
 
 export interface StatusResponse {
@@ -70,6 +75,8 @@ export interface StatusResponse {
   runUrl?: string;
   canRefresh?: boolean;
   cooldownMinutesLeft?: number;
+  /** True when the deployment requires a refresh key (REFRESH_TOKEN is set). */
+  refreshProtected?: boolean;
   demo?: boolean;
 }
 

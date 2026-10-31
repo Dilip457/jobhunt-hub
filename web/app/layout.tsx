@@ -18,7 +18,7 @@ const displayFont = Space_Grotesk({
 export const metadata: Metadata = {
   title: "JobHunt India — Find your next move",
   description:
-    "A cinematic job-discovery experience for GenAI, Data Engineering, UI/UX and Business Analyst roles across India. Real listings, real links, updated daily.",
+    "A cinematic job-discovery experience for GenAI, Data Engineering, UI/UX, Business Analyst and Software Engineering roles across India. Real listings, real links, updated daily.",
   robots: { index: false, follow: false },
 };
 
@@ -33,13 +33,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${bodyFont.variable} ${displayFont.variable}`}>
       <head>
-        <link
-          rel="preload"
-          href="/models/student/student.glb"
-          as="fetch"
-          type="model/gltf-binary"
-          crossOrigin="anonymous"
-        />
         <link rel="icon" href="/favicon.ico?v=6" sizes="any" />
         <link rel="shortcut icon" href="/favicon.ico?v=6" />
         <link rel="icon" href="/favicon.svg?v=6" type="image/svg+xml" sizes="any" />
