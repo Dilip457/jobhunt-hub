@@ -96,12 +96,14 @@ Hidden dashboard shortcut (Alt+Shift+R)
 jobhunt-hub/
 ├─ .github/workflows/
 │  ├─ scrape.yml                 # daily scrape, WARP, publish
+│  ├─ experience-probe.yml       # manual: show what cards will say for live postings
 │  └─ ci.yml                     # pytest, lint, typecheck, build on PRs
 ├─ automation/
 │  ├─ run_source.py              # vendor wrapper: config patches, pipeline, export
 │  ├─ export.py                  # vendor SQLite → public job JSON
 │  ├─ portal_scrapers.py         # direct Naukri/Foundit/Indeed/Shine/SimplyHired
 │  ├─ api_sources.py             # APIs, ATS boards, simple score, build_job
+│  ├─ enrich_experience.py       # reads experience from the posting page (LinkedIn, Foundit, others)
 │  ├─ publish.py                 # merge artifacts + force-push data branch
 │  ├─ matrix.py                  # role → vendor repo matrix
 │  ├─ roles.py                   # role list + vendor repos from profiles/
@@ -580,7 +582,7 @@ Company tokens: `automation/companies.json`.
 |---|---|
 | `normalize_location()` | India city aliases, remote/hybrid, foreign filtering |
 | `looks_foreign()` | Reject foreign-language/region titles |
-| `extract_experience()` | Parse experience ranges from title/description |
+| `extract_experience_with_source()` | Years from a board's experience field, then title/description ("stated"); only intern/fresher/entry-level words count as a title signal; level words such as "associate" or "senior" never produce numbers |
 | `canonical_url()` | Remove tracking params for deduplication |
 | `make_snippet()` | 240-character public snippet |
 | `clean_company()`, `clean_title()`, `valid_url()` | Public-field cleanup |
@@ -650,7 +652,10 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | `Job.source` | string | export/build_job | filter, badge |
 | `Job.posted_date` | date/null | export/build_job | date filter, card |
 | `Job.score` | number | vendor engine or `score_job()` | filter, sort, ring |
-| `Job.experience_min/max` | number/null | `extract_experience()` | experience label/filter |
+| `Job.experience_min/max` | number/null | `extract_experience_with_source()` | experience label/filter |
+| `Job.experience_source` | `"board"`, `"text"`, `"page"`, `"level"`, `"title"` or null | export/build_job/enrich_experience | where the experience came from; publish keeps page/level answers across runs |
+| `Job.experience_level` | string/null | `enrich_experience.py` | LinkedIn's "Seniority level" when no years are stated; shown as-is |
+| `Job.experience_checked` | date/null | `enrich_experience.py` | last posting-page look; retried after 7 days |
 | `Job.snippet` | string | `make_snippet()` | search, card |
 | `Job.is_new` | boolean | `publish.finalize_job()`: first seen ≤ 2 days ago | NEW badge |
 | `Job.first_seen` | date/null | export/publish merge | “First seen”; date filter fallback |

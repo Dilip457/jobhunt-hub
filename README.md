@@ -135,6 +135,19 @@ python automation/portal_scrapers.py --role uiux --profile profiles/uiux.json \
 
 ---
 
+## Experience on the cards
+
+A card shows the experience the posting states, never a guess from the title. The card
+and text are read first; jobs still unresolved get their posting page fetched once
+(`automation/enrich_experience.py`): LinkedIn's public posting endpoint gives the full
+description and its "Seniority level", Foundit's page gives min/max years, other boards are
+parsed as text. A posting that states a level but no years shows the level ("Mid-Senior
+level"); one that states nothing shows "Not stated in posting". Run the **Experience probe**
+workflow (Actions → Experience probe → role) to see what the cards will say for live
+postings on each board.
+
+---
+
 ## Direct portal scrapers (primary)
 
 The vendor repos' Naukri/Indeed/Foundit scrapers are out of date. `automation/portal_scrapers.py`

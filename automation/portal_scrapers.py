@@ -223,6 +223,44 @@ def fetch_shine(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[
 
 # ── Foundit (their own JSON search endpoint) ──────────────────────────────────
 
+def _foundit_experience(row: Dict[str, Any]) -> str:
+    """Foundit's experience field as text extract_experience understands.
+
+    The search endpoint has carried the range under a few names over time
+    (minimumExperience/maximumExperience, minExp/maxExp, experience text), so
+    every experience-ish key is considered. The job page shows e.g. "5-9 Years".
+    """
+    lo = hi = None
+    texts: List[str] = []
+    for key, value in row.items():
+        k = key.lower()
+        if "exp" not in k:
+            continue
+        if isinstance(value, bool) or value in (None, ""):
+            continue
+        if isinstance(value, (int, float)):
+            if k.startswith(("min", "exp_min", "experiencemin")) or "min" in k:
+                lo = int(value)
+            elif "max" in k:
+                hi = int(value)
+        elif isinstance(value, str):
+            texts.append(value)
+        elif isinstance(value, dict):
+            for sub_key, sub in value.items():
+                if isinstance(sub, (int, float)) and not isinstance(sub, bool):
+                    if "min" in sub_key.lower():
+                        lo = int(sub)
+                    elif "max" in sub_key.lower():
+                        hi = int(sub)
+    if lo is not None and hi is not None:
+        return f"{lo}-{hi} years"
+    if lo is not None:
+        return f"{lo}+ years"
+    if hi is not None:
+        return f"0-{hi} years"
+    return " ".join(texts)
+
+
 def fetch_foundit(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
     session = _session()
     session.headers.update({
@@ -264,6 +302,7 @@ def fetch_foundit(role: str, profile: Dict[str, Any], max_days: int) -> List[Dic
                         _clean(row.get("skills", "") or ""),
                         posted,
                         row.get("jobId") or row.get("id"),
+                        experience=_foundit_experience(row),
                     )
                     if job:
                         jobs.append(job)
@@ -299,6 +338,13 @@ def fetch_naukri(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
                     if not link:
                         continue
                     posted_text = _text(card.select_one(".job-post-day"))
+                    # Naukri prints the required experience on every card
+                    # ("5-9 Yrs"); use it rather than guessing from the title.
+                    experience = _text(
+                        card.select_one(".expwdth")
+                        or card.select_one(".exp")
+                        or card.select_one('[class*="exp"]')
+                    )
                     job = build_job(
                         role, "Naukri",
                         _text(link),
@@ -307,6 +353,7 @@ def fetch_naukri(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict
                         _clean(link.get("href", "")),
                         _text(card.select_one(".job-desc")),
                         _relative_date(posted_text),
+                        experience=experience,
                     )
                     if job:
                         jobs.append(job)
@@ -733,8 +780,10 @@ def fetch_wellfound(role: str, profile: Dict[str, Any], max_days: int) -> List[D
         # relying only on the regex extraction from the description.
         if item.get("yearsExperienceMin") is not None:
             job["experience_min"] = int(item["yearsExperienceMin"])
+            job["experience_source"] = "board"
         if item.get("yearsExperienceMax") is not None:
             job["experience_max"] = int(item["yearsExperienceMax"])
+            job["experience_source"] = "board"
         jobs.append(job)
 
     print(f"[portal] wellfound: {len(jobs)} raw jobs", file=sys.stderr)
@@ -874,6 +923,8 @@ def main() -> None:
         default=1,
         help="Run this many portal sources at once (default 1, sequential).",
     )
+    parser.add_argument("--no-enrich", action="store_true", help="Skip posting-page experience lookup")
+    parser.add_argument("--max-page-fetches", type=int, default=300)
     args = parser.parse_args()
 
     profile: Dict[str, Any] = {}
@@ -890,6 +941,14 @@ def main() -> None:
         parallel=args.parallel_sources,
     )
     payload = merge_portal_jobs({"role": args.role, "jobs": []}, jobs)
+
+    if not args.no_enrich:
+        try:
+            from enrich_experience import enrich_payload
+
+            enrich_payload(payload, args.max_page_fetches)
+        except Exception as exc:
+            print(f"[portal] experience lookup skipped: {exc}", file=sys.stderr)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:

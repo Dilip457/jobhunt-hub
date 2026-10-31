@@ -401,7 +401,7 @@ Exports the vendor SQLite database to public JSON:
 - Reads the `jobs` table ordered by score and posted date.
 - Normalizes locations to India/Remote; foreign listings are dropped.
 - Keeps only a **240-character snippet**, not the full description.
-- Extracts experience ranges when available.
+- Extracts experience ranges only when the listing states them (board experience field, title or description). "Associate", "Senior", "Manager" and similar level words no longer turn into years: at JPMorgan an Associate role asked for 7+ years and at Amgen a Senior Associate role for 5-9, while the cards showed 0-2. Naukri's per-card "5-9 Yrs" and Foundit's min/max fields are read directly. `experience_source` records whether the value was stated; `publish.finalize_job()` clears older guessed values.
 - Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later drops `score_parts`, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
 - Drops jobs below the score floor, with invalid URLs, with foreign locations, or older than the freshness window.
 - Sorts by score then posted date.
@@ -435,6 +435,18 @@ Exports the vendor SQLite database to public JSON:
 - Then `(company, title, location)` when all three exist.
 - `dedupe_jobs()` in `export.py` then collapses the same title + company (suffixes such as “Pvt Ltd” ignored) + city across boards, keeping the best-scored copy. It runs in the portal/API merges and in the publisher. Jobs with an unknown company are never collapsed.
 - In the publisher, the canonical URL rule is used first and the fresh copy wins, so scoring changes reach previously published jobs.
+
+### 4.6.1 Experience from the posting page (`automation/enrich_experience.py`)
+
+Cards show only what the posting states. The lookup order, recorded in `experience_source`:
+
+1. `board`: the board's own field (Naukri card "5-9 Yrs", Foundit search JSON, Wellfound min/max).
+2. `text`: years written in the title or scraped description.
+3. `page`: the posting page, fetched once per job for jobs still unresolved. LinkedIn uses the public `/jobs-guest/jobs/api/jobPosting/<id>` endpoint (full description + "Seniority level"); Foundit's page embeds min/max in `__NEXT_DATA__` and prints "5-9 Years"; other boards are parsed as page text.
+4. `level`: LinkedIn's seniority label (`experience_level`) when the posting states a level but no years. Shown as the label; never converted to years.
+5. `title`: only intern/trainee/fresher/entry-level words.
+
+Nothing found: the job keeps no years, is stamped `experience_checked`, and is looked at again after 7 days. Naukri (card already has it) and Indeed (blocks server fetches) are never fetched. Budget: 300 fetches per role per run (200 in the WARP job), best-scored jobs first, 4 in parallel, one request per host every 0.5 s. `publish.merge_payloads()` keeps a `page`/`level` answer when a later scrape of the same job has none, so each posting is read once. The `Experience probe` workflow fetches a few live postings per source and writes what the card will say to the run summary.
 
 ### 4.7 `first_seen` and `is_new`
 
@@ -702,6 +714,7 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba`
 - Job card date line: `Posted <relative> · First seen <relative>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
 - `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
+- Experience line: stated years (`5–9 yrs`, `7+ yrs`), else LinkedIn's level label, else “Not stated in posting”. The experience filter treats a level by its bucket (Internship/Entry → Fresher, Associate → Mid, Mid-Senior → Senior, Director/Executive → Lead); a job with nothing stated is listed only under “Any level”.
 - The date-range filter and date sort use `posted_date`, falling back to `first_seen` for boards that publish no date.
 - Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
 - No site footer; the contact link and credits stay inside the explainer card.

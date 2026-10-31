@@ -23,7 +23,10 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from export import canonical_url, dedupe_jobs
+from export import canonical_url, dedupe_jobs, states_experience
+
+EXPERIENCE_FIELDS = ("experience_min", "experience_max", "experience_source", "experience_level")
+RESOLVED_EXPERIENCE = {"board", "text", "page", "level"}
 from roles import ROLES
 
 DEFAULT_RETENTION_DAYS = 21
@@ -92,6 +95,15 @@ def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any
     # NEW means "first collected in the last couple of days". The vendor
     # is_new flag stuck for weeks after merges, so it is recomputed here.
     job["is_new"] = bool(first_seen and first_seen >= _days_ago(new_days))
+    # Jobs published before experience_source existed may carry years that
+    # were guessed from a title word ("Associate" -> 0-2). If the listing's own
+    # text does not state years, clear the guess; the next scrape of a live job
+    # restores stated values, because the fresh copy wins on merge.
+    if "experience_source" not in job and not states_experience(
+        job.get("title") or "", job.get("snippet") or ""
+    ):
+        job["experience_min"] = None
+        job["experience_max"] = None
     # score_parts is not read by the web app and is all zeros for portal jobs.
     job.pop("score_parts", None)
     if job.get("apply_url") == job.get("url"):
@@ -124,6 +136,19 @@ def merge_payloads(
                 merged[key] = dict(job)
                 continue
             merged_job = {**current, **job}
+
+            # Experience read from the posting page is fetched once, ever: if
+            # the fresh copy has no stated experience but the previous one
+            # did, keep the previous answer.
+            if (
+                job.get("experience_source") not in RESOLVED_EXPERIENCE
+                and current.get("experience_source") in RESOLVED_EXPERIENCE
+            ):
+                for field in EXPERIENCE_FIELDS:
+                    merged_job[field] = current.get(field)
+            checks = [v for v in (current.get("experience_checked"), job.get("experience_checked")) if v]
+            if checks:
+                merged_job["experience_checked"] = max(checks)
 
             # "First seen" is the first time our scraper collected the job, so
             # keep the oldest value across runs. A job that was already known
@@ -286,10 +311,14 @@ def build_manifest(payloads: Dict[str, Dict[str, Any]], statuses: Dict[str, str]
 
 def write_step_summary(payloads: Dict[str, Dict[str, Any]], statuses: Dict[str, str]) -> None:
     """Make stale or missing roles visible in the Actions run instead of silent."""
-    lines = ["| Role | Jobs | Status |", "| --- | --- | --- |"]
+    lines = ["| Role | Jobs | Status | Years | Level | Not stated |", "| --- | --- | --- | --- | --- | --- |"]
     for role in ROLES:
-        count = payloads.get(role, {}).get("count", 0)
-        lines.append(f"| {role} | {count} | {statuses.get(role, 'missing')} |")
+        jobs = payloads.get(role, {}).get("jobs", [])
+        years = sum(1 for j in jobs if j.get("experience_min") is not None or j.get("experience_max") is not None)
+        level = sum(1 for j in jobs if j.get("experience_source") == "level")
+        lines.append(
+            f"| {role} | {len(jobs)} | {statuses.get(role, 'missing')} | {years} | {level} | {len(jobs) - years - level} |"
+        )
         if statuses.get(role) in ("kept-previous", "missing"):
             # GitHub renders this as a warning annotation on the run.
             print(f"::warning title=No fresh {role} jobs::{role} published as {statuses.get(role)}")

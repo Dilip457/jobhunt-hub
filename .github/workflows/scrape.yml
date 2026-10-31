@@ -188,7 +188,8 @@ jobs:
             --profile "profiles/${{ matrix.role }}.json" \
             --out "artifacts/${{ matrix.role }}.warp.json" \
             --sites indeed simplyhired \
-            --max-days 14
+            --max-days 14 \
+            --max-page-fetches 200
 
       - name: Disconnect WARP
         if: always()
