@@ -385,7 +385,7 @@ Naukri, Shine and Foundit use the portal's posted date. Indeed and SimplyHired r
 
 ### 4.4 `api_sources.py` (optional)
 
-This module is disabled in the cloud workflow with `--no-apis`. It can be enabled locally or by removing the flag.
+The main scrape disables this module with `--no-apis`. The workflow's "Fetch extra API sources" step runs it afterwards for `ba` and `sde`, passing the keys below from repository secrets (a source whose key is unset is skipped). It can be run locally for any role.
 
 | Source | Key | Notes |
 |---|---|---|
@@ -400,9 +400,10 @@ This module is disabled in the cloud workflow with `--no-apis`. It can be enable
 
 Missing keys are skipped silently. All results go through `build_job()` and are merged by canonical URL.
 
-For `ba`, the workflow runs this module separately after the main scrape and writes
-`artifacts/ba.apis.json`, so the BA track gets Remote OK, We Work Remotely and ATS results
-even though the main scrape uses `--no-apis`.
+For `ba` and `sde`, the workflow runs this module separately after the main scrape and writes
+`artifacts/<role>.apis.json`, so those tracks get Remote OK, We Work Remotely and ATS results,
+plus Adzuna, Jooble and Google Jobs once their secrets are set, even though the main scrape
+uses `--no-apis`.
 
 ### 4.5 `export.py`
 

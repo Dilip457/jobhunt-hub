@@ -98,6 +98,16 @@ def test_run_scripts_never_interpolate_dispatch_inputs():
             assert not re.search(r"\$\{\{[^}]*\b(inputs|github\.event)\.", block), (name, block)
 
 
+def test_api_keys_reach_the_api_sources_step():
+    """api_sources.py reads the optional job-API keys from the environment, so
+    the step that runs it must pass each repository secret through; otherwise
+    Adzuna, Jooble and JSearch stay silently off however the secrets are set."""
+    scrape = jobs(read("scrape.yml"))["scrape"]
+    step = next(step for step in steps(scrape) if "automation/api_sources.py" in step)
+    for key in ("ADZUNA_APP_ID", "ADZUNA_APP_KEY", "JOOBLE_API_KEY", "JSEARCH_API_KEY"):
+        assert f"{key}: ${{{{ secrets.{key} }}}}" in step, key
+
+
 def test_probe_limit_is_a_validated_number():
     text = read("experience-probe.yml")
     limit = text.split("      limit:", 1)[1].split("\npermissions:", 1)[0]
