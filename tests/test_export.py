@@ -64,3 +64,80 @@ def test_dedupe_keeps_best_copy_and_seen_range():
     assert best["source"] == "LinkedIn"
     assert best["first_seen"] == "2026-10-20"
     assert best["last_seen"] == "2026-10-30"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "San Jose, CA", "Mountain View, CA", "Bellevue, WA", "Sofia, Bulgaria", "Bucharest",
+        "Ho Chi Minh City", "Tallinn, Estonia", "Indianapolis, IN", "Santa Clara, California",
+        "Remote (Americas)", "Remote - North America", "Remote, Europe", "EMEA", "LATAM",
+        "APAC (excluding India)", "Remote - EU", "Nashville, TN", "Austin, TX 78701",
+    ],
+)
+def test_more_foreign_locations_are_dropped(raw):
+    # Before, anything unrecognised fell back to ("India", True).
+    assert normalize_location(raw)[1] is False
+    assert normalize_location(raw, strict=True)[1] is False
+
+
+@pytest.mark.parametrize(
+    "raw, city",
+    [
+        ("Chennai, TN", "Chennai"),  # TN is Tamil Nadu here, not Tennessee
+        ("Pune, MH", "Pune"),
+        ("Bangalore, IN", "Bangalore"),
+        ("Gangaikondan, TN", "India"),  # Indian state code, unknown town
+        ("Sanand, GJ", "India"),
+        ("Hosur, Tamil Nadu", "India"),
+        ("Thane", "India"),
+        ("Remote, India", "Remote"),
+        ("Remote - US or India", "Remote"),
+        ("Worldwide", "Remote"),
+        ("Anywhere in the World", "Remote"),
+    ],
+)
+def test_strict_mode_keeps_positive_india_matches(raw, city):
+    assert normalize_location(raw, strict=True) == (city, True)
+
+
+@pytest.mark.parametrize("raw", ["", "Kakkanad", "Springfield", "Debar", "Unknown"])
+def test_strict_mode_drops_unknown_places_but_lenient_mode_keeps_them(raw):
+    assert normalize_location(raw, strict=True)[1] is False
+    assert normalize_location(raw) == ("India", True)
+
+
+def test_career_page_rows_need_a_positive_india_match():
+    from export import export_location
+
+    deloitte = "https://apply.deloitte.com/en_US/careers/JobDetail/AI-Engineer-II/371700"
+    assert export_location("", "Company Career Pages", "AI Engineer II", deloitte)[1] is False
+    # No location, but the glued title names Bengaluru.
+    sarvam = export_location("", "Company Career Pages",
+                             "ML Engineer (Training Infra), Foundational ModelsBengaluruFull Time",
+                             "https://www.sarvam.ai/careers/jobs/e9fb")
+    assert sarvam == ("Bangalore", True)
+    # A foreign place in the title drops it even when the URL says Bengaluru.
+    ey = export_location("", "Company Career Pages",
+                         "Senior-BC sector-Health-Healthcare Data Architecture-DHEC-Germany-EU",
+                         "https://careers.ey.com/ey/job/Bengaluru-Senior-BC-sector-Health")
+    assert ey[1] is False
+    assert export_location("Katowice", "Company Career Pages", "Data Engineer", "")[1] is False
+    # LinkedIn keeps the lenient rule.
+    assert export_location("", "LinkedIn", "Data Engineer", "") == ("India", True)
+
+
+def test_ats_and_remote_board_jobs_use_the_strict_rule():
+    from api_sources import build_job
+
+    def make(location, source="Company Career Pages", strict=True):
+        return build_job("sde", source, "Software Engineer", "Acme", location,
+                         "https://x.test/1", "", None, strict_location=strict)
+
+    assert make("Santa Clara, California") is None
+    assert make("Linz") is None
+    assert make("Bengaluru, Karnataka")["location"] == "Bangalore"
+    assert make("Remote")["location"] == "Remote"
+    # Indian boards keep unknown localities.
+    assert make("Kakkanad", source="Naukri", strict=False)["location"] == "India"
+

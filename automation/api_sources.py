@@ -280,10 +280,11 @@ def to_date(value: Any) -> Optional[str]:
         return None
 
 
-def norm_location(raw: str) -> tuple[str, bool]:
+def norm_location(raw: str, strict: bool = False) -> tuple[str, bool]:
     # normalize_location already understands remote wording and rejects
-    # country-restricted remote roles such as "Remote - US".
-    return normalize_location(raw)
+    # country-restricted remote roles such as "Remote - US". `strict` drops
+    # places it cannot identify as Indian (see build_job).
+    return normalize_location(raw, strict=strict)
 
 
 def search_terms(role: str) -> List[str]:
@@ -409,9 +410,14 @@ def build_job(
     posted: Optional[str],
     job_id: Optional[str] = None,
     experience: str = "",
+    strict_location: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Build one public job. `experience` is the board's own experience field
-    (e.g. Naukri "5-9 Yrs"); it beats anything guessed from the title."""
+    (e.g. Naukri "5-9 Yrs"); it beats anything guessed from the title.
+
+    `strict_location` is for global sources (company ATS boards and remote
+    boards): their unknown locations are usually abroad, so only a location
+    that names India or an India-eligible remote is kept."""
     if not valid_url(url):
         return None
     if not title_relevant(role, title):
@@ -420,7 +426,7 @@ def build_job(
         return None
     if TITLE_FOREIGN_REGION.search(title or ""):
         return None
-    city, keep = norm_location(location)
+    city, keep = norm_location(location, strict=strict_location)
     if not keep:
         return None
     snippet = make_snippet(description)
@@ -448,6 +454,11 @@ def build_job(
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────
+#
+# Adzuna, Jooble and JSearch are queried for India only, so their locations are
+# Indian unless they say otherwise and get the lenient location rule. The
+# remote boards and company ATS boards list jobs worldwide and pass
+# strict_location=True.
 
 def fetch_adzuna(role: str, max_days: int) -> List[Dict[str, Any]]:
     app_id = os.environ.get("ADZUNA_APP_ID")
@@ -555,6 +566,7 @@ def fetch_remotive(role: str, max_days: int) -> List[Dict[str, Any]]:
                 item.get("description", ""),
                 to_date(item.get("publication_date")),
                 item.get("id"),
+                strict_location=True,
             )
             if job:
                 jobs.append(job)
@@ -578,6 +590,7 @@ def fetch_himalayas(role: str, max_days: int) -> List[Dict[str, Any]]:
             item.get("description") or item.get("excerpt", ""),
             to_date(item.get("pubDate")),
             item.get("guid"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -602,6 +615,7 @@ def fetch_remoteok(role: str, max_days: int) -> List[Dict[str, Any]]:
             description,
             to_date(item.get("date") or item.get("epoch")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -645,6 +659,7 @@ def fetch_weworkremotely(role: str, max_days: int) -> List[Dict[str, Any]]:
             item.findtext("description") or "",
             _rss_date(item.findtext("pubDate")),
             link,
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -691,6 +706,7 @@ def _greenhouse(token: str, role: str) -> List[Dict[str, Any]]:
             "",
             to_date(item.get("updated_at") or item.get("first_published")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -713,6 +729,7 @@ def _lever(token: str, role: str) -> List[Dict[str, Any]]:
             item.get("descriptionPlain") or "",
             to_date(item.get("createdAt")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -737,6 +754,7 @@ def _ashby(token: str, role: str) -> List[Dict[str, Any]]:
             item.get("descriptionPlain") or "",
             to_date(item.get("publishedAt")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -763,6 +781,7 @@ def _smartrecruiters(token: str, role: str) -> List[Dict[str, Any]]:
             "",
             to_date(item.get("releasedDate")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)

@@ -412,8 +412,9 @@ Exports the vendor SQLite database to public JSON:
 
 - Recognizes Indian cities and remote/hybrid/WFH terms.
 - Indian cities and states are matched first, on word boundaries; foreign markers are matched on word boundaries too. (A plain substring check used to drop “Kukatpally” for containing “uk” and “Perungudi” for “peru”.)
-- Drops known foreign locations (for example “Remote - US”, “EMEA”, “APAC”).
-- Unknown locations are kept and labelled “India” so they are not silently lost.
+- Drops known foreign locations (for example “Remote - US”, “Remote (Americas)”, “EMEA”, “Europe”, “APAC (excluding India)”, “San Jose, CA”, “Sofia, Bulgaria”). US state codes are recognised after a comma (“Bellevue, WA”); codes that are also Indian state or country codes (TN, GA, IN, ...) are not, so “Chennai, TN” and “Pune, IN” stay Indian. “Indianapolis” does not match “India”.
+- Indian boards: an unknown location is kept and labelled “India” so it is not silently lost.
+- Global sources (company ATS boards, remote boards, vendor company career pages) are **strict**: a job is kept only when its location names an Indian city, state, state code (“Sanand, GJ”) or minor place (`INDIA_PLACES`), or an India-eligible remote. Unknown places are dropped; before, a global board's “Santa Clara, California” or “Ho Chi Minh City” was published as India. Adzuna, Jooble and JSearch are queried for India only and keep the lenient rule.
 
 **Title relevance**
 

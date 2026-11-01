@@ -580,7 +580,8 @@ Company tokens: `automation/companies.json`.
 
 | Symbol | Responsibility |
 |---|---|
-| `normalize_location()` | India city aliases, remote/hybrid, foreign filtering |
+| `normalize_location()` | India city aliases, remote/hybrid, foreign filtering; `strict=True` drops unknown places (global sources) |
+| `export_location()` | Strict location rule for company career page rows, with a title/URL hint when the location is empty |
 | `looks_foreign()` | Reject foreign-language/region titles |
 | `extract_experience_with_source()` | Years from a board's experience field, then title/description ("stated"); only intern/fresher/entry-level words count as a title signal; level words such as "associate" or "senior" never produce numbers |
 | `canonical_url()` | Remove tracking params for deduplication |

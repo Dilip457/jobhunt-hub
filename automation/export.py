@@ -91,6 +91,21 @@ INDIA_STATES = {
     "india", "ind", "bharat",
 }
 
+# Indian places that do not get a city label of their own. They still count
+# as a positive India match (labelled "India"), which matters for global
+# sources: those drop any location they cannot place.
+INDIA_PLACES = {
+    "thane", "hosur", "mohali", "ghaziabad", "faridabad", "vijayawada",
+    "guntur", "warangal", "raipur", "ranchi", "patna", "bhopal", "guwahati",
+    "kanpur", "varanasi", "agra", "meerut", "ludhiana", "amritsar",
+    "jalandhar", "jodhpur", "rajkot", "gandhinagar", "aurangabad", "kolhapur",
+    "solapur", "belgaum", "belagavi", "hubli", "dharwad", "manipal", "udupi",
+    "tirupati", "nellore", "salem", "erode", "tiruppur", "vellore",
+    "pondicherry", "puducherry", "thrissur", "kozhikode", "calicut", "kannur",
+    "siliguri", "durgapur", "jamshedpur", "cuttack", "rourkela", "gwalior",
+    "jabalpur", "ujjain", "srinagar", "jammu", "shimla", "haridwar", "roorkee",
+}
+
 FOREIGN_MARKERS = {
     "united states", "usa", "u.s.", "united kingdom", "uk", "england",
     "canada", "australia", "singapore", "dubai", "uae", "germany", "france",
@@ -100,7 +115,7 @@ FOREIGN_MARKERS = {
     "remote - us", "remote, us", "emea", "apac",
     "vancouver", "montreal", "brazil", "brasil", "latam", "latin america",
     "mexico", "argentina", "colombia", "chile", "peru", "costa rica",
-    "poland", "romania", "portugal", "czech", "hungary", "ukraine", "russia",
+    "romania", "portugal", "czech", "hungary", "ukraine", "russia",
     "sweden", "norway", "denmark", "finland", "switzerland", "austria",
     "belgium", "luxembourg", "greece", "turkey", "israel", "egypt", "nigeria",
     "kenya", "south africa", "philippines", "malaysia", "thailand", "vietnam",
@@ -115,8 +130,65 @@ FOREIGN_MARKERS = {
     "johannesburg", "cape town", "manila", "kuala lumpur", "bangkok",
     "jakarta", "taipei", "seoul", "tokyo", "osaka", "shanghai", "beijing",
     "shenzhen", "riyadh", "doha",
+    # Regions. Global boards often give only a region ("Remote (Americas)").
+    "americas", "north america", "south america", "central america", "europe",
+    "eu", "eea", "mena", "anz", "nordics", "dach", "benelux", "baltics",
+    # US states and the tech-hub cities that global career pages list.
+    "california", "texas", "florida", "illinois", "massachusetts", "virginia",
+    "north carolina", "south carolina", "georgia", "ohio", "michigan",
+    "pennsylvania", "new jersey", "colorado", "arizona", "oregon", "utah",
+    "minnesota", "wisconsin", "missouri", "tennessee", "maryland", "indiana",
+    "kentucky", "connecticut", "iowa", "kansas", "nevada", "alabama",
+    "louisiana", "oklahoma", "nebraska", "idaho", "delaware", "new hampshire",
+    "rhode island", "vermont", "new mexico", "alaska", "hawaii",
+    "san jose", "mountain view", "sunnyvale", "palo alto", "menlo park",
+    "santa clara", "cupertino", "redwood city", "bellevue", "redmond",
+    "kirkland", "san diego", "irvine", "sacramento", "raleigh", "pittsburgh",
+    "salt lake city", "nashville", "charlotte", "st. louis", "kansas city",
+    "indianapolis", "cincinnati", "cleveland", "baltimore", "san antonio",
+    "orlando", "tampa", "las vegas", "jersey city", "brooklyn", "plano",
+    "memphis", "knoxville", "chattanooga",
+    # Canada, Latin America, Europe, Africa, Middle East, Asia-Pacific.
+    "ontario", "quebec", "british columbia", "alberta", "calgary", "ottawa",
+    "edmonton", "mississauga", "sao paulo", "são paulo", "rio de janeiro",
+    "buenos aires", "bogota", "bogotá", "medellin", "medellín", "mexico city",
+    "guadalajara", "monterrey", "uruguay", "montevideo", "ecuador",
+    "guatemala", "panama", "puerto rico",
+    "bulgaria", "sofia", "bucharest", "cluj", "estonia", "tallinn", "latvia",
+    "riga", "lithuania", "vilnius", "serbia", "belgrade", "croatia", "zagreb",
+    "slovakia", "bratislava", "slovenia", "ljubljana", "krakow", "kraków",
+    "wroclaw", "wrocław", "gdansk", "katowice", "budapest", "kyiv", "kiev",
+    "lviv", "belarus", "minsk", "armenia", "yerevan", "cyprus", "malta",
+    "msida", "iceland", "scotland", "wales", "glasgow", "belfast", "leeds",
+    "rotterdam", "eindhoven", "utrecht", "the hague", "brussels", "antwerp",
+    "lyon", "toulouse", "milan", "rome", "turin", "porto", "valencia",
+    "gothenburg", "malmo", "malmö", "aarhus", "espoo", "cologne", "stuttgart",
+    "dusseldorf", "düsseldorf", "leipzig", "dresden", "nuremberg", "basel",
+    "lausanne", "morocco", "casablanca", "tunisia", "ghana", "accra",
+    "ethiopia", "uganda", "rwanda", "abu dhabi", "sharjah", "jeddah", "muscat",
+    "jordan", "amman", "lebanon", "pakistan", "karachi", "lahore",
+    "islamabad", "bangladesh", "dhaka", "sri lanka", "colombo", "nepal",
+    "kathmandu", "ho chi minh", "hanoi", "da nang", "guangzhou", "hangzhou",
+    "chengdu", "makati", "cebu", "penang", "auckland", "brisbane", "perth",
+    "adelaide", "canberra",
 }
 
+# One whole-word alternation over FOREIGN_MARKERS, longest marker first.
+_FOREIGN_RE = re.compile(
+    r"(?<![a-z])(?:"
+    + "|".join(re.escape(m) for m in sorted(FOREIGN_MARKERS, key=len, reverse=True))
+    + r")(?![a-z])"
+)
+
+# "San Jose, CA" / "Bellevue, WA 98004": a US state code after a comma, dash or
+# bracket. Matched on the original casing so prose words never count. Codes
+# that are also Indian state or country codes (IN, TN, GA, AR, MN, OR, LA, CT)
+# are left out: "Hosur, TN" is Tamil Nadu and "Pune, IN" is India.
+US_STATE_CODE_RE = re.compile(
+    r"[,\-–(]\s*(?:AL|AK|AZ|CA|CO|DE|FL|HI|ID|IL|IA|KS|KY|ME|MD|MA|MI|MS|MO|MT|"
+    r"NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|PA|RI|SC|SD|TX|UT|VT|VA|WA|WV|WI|WY|DC)"
+    r"(?:\s+\d{5})?\s*(?=[,)]|$)"
+)
 
 REMOTE_WORDS = ("remote", "work from home", "wfh", "anywhere", "worldwide", "global")
 
@@ -124,50 +196,92 @@ REMOTE_WORDS = ("remote", "work from home", "wfh", "anywhere", "worldwide", "glo
 # Strip the generic remote words, then look for a foreign country/region.
 REMOTE_FOREIGN_RE = re.compile(
     r"\b(us|usa|u\.s\.|united states|uk|united kingdom|england|canada|emea|apac|"
-    r"europe|australia|singapore|uae|dubai|germany|france|netherlands|ireland|"
+    r"europe|eu|australia|singapore|uae|dubai|germany|france|netherlands|ireland|"
     r"poland|spain|italy|japan|china|brazil|latam|latin america|mexico|argentina|"
     r"colombia|chile|peru|philippines|malaysia|thailand|vietnam|indonesia|"
-    r"hong kong|taiwan|korea|saudi|qatar|new zealand)\b",
+    r"hong kong|taiwan|korea|saudi|qatar|new zealand|americas|north america)\b",
     re.I,
 )
 
+# Global career pages give Indian sites as "Gangaikondan, TN" or "Sanand, GJ".
+# Indian state codes that are also common foreign codes (GA, AR, MN, OR, LA,
+# CT, UT, CH, SK, TR, NL, BR, ...) are left out. Checked after the foreign
+# markers, so "Nashville, TN" is still dropped.
+INDIA_STATE_CODE_RE = re.compile(
+    r",\s*(?:TN|KA|KL|MH|TS|TG|AP|GJ|DL|HR|UP|WB|RJ|MP|PB|OD|HP|JK|JH|CG)\s*$"
+)
 
-def normalize_location(raw: str) -> Tuple[str, bool]:
-    """Return (city, is_india_or_remote). Foreign jobs are excluded."""
-    if not raw:
-        return ("India", True)
+# "APAC (excluding India)" names India only to rule it out.
+INDIA_EXCLUDED_RE = re.compile(
+    r"\b(?:excluding|except|excl\.?|outside(?:\s+of)?|not\s+in)\s+india\b", re.I
+)
 
-    text = unescape(str(raw)).strip()
+
+def _india_place(low: str) -> Optional[str]:
+    """Canonical city when low names an Indian place ("India" for states and
+    minor places), else None."""
+    if INDIA_EXCLUDED_RE.search(low):
+        return None
+    for alias, canonical in CITY_ALIASES.items():
+        if canonical != "Remote" and _has_word(alias, low):
+            return canonical
+    for place in INDIA_STATES | INDIA_PLACES:
+        if _has_word(place, low):
+            return "India"
+    return None
+
+
+def _foreign_location(text: str) -> bool:
+    return looks_foreign(text) or US_STATE_CODE_RE.search(text) is not None
+
+
+def normalize_location(raw: str, strict: bool = False) -> Tuple[str, bool]:
+    """Return (city, is_india_or_remote). Foreign jobs are excluded.
+
+    Indian job boards rarely list a foreign city, so by default a location we
+    cannot place is kept and labelled "India". Global sources (company career
+    pages, remote boards, job APIs) list jobs worldwide: with ``strict`` a job
+    is kept only when its location positively names India or an India-eligible
+    remote, and anything we cannot place is dropped.
+    """
+    text = re.sub(r"\s+", " ", unescape(str(raw or ""))).strip()
     low = text.lower()
 
-    if low in ("unknown", "n/a", "-", "none"):
-        return ("India", True)
+    if low in ("", "unknown", "n/a", "-", "none"):
+        return (text, False) if strict else ("India", True)
 
     is_remote = any(k in low for k in REMOTE_WORDS)
     if is_remote:
         remainder = low
         for word in REMOTE_WORDS:
             remainder = remainder.replace(word, " ")
-        if REMOTE_FOREIGN_RE.search(remainder) or looks_foreign(remainder):
+        # "Remote - US or India" is open to India; "Remote (Americas)" is not.
+        if _india_place(remainder):
+            return ("Remote", True)
+        if (REMOTE_FOREIGN_RE.search(remainder) or looks_foreign(remainder)
+                or US_STATE_CODE_RE.search(text) or INDIA_EXCLUDED_RE.search(low)):
             return (text, False)
         return ("Remote", True)
 
     # Indian places are matched first and on word boundaries. A plain
     # substring check against FOREIGN_MARKERS used to drop real localities:
     # "Kukatpally" contains "uk", "Perungudi" and "Sriperumbudur" contain "peru".
-    for alias, canonical in CITY_ALIASES.items():
-        if _has_word(alias, low):
-            return (canonical, True)
+    # Word boundaries also stop "Indianapolis" from matching "india".
+    city = _india_place(low)
+    if city:
+        return (city, True)
 
-    for state in INDIA_STATES:
-        if _has_word(state, low):
-            return ("India", True)
-
-    if looks_foreign(low):
+    if _foreign_location(text):
         # "remote - us" already handled above; genuine foreign locations drop out
         return (text, False)
 
-    # Unknown location: keep it, tagged India so it is not silently lost.
+    if INDIA_STATE_CODE_RE.search(text):
+        return ("India", True)
+
+    if strict:
+        return (text, False)
+    # Unknown location on an Indian board: keep it, tagged India so it is not
+    # silently lost.
     return ("India", True)
 
 
@@ -189,9 +303,8 @@ def looks_foreign(text: str) -> bool:
     target (e.g. Bosch's German "Pflichtpraktikum" listing).
     """
     low = unescape(str(text or "")).lower()
-    for marker in FOREIGN_MARKERS:
-        if re.search(rf"(?<![a-z]){re.escape(marker)}(?![a-z])", low):
-            return True
+    if _FOREIGN_RE.search(low):
+        return True
     for marker in NON_ENGLISH_MARKERS:
         if re.search(rf"(?<![a-z]){re.escape(marker)}(?![a-z])", low):
             return True
@@ -479,6 +592,44 @@ def valid_url(url: str) -> bool:
     return low.startswith("http://") or low.startswith("https://")
 
 
+# Company career pages list jobs worldwide (the vendor pipeline reads global
+# boards such as apply.deloitte.com and careers.ey.com), so their rows get the
+# strict location rule. LinkedIn and the Indian boards keep the lenient one.
+GLOBAL_SOURCE_RE = re.compile(r"career|company", re.I)
+
+# Hints are matched as substrings because career-page titles and URLs glue
+# words together ("Foundational ModelsBengaluruFull Time", "/job/Bengaluru-...").
+_INDIA_HINTS = tuple(sorted(
+    {k for k, v in CITY_ALIASES.items() if v != "Remote" and len(k) >= 5} | {"india"},
+    key=len, reverse=True,
+))
+
+
+def india_hint(*texts: str) -> Optional[str]:
+    """Indian city named anywhere in texts ("India" for the country), else None."""
+    low = " ".join(unescape(str(t or "")) for t in texts).lower()
+    low = re.sub(r"indiana(?:polis)?", " ", low)
+    for hint in _INDIA_HINTS:
+        if hint in low:
+            return "India" if hint == "india" else CITY_ALIASES[hint]
+    return None
+
+
+def export_location(location: str, source: str, title: str = "", url: str = "") -> Tuple[str, bool]:
+    """(city, keep) for one vendor row. Global sources need a positive India
+    match; a row with no location may still name its Indian city in the title
+    or URL. A title that names a foreign place ("...-Germany-EU") drops it."""
+    if not GLOBAL_SOURCE_RE.search(source or ""):
+        return normalize_location(location)
+    if looks_foreign(title):
+        return (location, False)
+    city, keep = normalize_location(location, strict=True)
+    if keep or (location or "").strip():
+        return (city, keep)
+    hint = india_hint(title, urlsplit(url or "").path)
+    return (hint, True) if hint else (location, False)
+
+
 # ── Export ────────────────────────────────────────────────────────────────────
 
 def export(db_path: str, role: str, min_score: float, limit: int, max_days: int = 21) -> Dict[str, Any]:
@@ -532,7 +683,8 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             dropped_offrole += 1
             continue
 
-        city, keep = normalize_location(row["location"] or "")
+        source = (row["source"] or "Unknown").strip() or "Unknown"
+        city, keep = export_location(row["location"] or "", source, row["title"] or "", url)
         if not keep:
             dropped_foreign += 1
             continue
