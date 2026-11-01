@@ -93,11 +93,17 @@ def test_every_job_has_a_timeout():
 
 
 def test_run_scripts_never_interpolate_dispatch_inputs():
-    for name in ("scrape.yml",):
+    for name in ("scrape.yml", "experience-probe.yml"):
         for block in run_blocks(read(name)):
             assert not re.search(r"\$\{\{[^}]*\b(inputs|github\.event)\.", block), (name, block)
 
 
+def test_probe_limit_is_a_validated_number():
+    text = read("experience-probe.yml")
+    limit = text.split("      limit:", 1)[1].split("\npermissions:", 1)[0]
+    assert re.search(r"^        type: number$", limit, re.M)
+    assert "LIMIT: ${{ inputs.limit }}" in text
+    assert '[[ "$LIMIT" =~ ^[1-9][0-9]{0,2}$ ]]' in text
 
 
 def test_run_block_helper_finds_interpolation():
