@@ -2227,8 +2227,6 @@ a.best-match:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  /* Close enough that a 10° tilt reads on a 300px card. */
-  perspective: 900px;
   transition: opacity 0.2s ease;
 }
 
@@ -2242,41 +2240,61 @@ a.best-match:hover {
   opacity: 0.6;
 }
 
+/* A two-sided card: the article is the perspective, the inner box turns,
+   and the two faces share one grid cell so the card is as tall as the
+   taller face. JobCard adds .is-flipped after FLIP_MS under the pointer. */
 .job-card {
-  --rx: 0deg;
-  --ry: 0deg;
   --mx: 50%;
   --my: 50%;
+  position: relative;
+  min-width: 0;
+  perspective: 1400px;
+  animation: card-in 0.55s var(--ease-out) backwards;
+  animation-delay: var(--card-delay, 0ms);
+}
+
+.job-card-inner {
+  display: grid;
+  min-height: 300px;
+  transform-style: preserve-3d;
+  transition: transform 0.7s var(--ease-out);
+}
+
+.job-card.is-flipped .job-card-inner {
+  transform: rotateY(180deg);
+}
+
+.job-face {
+  grid-area: 1 / 1;
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
-  min-height: 300px;
   padding: 22px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: #10131a;
-  /* JobCard sets --rx/--ry from the pointer; the lift comes with :hover. */
-  transform: rotateX(var(--rx)) rotateY(var(--ry)) translateZ(var(--lift, 0px));
-  /* Only transform, border and shadow animate on hover; the light is its own layer. */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   transition:
-    transform 0.18s var(--ease-out),
     border-color 0.22s ease,
     box-shadow 0.25s ease;
-  /* "backwards", not "both": a kept end keyframe would override the tilt. */
-  animation: card-in 0.55s var(--ease-out) backwards;
-  animation-delay: var(--card-delay, 0ms);
 }
 
-.job-card:hover {
-  --lift: 18px;
+.job-back {
+  background: #141924;
+  border-color: var(--border-strong);
+  transform: rotateY(180deg);
+}
+
+.job-card:hover .job-face {
   border-color: var(--border-strong);
   box-shadow: 0 30px 60px -34px rgba(0, 0, 0, 0.95);
 }
 
-/* The role's light where the pointer landed; JobCard lifts it after 1.2 s. */
+/* The role's light where the pointer landed; it goes out when the card turns. */
 .job-card-light {
   position: absolute;
   inset: 0;
@@ -2294,6 +2312,90 @@ a.best-match:hover {
 .job-card.is-lit .job-card-light {
   opacity: 1;
   transition-duration: 0.15s;
+}
+
+/* The back: the listing's words, the score's parts, company · city, Apply. */
+.job-back-text {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.job-parts {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+}
+
+.job-parts > div {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 26px;
+  gap: 8px;
+  align-items: center;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.job-parts dt,
+.job-parts dd {
+  margin: 0;
+}
+
+.job-parts dd {
+  display: contents;
+}
+
+.job-parts i {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* The bars grow once the back is showing. */
+.job-parts i::after {
+  content: "";
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.6s var(--ease-out) 0.3s;
+}
+
+.job-card.is-flipped .job-parts i::after {
+  width: var(--w, 0%);
+}
+
+.job-parts b {
+  color: #fff;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Touch and reduced motion turn the card with this button instead of a hover. */
+.flip-btn {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.flip-btn[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--black);
 }
 
 @keyframes card-in {
@@ -2459,7 +2561,8 @@ a.best-match:hover {
 
 .job-card.skeleton {
   min-height: 300px;
-  border-style: dashed;
+  border: 1px dashed var(--border);
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.025);
   box-shadow: none;
   animation: none;
@@ -3400,7 +3503,7 @@ a.best-match:hover {
     flex: 1 1 auto;
   }
 
-  .job-card {
+  .job-face {
     padding: 16px;
   }
 
@@ -3490,12 +3593,17 @@ a.best-match:hover {
     font-size: 15px;
   }
 
+  /* Source · date on its own line; the turn-over button and Apply share the next. */
   .job-footer {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .job-footer .job-meta {
+    flex-basis: 100%;
   }
 
   .apply-btn {
+    flex: 1 1 auto;
     justify-content: center;
   }
 
@@ -3788,8 +3896,11 @@ a.ticker-item:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .job-card {
+  .job-card-inner {
     min-height: 0;
+  }
+
+  .job-face {
     padding: 18px;
   }
 
@@ -3839,7 +3950,11 @@ a.ticker-item:focus-visible {
 
   .job-card {
     animation: none;
-    transform: none !important;
+  }
+
+  .job-card-inner,
+  .job-parts i::after {
+    transition: none;
   }
 
   .job-card-light {

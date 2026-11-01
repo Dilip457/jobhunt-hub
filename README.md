@@ -300,8 +300,10 @@ Each role page, in the role's own colour:
   the role by match band. The parts come from the role file, or are read from the listing
   in the browser until the next scrape publishes them;
 - the filters (they scroll with the page), then 8 job cards per page (four across on wide
-  screens, one on phones). A card tilts toward the pointer and lifts, and lights in the
-  role colour for a moment, on hover;
+  screens, one on phones). A card lights in the role colour where the pointer lands and,
+  after 1.2 s, turns over to its back: the listing's own words, the score's parts as bars
+  (role fit, skills, tools, experience, domain), company · city and Apply. Touch and
+  reduced motion get a turn-over button instead;
 - the role's colour as a thin breathing light down both edges of the page.
 
 ### The 3D guide is a prototype

@@ -680,6 +680,7 @@ export default function JobDashboard({ role }: Props) {
                 <JobCard
                   key={`${job.source}-${job.id}`}
                   job={job}
+                  role={role}
                   showScore={showScores}
                   accent={roleMeta.accent}
                   index={index}
