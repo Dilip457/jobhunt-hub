@@ -75,6 +75,10 @@ jobhunt-hub/
 │  │  ├─ RoleSwitcher.tsx
 │  │  ├─ Filters.tsx
 │  │  ├─ JobCard.tsx
+│  │  ├─ UpdatesTicker.tsx
+│  │  ├─ HeroGate.tsx
+│  │  ├─ BestMatch.tsx
+│  │  ├─ MatchSignal.tsx
 │  │  ├─ StatsBar.tsx
 │  │  ├─ ConfirmRefresh.tsx
 │  │  ├─ RefreshPanel.tsx
@@ -410,7 +414,7 @@ Exports the vendor SQLite database to public JSON:
 - Gates and publishes the same cleaned title (`clean_title()`), so `publish.py` re-checking the stored title agrees with the export.
 - Keeps only a **240-character snippet**, not the full description.
 - Extracts experience ranges only when the listing states them (board experience field, title or description). "Associate", "Senior", "Manager" and similar level words no longer turn into years: at JPMorgan an Associate role asked for 7+ years and at Amgen a Senior Associate role for 5-9, while the cards showed 0-2. Naukri's per-card "5-9 Yrs" and Foundit's min/max fields are read directly. `experience_source` records whether the value was stated; `publish.finalize_job()` clears older guessed values.
-- Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later drops `score_parts`, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
+- Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later keeps `score_parts`, computing them from today's rules when a job has none, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
 - Drops jobs below the score floor, with invalid URLs, with foreign locations, or older than the freshness window.
 - `sources` counts only exported jobs, so it adds up to `count` (aged-out rows used to be counted). A URL is marked as seen only once its row is exported, so an aged-out copy no longer hides a fresh, lower-scored copy of the same URL.
 - Sorts by score then posted date.
@@ -851,7 +855,7 @@ The token is server-side only. Never prefix it with `NEXT_PUBLIC_`.
 | `source` | string | `LinkedIn`, `Naukri`, `Foundit`, `Indeed`, `Shine`, `SimplyHired`, etc. |
 | `posted_date` | string \| null | Portal posted date (`YYYY-MM-DD`); may be null |
 | `score` | number | Match score |
-| `score_parts` | object | Score breakdown (vendor jobs may populate it) |
+| `score_parts` | object | Score breakdown, 0–100 each: `role`, `skill`, and `experience` for BA and SDE (`api_sources.score_parts()`); vendor jobs may add `tool` and `domain`. Drawn by `MatchSignal` for the top job |
 | `experience_min` | number \| null | Minimum years |
 | `experience_max` | number \| null | Maximum years |
 | `snippet` | string | Short description excerpt (max ~240 chars) |

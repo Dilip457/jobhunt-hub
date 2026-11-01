@@ -183,3 +183,17 @@ def test_kept_previous_ages_out_but_does_not_prune_unseen(tmp_path):
     # The data is still as old as the last real scrape.
     assert out["generated_at"] == "2026-10-20T02:30:00+00:00"
     assert out["role"] == "data"
+
+
+def test_finalize_keeps_or_computes_score_parts():
+    given = publish.finalize_job(job("a", score_parts={"role": 50.0, "skill": 33.3}), role="data")
+    assert given["score_parts"] == {"role": 50.0, "skill": 33.3}
+
+    computed = publish.finalize_job(job("b", title="Data Engineer", snippet="spark and airflow pipelines"), role="data")
+    assert computed["score_parts"]["role"] > 0 and computed["score_parts"]["skill"] > 0
+
+    zeros = publish.finalize_job(job("c", score_parts={"role": 0.0, "skill": 0.0}, title="Analyst", snippet=""), role="data")
+    assert "score_parts" not in zeros
+
+    without_role = publish.finalize_job(job("d", score_parts={"role": 0}))
+    assert "score_parts" not in without_role

@@ -1,57 +1,31 @@
-import type { RoleData, RoleMeta, StatusResponse } from "@/lib/types";
+import type { RoleData, StatusResponse } from "@/lib/types";
 import { formatNumber, timeAgo, uniqueCompanies } from "@/lib/utils";
-import { BriefcaseIcon, BuildingIcon, GlobeIcon, RefreshIcon } from "./Icons";
 
 interface Props {
   data: RoleData;
-  role: RoleMeta;
   status: StatusResponse | null;
 }
 
-export default function StatsBar({ data, role, status }: Props) {
+/** The role's four figures, set as type under the title rather than as tiles. */
+export default function StatsBar({ data, status }: Props) {
   const sourceCount = Object.keys(data.sources ?? {}).length;
   const lastRun = status?.lastRunAt ?? data.generated_at;
 
   const items = [
-    {
-      label: "Open jobs",
-      value: formatNumber(data.count),
-      icon: <BriefcaseIcon width={16} height={16} />,
-      accent: role.accent,
-    },
-    {
-      label: "Companies",
-      value: formatNumber(uniqueCompanies(data.jobs)),
-      icon: <BuildingIcon width={16} height={16} />,
-      accent: "#287BFF",
-    },
-    {
-      label: "Sources",
-      value: formatNumber(sourceCount),
-      icon: <GlobeIcon width={16} height={16} />,
-      accent: "#B8BECC",
-    },
-    {
-      label: "Updated",
-      value: timeAgo(lastRun),
-      icon: <RefreshIcon width={16} height={16} />,
-      accent: "#FF304F",
-    },
+    { label: "open jobs", value: formatNumber(data.count) },
+    { label: "companies", value: formatNumber(uniqueCompanies(data.jobs)) },
+    { label: "sources", value: formatNumber(sourceCount) },
+    { label: "since the last scrape", value: timeAgo(lastRun).replace(/ ago$/, "") },
   ];
 
   return (
-    <div className="stats">
+    <dl className="figures">
       {items.map((item) => (
-        <div className="stat-card" key={item.label}>
-          <span className="stat-icon" style={{ color: item.accent, background: `${item.accent}18` }}>
-            {item.icon}
-          </span>
-          <div>
-            <p className="stat-value">{item.value}</p>
-            <p className="stat-label">{item.label}</p>
-          </div>
+        <div className="figure" key={item.label}>
+          <dd>{item.value}</dd>
+          <dt>{item.label}</dt>
         </div>
       ))}
-    </div>
+    </dl>
   );
 }

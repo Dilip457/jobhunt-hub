@@ -359,7 +359,7 @@ If a role's scrape fails or returns zero jobs, the publisher **keeps the previou
 - The fresh copy of a job wins, so scoring changes reach old listings; `first_seen` and `posted_date` keep the oldest date and `last_seen` the newest.
 - Jobs that no scrape has returned for 7 days (`--unseen-days`) are treated as closed and dropped, and nothing older than 21 days is kept (an undated listing the boards still return stays until they stop returning it). Pruning is skipped when a run is much smaller than the previous data, so a blocked run cannot empty a role.
 - `is_new` (the NEW badge) is recomputed at publish time: first collected within the last 2 days.
-- `score_parts`, and `apply_url` when it equals `url`, are dropped to keep each role file well under 1 MB.
+- `apply_url` is dropped when it equals `url`; `score_parts` (role fit, skills, experience fit) stays, since the dashboard draws it for the top match.
 
 The push uses `--force-with-lease`, so if the PC agent and a cloud run publish at the same time, the second one re-reads the data and merges again instead of overwriting.
 

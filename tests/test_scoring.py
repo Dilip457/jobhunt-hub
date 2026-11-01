@@ -1,4 +1,4 @@
-from api_sources import MAX_SKILL_HITS, MAX_TITLE_HITS, SCORE_BASE, SKILL_POINTS, TITLE_POINTS, _hit, score_job, title_relevant
+from api_sources import MAX_SKILL_HITS, MAX_TITLE_HITS, SCORE_BASE, SKILL_POINTS, TITLE_POINTS, _hit, score_job, score_parts, title_relevant
 
 KEYWORD_MAX = SCORE_BASE + TITLE_POINTS * MAX_TITLE_HITS + SKILL_POINTS * MAX_SKILL_HITS
 
@@ -50,3 +50,21 @@ def test_ba_track_is_business_analyst_and_data_analyst_only():
         assert title_relevant("ba", title), title
     for title in drop:
         assert not title_relevant("ba", title), title
+
+
+def test_score_parts_follow_the_score_rules():
+    sde = score_parts("sde", "Senior Software Engineer", "4-8 years. C#, .NET Core, Azure, REST APIs, SQL Server, Python.")
+    assert set(sde) == {"role", "skill", "experience"}
+    assert sde["experience"] == 100.0  # squarely in the 3-8 year band
+    assert 0 < sde["role"] <= 100 and 0 < sde["skill"] <= 100
+    assert score_parts("sde", "Principal Engineer", "")["experience"] < 20
+
+    ba = score_parts("ba", "Junior Business Analyst", "")
+    assert ba["experience"] == 100.0
+    assert score_parts("ba", "Senior Business Analyst", "")["experience"] == 0.0
+
+    data = score_parts("data", "Senior Big Data Engineer", "spark, airflow, dbt, kafka, snowflake, databricks, etl")
+    assert set(data) == {"role", "skill"}
+    assert data["skill"] == 100.0  # six or more skills fill the allowance
+
+    assert score_parts("uiux", "Coordinator", "") == {"role": 0.0, "skill": 0.0}
