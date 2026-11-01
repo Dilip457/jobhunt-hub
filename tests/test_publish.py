@@ -123,3 +123,19 @@ def test_publish_drops_previously_published_offrole_titles(tmp_path):
     titles = sorted(j["title"] for j in payloads["ba"]["jobs"])
     assert titles == ["Business Analyst", "Data Analyst"]
     assert payloads["ba"]["count"] == 2
+
+
+def test_generated_at_is_the_latest_time_in_utc():
+    # 09:00 IST is 03:30 UTC: earlier than 05:00 UTC, though larger as a string.
+    ist = payload([job("a")], generated="2026-10-31T09:00:00+05:30")
+    utc = payload([job("b")], generated="2026-10-31T05:00:00+00:00")
+    assert publish.merge_payloads(ist, utc, 21)["generated_at"] == "2026-10-31T05:00:00+00:00"
+    assert publish.merge_payloads(utc, ist, 21)["generated_at"] == "2026-10-31T05:00:00+00:00"
+    later_ist = payload([job("c")], generated="2026-10-31T11:00:00+05:30")
+    assert publish.merge_payloads(utc, later_ist, 21)["generated_at"] == "2026-10-31T05:30:00+00:00"
+
+
+def test_generated_at_falls_back_to_now_in_utc():
+    out = publish.merge_payloads({}, {"role": "data", "jobs": [job("a")], "generated_at": "junk"}, 21)
+    assert out["generated_at"].endswith("+00:00")
+    assert publish.utc_now().endswith("+00:00")

@@ -36,7 +36,35 @@ GIT_TIMEOUT = 300
 
 
 def iso_now() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_stamp(value: object) -> Optional[datetime]:
+    """An ISO timestamp as an aware datetime (naive values are taken as UTC)."""
+    if not value:
+        return None
+    try:
+        when = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def oldest_role_age_hours(manifest: Dict) -> Optional[float]:
+    """Age in hours of the stalest role in a manifest, or None if no role has a time.
+
+    The oldest role decides: a one-role refresh must not make every other
+    role look fresh. Timestamps are compared as datetimes, not strings, so
+    "+05:30" (PC) and "+00:00" (CI) values order correctly.
+    """
+    stamps = [
+        when
+        for when in (parse_stamp(item.get("generated_at")) for item in (manifest.get("roles") or {}).values())
+        if when
+    ]
+    if not stamps:
+        return None
+    return (datetime.now(timezone.utc) - min(stamps)).total_seconds() / 3600.0
 
 
 def log(message: str) -> None:
@@ -74,7 +102,7 @@ def read_profile(portal: str, role: str) -> Dict:
 
 
 def published_age_hours(portal: str) -> Optional[float]:
-    """Age in hours of the newest published role data, read from origin/data."""
+    """Age in hours of the oldest published role data, read from origin/data."""
     run(["git", "fetch", "origin", "data"], cwd=portal)
     try:
         # Explicit UTF-8: the Windows default code page mangles or drops it.
@@ -97,21 +125,7 @@ def published_age_hours(portal: str) -> Optional[float]:
     except json.JSONDecodeError:
         return None
 
-    stamps = [
-        item.get("generated_at")
-        for item in (manifest.get("roles") or {}).values()
-        if item.get("generated_at")
-    ]
-    if not stamps:
-        return None
-    newest = max(stamps)
-    try:
-        when = datetime.fromisoformat(newest)
-    except ValueError:
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+    return oldest_role_age_hours(manifest) if isinstance(manifest, dict) else None
 
 
 def venv_python(venv_dir: str, role: str) -> str:
@@ -168,11 +182,9 @@ def main() -> int:
             last_run = None
 
     last_run_age = None
-    if last_run:
-        try:
-            last_run_age = (datetime.now(timezone.utc) - datetime.fromisoformat(last_run)).total_seconds() / 3600.0
-        except ValueError:
-            last_run_age = None
+    last_run_at = parse_stamp(last_run)
+    if last_run_at:
+        last_run_age = (datetime.now(timezone.utc) - last_run_at).total_seconds() / 3600.0
 
     log(
         f"published data age: "

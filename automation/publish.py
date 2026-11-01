@@ -115,6 +115,34 @@ def _days_ago(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_stamp(value: Any) -> Optional[datetime]:
+    """An ISO timestamp as an aware datetime (naive values are taken as UTC)."""
+    if not value:
+        return None
+    try:
+        when = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def newest_stamp(values: list[Any]) -> Optional[str]:
+    """The latest of several ISO timestamps, written in UTC.
+
+    Compared as datetimes: as strings "09:00+05:30" sorts after "05:00+00:00"
+    although it is half an hour earlier, so mixing PC and CI publishes could
+    move generated_at backwards.
+    """
+    stamps = [when for when in (parse_stamp(v) for v in values) if when]
+    if not stamps:
+        return None
+    return max(stamps).astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
 def stamp_seen(payload: Dict[str, Any], day: Optional[str] = None) -> Dict[str, Any]:
     """Mark every job in a fresh scrape as seen today."""
     day = day or _today()
@@ -127,7 +155,8 @@ def stamp_seen(payload: Dict[str, Any], day: Optional[str] = None) -> Dict[str, 
 
 def _backfill_last_seen(payload: Dict[str, Any]) -> None:
     """Older published files have no last_seen; use the file's own date."""
-    fallback = (payload.get("generated_at") or "")[:10] or _today()
+    generated = parse_stamp(payload.get("generated_at"))
+    fallback = generated.astimezone(timezone.utc).date().isoformat() if generated else _today()
     for job in payload.get("jobs", []):
         if not job.get("last_seen"):
             job["last_seen"] = fallback
@@ -225,11 +254,9 @@ def merge_payloads(
         name = job.get("source") or "Unknown"
         sources[name] = sources.get(name, 0) + 1
 
-    stamps = [p.get("generated_at") for p in (previous, fresh) if p.get("generated_at")]
-
     return {
         "role": fresh.get("role") or previous.get("role"),
-        "generated_at": max(stamps) if stamps else datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "generated_at": newest_stamp([previous.get("generated_at"), fresh.get("generated_at")]) or utc_now(),
         "count": len(jobs),
         "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
         "jobs": jobs,
@@ -567,7 +594,7 @@ def publish(args: argparse.Namespace, repo_dir: str, artifacts: str) -> int:
             print("[publish] nothing to publish")
             return 1
 
-        now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        now = utc_now()
         manifest = build_manifest(payloads, statuses, now)
 
         if push_data_branch(repo_dir, args.branch, payloads, manifest, expected_head, now):

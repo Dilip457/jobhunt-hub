@@ -520,7 +520,7 @@ for each role in (genai, data, uiux, ba, sde):
 4. Drop jobs older than `retention_days` (default 21), using `posted_date` or `first_seen`.
 5. Sort by score descending, then posted date ascending/empty.
 6. Recompute `sources` counts.
-7. Set `generated_at` to the newer of the two payload timestamps.
+7. Set `generated_at` to the later of the two payload timestamps, compared as times (not strings) and written in UTC; `publish.py` writes every timestamp it produces in UTC.
 
 ### 5.3 Manifest
 
