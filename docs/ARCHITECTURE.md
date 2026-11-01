@@ -336,7 +336,7 @@ budget an integrated GPU can meet:
   over a canvas that redraws every frame, is recomputed by the compositor every frame.
 
 The dashboard follows the same rule for scrolling: the sticky header has no backdrop
-blur (the filter bar scrolls with the page, so it never rides over the cards), the fixed background glows are gradients rather than blurred
+blur and holds only the brand, role switcher and actions (the updates ticker sits below it and the filter bar further down, and both scroll with the page, so neither rides over the content), the fixed background glows are gradients rather than blurred
 discs, the below-the-fold info section uses `content-visibility: auto`, and the
 search box feeds the job filter through `useDeferredValue`, so keystrokes never wait
 for the list. Its own motion is transform and opacity only: the gate beside the title

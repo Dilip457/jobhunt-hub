@@ -2067,7 +2067,7 @@ a.best-match:hover {
 /* Filters */
 
 .dashboard-jobs-anchor {
-  /* The sticky header with its ticker is 108px tall. */
+  /* Clears the sticky header (72px; the ticker below it scrolls away). */
   scroll-margin-top: 120px;
 }
 
@@ -3793,7 +3793,7 @@ a.best-match:hover {
   align-items: center;
   height: 36px;
   overflow: hidden;
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   background: rgba(14, 17, 23, 0.9);
   color: var(--muted);
   font-size: 12.5px;

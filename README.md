@@ -292,7 +292,7 @@ Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/job
 
 Each role page, in the role's own colour:
 
-- a ticker under the header: when the data was published, the role's job and company
+- a ticker just below the header that scrolls away with the page (the header stays): when the data was published, the role's job and company
   counts, the top match, then the jobs new since the last scrape, best match first;
 - the title beside the gate the guide walked through, with the role's job, company and source counts;
 - **Best match right now** as a solid tile, beside **How the top match scores**: a radar of

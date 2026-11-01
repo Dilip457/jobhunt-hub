@@ -570,10 +570,9 @@ export default function JobDashboard({ role }: Props) {
             </Link>
           </div>
         </div>
-        {data ? (
-          <UpdatesTicker jobs={jobs} role={role} updatedAt={status?.lastRunAt ?? data.generated_at} />
-        ) : null}
       </header>
+      {/* Below the sticky header, so it stays at the top of the page and scrolls away. */}
+      {data ? <UpdatesTicker jobs={jobs} role={role} updatedAt={status?.lastRunAt ?? data.generated_at} /> : null}
 
       <main className="shell dashboard-main">
         <section className="dashboard-hero">

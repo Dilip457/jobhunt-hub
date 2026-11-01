@@ -135,7 +135,7 @@ jobhunt-hub/
 │  │  ├─ JobDashboard.tsx         # dashboard state, filters, refresh polling
 │  │  ├─ Filters.tsx              # search/city/source/score/experience/date/sort
 │  │  ├─ JobCard.tsx              # one job card: role light, then it turns over to its back
-│  │  ├─ UpdatesTicker.tsx        # strip under the header: new since the last scrape
+│  │  ├─ UpdatesTicker.tsx        # strip below the header, scrolls away: new since the last scrape
 │  │  ├─ HeroGate.tsx             # the destination gate beside the title, in CSS
 │  │  ├─ BestMatch.tsx            # the role's top job as a solid tile
 │  │  ├─ MatchSignal.tsx          # radar of the top job's score parts + match bands
@@ -211,7 +211,7 @@ jobhunt-hub/
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
 | Job card | `web/components/JobCard.tsx` | `JobCard`, `FLIP_MS` | Front: company wordmark in its own colour (`companyHue`) with a corner bloom, score in white with tier word and a New chip under it, title, city · experience, snippet, source · date, Apply (outlined, fills with the company colour on hover). Back: the listing's words, the score's parts as bars (`matchAxes()`), company · city, Apply. Lights in the role colour where the pointer lands and turns over after 1.2 s (hover-capable pointers, motion not reduced); a click, tap, Enter or Space anywhere but Apply turns it over or back |
-| Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | Strip under the header: updated-when, job and company counts, top match, then the new-since-last-scrape jobs; pauses on hover, static when motion is reduced |
+| Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | Strip just below the sticky header, outside it, so it scrolls away with the page: updated-when, job and company counts, top match, then the new-since-last-scrape jobs; pauses on hover, static when motion is reduced |
 | Hero gate | `web/components/HeroGate.tsx` | `HeroGate` | The role's gate beside the title, CSS only |
 | Best match | `web/components/BestMatch.tsx` | `BestMatch` | The top job of the role's default order as a solid tile linking to the posting |
 | Match signal | `web/components/MatchSignal.tsx` | `MatchSignal` | Radar of the top job's score parts (3+ parts, from the file or `estimate.ts`), parts bars, a footnote when estimated, jobs by match band |
