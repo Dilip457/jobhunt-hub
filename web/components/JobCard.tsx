@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { Job, RoleSlug } from "@/lib/types";
 import { matchAxes } from "@/lib/rank";
-import { dateAgo, experienceLabel, initials, scoreTier, sourceColor } from "@/lib/utils";
+import { companyHue, dateAgo, experienceLabel, scoreTier, sourceColor } from "@/lib/utils";
 import { ExternalIcon } from "./Icons";
 
 interface Props {
@@ -19,8 +19,9 @@ interface Props {
 export const FLIP_MS = 1200;
 
 /**
- * One job as a two-sided card. The front carries the monogram, score, title,
- * company line, source and Apply. On a pointer that can hover, with motion not
+ * One job as a two-sided card. The front carries the company as a wordmark in
+ * its own colour (companyHue), the score, title, city and experience, source
+ * and Apply; Apply is outlined and fills with the company's colour on hover. On a pointer that can hover, with motion not
  * reduced, the role's light falls where the pointer lands and after FLIP_MS the
  * card turns over to its back: the listing's own words, how the score breaks
  * down (role fit, skills, tools, experience, domain) and Apply again. It turns
@@ -38,6 +39,7 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
   const [lit, setLit] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const { axes } = matchAxes(job, role);
+  const hue = companyHue(job.company);
 
   useEffect(() => {
     const query = window.matchMedia("(hover: hover) and (prefers-reduced-motion: no-preference)");
@@ -114,6 +116,9 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
           "--card-delay": `${Math.min(index, 10) * 45}ms`,
           "--accent": accent,
           "--source-color": sourceColor(job.source),
+          "--hue": hue.color,
+          "--hue-ink": hue.ink,
+          "--hue-text": hue.text,
         } as CSSProperties
       }
       tabIndex={0}
@@ -128,24 +133,26 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
         <div className="job-face job-front" inert={flipped}>
           <span className="job-card-light" aria-hidden />
 
+          <span className="job-bloom" aria-hidden />
+
           <div className="job-card-head">
-            <div className="job-card-id">
-              <span className="job-mono" aria-hidden>
-                {initials(job.company)}
-              </span>
-              {job.is_new ? <span className="new-badge">New</span> : null}
+            <p className="job-wordmark" title={job.company}>
+              {job.company}
+            </p>
+            <div className="job-head-side">
+              {showScore ? (
+                <div className="job-score" aria-label={`Match ${Math.round(job.score)} out of 100, ${tier.label}`}>
+                  <b>{Math.round(job.score)}</b>
+                  <small>{tier.label.replace(/ match$/, "")}</small>
+                </div>
+              ) : null}
+              {job.is_new ? <span className="job-new">New</span> : null}
             </div>
-            {showScore ? (
-              <div className="job-score" aria-label={`Match ${Math.round(job.score)} out of 100, ${tier.label}`}>
-                <b>{Math.round(job.score)}</b>
-                <small>{tier.label.replace(/ match$/, "")}</small>
-              </div>
-            ) : null}
           </div>
 
           <h3 className="job-title">{job.title}</h3>
           <p className="job-line">
-            <b>{job.company}</b> · {job.location} · {experienceLabel(job)}
+            {job.location} · {experienceLabel(job)}
           </p>
           {job.snippet ? <p className="job-snippet">{job.snippet}</p> : null}
 

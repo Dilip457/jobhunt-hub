@@ -341,7 +341,12 @@ discs, the below-the-fold info section uses `content-visibility: auto`, and the
 search box feeds the job filter through `useDeferredValue`, so keystrokes never wait
 for the list. Its own motion is transform and opacity only: the gate beside the title
 (`HeroGate`) and the radar in the match-signal panel turn on CSS keyframes; the
-updates ticker is one translating track that pauses under the pointer; a job card is
+updates ticker is one translating track that pauses under the pointer; each job card
+takes a colour of its company's own from `companyHue()` (a hash of the name, so the
+same company always gets the same hue), set as `--hue`, `--hue-ink` and `--hue-text`
+custom properties for the wordmark, the corner bloom, the New chip and Apply's hover
+fill, with the text tone lightened until it reads at 4.5:1 and the ink on the fill
+chosen by contrast; a job card is
 two faces in one grid cell inside a `preserve-3d` box: the role colour lights where
 the pointer lands (a separate layer, opacity only) and after 1.2 s `JobCard` adds
 `.is-flipped`, which turns the box `rotateY(180deg)` over 0.7 s to the back face
