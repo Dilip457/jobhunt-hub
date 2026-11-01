@@ -399,13 +399,13 @@ even though the main scrape uses `--no-apis`.
 Exports the vendor SQLite database to public JSON:
 
 - Reads the `jobs` table ordered by score and posted date.
-- Normalizes locations to India/Remote; foreign listings are dropped. Company career page rows (a global source) use the strict rule below; a row with no location can still name its Indian city in the title or URL, and a title naming a foreign place ("...-Germany-EU") is dropped.
+- Normalizes locations to India/Remote; foreign listings are dropped. Company career page rows (a global source) use the strict rule below; a row with no location can still name its Indian city in the title or URL, and a title naming a foreign place ("...-Germany-EU") is dropped. The company name is ignored in that title check ("Data Engineer | NTT DATA North America" is not foreign).
 - Gates and publishes the same cleaned title (`clean_title()`), so `publish.py` re-checking the stored title agrees with the export.
 - Keeps only a **240-character snippet**, not the full description.
 - Extracts experience ranges only when the listing states them (board experience field, title or description). "Associate", "Senior", "Manager" and similar level words no longer turn into years: at JPMorgan an Associate role asked for 7+ years and at Amgen a Senior Associate role for 5-9, while the cards showed 0-2. Naukri's per-card "5-9 Yrs" and Foundit's min/max fields are read directly. `experience_source` records whether the value was stated; `publish.finalize_job()` clears older guessed values.
 - Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later drops `score_parts`, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
 - Drops jobs below the score floor, with invalid URLs, with foreign locations, or older than the freshness window.
-- `sources` counts only exported jobs, so it adds up to `count` (aged-out rows used to be counted).
+- `sources` counts only exported jobs, so it adds up to `count` (aged-out rows used to be counted). A URL is marked as seen only once its row is exported, so an aged-out copy no longer hides a fresh, lower-scored copy of the same URL.
 - Sorts by score then posted date.
 
 ### 4.6 Normalization, scoring and deduplication
@@ -417,6 +417,7 @@ Exports the vendor SQLite database to public JSON:
 - Drops known foreign locations (for example “Remote - US”, “Remote (Americas)”, “EMEA”, “Europe”, “APAC (excluding India)”, “San Jose, CA”, “Sofia, Bulgaria”). US state codes are recognised after a comma (“Bellevue, WA”); codes that are also Indian state or country codes (TN, GA, IN, ...) are not, so “Chennai, TN” and “Pune, IN” stay Indian. “Indianapolis” does not match “India”.
 - Indian boards: an unknown location is kept and labelled “India” so it is not silently lost.
 - Global sources (company ATS boards, remote boards, vendor company career pages) are **strict**: a job is kept only when its location names an Indian city, state, state code (“Sanand, GJ”) or minor place (`INDIA_PLACES`), or an India-eligible remote. Unknown places are dropped; before, a global board's “Santa Clara, California” or “Ho Chi Minh City” was published as India. Adzuna, Jooble and JSearch are queried for India only and keep the lenient rule.
+- A minor place followed by a US state code is American (“Salem, OR”), and the HR/KL codes are not read as Haryana/Kerala (they are also Croatia and Kuala Lumpur). A bare “Remote”, “Worldwide” or “Anywhere” counts as India-eligible in both modes, including on global boards. “Bangalore or Remote (US)” is kept and labelled with the city.
 
 **Title relevance**
 

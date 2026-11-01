@@ -101,10 +101,62 @@ def test_strict_mode_keeps_positive_india_matches(raw, city):
     assert normalize_location(raw, strict=True) == (city, True)
 
 
-@pytest.mark.parametrize("raw", ["", "Kakkanad", "Springfield", "Debar", "Unknown"])
+@pytest.mark.parametrize("raw", ["", "Kadugodi", "Springfield", "Debar", "Unknown"])
 def test_strict_mode_drops_unknown_places_but_lenient_mode_keeps_them(raw):
     assert normalize_location(raw, strict=True)[1] is False
     assert normalize_location(raw) == ("India", True)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Salem, OR",  # Salem, Tamil Nadu is in INDIA_PLACES; with a US code it is Oregon
+        "Salem, MA",
+        "Split, HR",  # HR is Croatia here, not Haryana
+        "Petaling Jaya, KL",  # KL is Kuala Lumpur, not Kerala
+    ],
+)
+def test_strict_mode_does_not_mistake_foreign_places_for_india(raw):
+    assert normalize_location(raw, strict=True)[1] is False
+
+
+@pytest.mark.parametrize(
+    "raw, city",
+    [
+        ("Salem, TN", "India"),
+        ("Salem, Tamil Nadu", "India"),
+        ("Manesar, HR", "India"),
+        ("Gurgaon, HR", "Gurgaon"),
+        ("Kochi, KL", "Kochi"),
+        ("Kakkanad", "India"),
+    ],
+)
+def test_indian_places_with_shared_codes_still_match(raw, city):
+    assert normalize_location(raw, strict=True) == (city, True)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # Open to India only on site: labelled with the city.
+        ("Bangalore or Remote (US)", ("Bangalore", True)),
+        ("Hyderabad / Remote - Europe", ("Hyderabad", True)),
+        # Open to India as remote work: still "Remote".
+        ("Remote - Bangalore", ("Remote", True)),
+        ("Remote - US or India", ("Remote", True)),
+        ("Remote", ("Remote", True)),
+    ],
+)
+def test_remote_with_an_indian_city_and_a_foreign_restriction(raw, expected):
+    assert normalize_location(raw, strict=True) == expected
+
+
+def test_career_page_title_check_ignores_the_company_name():
+    from export import export_location
+
+    assert export_location("", "Company Career Pages", "Data Engineer | NTT DATA North America",
+                           "https://x.test/careers/Bengaluru-Data-Engineer",
+                           "NTT DATA North America") == ("Bangalore", True)
 
 
 def test_career_page_rows_need_a_positive_india_match():

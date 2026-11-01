@@ -103,6 +103,39 @@ def test_build_job_still_reads_foreign_segments_of_the_raw_title():
                      "https://x.test/2", "", None) is None
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "<strong>Business</strong> <strong>Analyst</strong>",
+        "&lt;b&gt;Business Analyst&lt;/b&gt;",
+        "Business Analyst | <b>Pune</b>",
+    ],
+)
+def test_build_job_stores_titles_without_markup(raw):
+    job = build_job("ba", "Naukri", raw, "Acme", "Pune", "https://x.test/3", "", None)
+    assert job is not None
+    assert job["title"] == "Business Analyst"
+
+
+@pytest.mark.parametrize(
+    "raw, company",
+    [
+        ("Data Engineer | NTT DATA North America", "NTT DATA North America"),
+        ("Data Engineer - Bridgestone Americas", "Bridgestone Americas, Inc."),
+        ("Data Engineer | Tesco Technology and Services Europe",
+         "Tesco Technology and Services Europe Limited"),
+    ],
+)
+def test_company_name_in_title_is_not_a_foreign_place(raw, company):
+    job = build_job("data", "LinkedIn", raw, company, "Bengaluru", "https://x.test/4", "", None)
+    assert job is not None
+    # A "|" company segment is dropped from the stored title; a "-" one stays.
+    assert job["title"] in ("Data Engineer", raw)
+    # The same region named as the job's place still drops it.
+    assert build_job("data", "LinkedIn", "Data Engineer | North America", "Acme", "Bengaluru",
+                     "https://x.test/5", "", None) is None
+
+
 def _vendor_db(path, rows):
     conn = sqlite3.connect(path)
     conn.execute(

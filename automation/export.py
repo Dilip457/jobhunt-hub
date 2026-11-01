@@ -104,6 +104,10 @@ INDIA_PLACES = {
     "pondicherry", "puducherry", "thrissur", "kozhikode", "calicut", "kannur",
     "siliguri", "durgapur", "jamshedpur", "cuttack", "rourkela", "gwalior",
     "jabalpur", "ujjain", "srinagar", "jammu", "shimla", "haridwar", "roorkee",
+    # Haryana and Kerala sites that global career pages list on their own
+    # (their ", HR" / ", KL" codes are also Croatia and Kuala Lumpur).
+    "manesar", "panipat", "sonipat", "karnal", "ambala", "rohtak", "kollam",
+    "kottayam", "alappuzha", "palakkad", "kakkanad", "technopark", "infopark",
 }
 
 FOREIGN_MARKERS = {
@@ -203,12 +207,22 @@ REMOTE_FOREIGN_RE = re.compile(
     re.I,
 )
 
+# The US codes India also uses (except TN, which is Tamil Nadu far more often
+# than Tennessee here). Only used to overrule a minor Indian place name:
+# "Salem, OR" and "Salem, MA" are American, "Salem, TN" is Tamil Nadu.
+US_STATE_CODE_ANY_RE = re.compile(
+    r"[,\-–(]\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|ME|MD|MA|MI|"
+    r"MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TX|UT|VT|VA|WA|WV|"
+    r"WI|WY|DC)(?:\s+\d{5})?\s*(?=[,)]|$)"
+)
+
 # Global career pages give Indian sites as "Gangaikondan, TN" or "Sanand, GJ".
 # Indian state codes that are also common foreign codes (GA, AR, MN, OR, LA,
-# CT, UT, CH, SK, TR, NL, BR, ...) are left out. Checked after the foreign
-# markers, so "Nashville, TN" is still dropped.
+# CT, UT, CH, SK, TR, NL, BR, HR for Croatia, KL for Kuala Lumpur, ...) are
+# left out. Checked after the foreign markers, so "Nashville, TN" is still
+# dropped.
 INDIA_STATE_CODE_RE = re.compile(
-    r",\s*(?:TN|KA|KL|MH|TS|TG|AP|GJ|DL|HR|UP|WB|RJ|MP|PB|OD|HP|JK|JH|CG)\s*$"
+    r",\s*(?:TN|KA|MH|TS|TG|AP|GJ|DL|UP|WB|RJ|MP|PB|OD|HP|JK|JH|CG)\s*$"
 )
 
 # "APAC (excluding India)" names India only to rule it out.
@@ -240,9 +254,11 @@ def normalize_location(raw: str, strict: bool = False) -> Tuple[str, bool]:
 
     Indian job boards rarely list a foreign city, so by default a location we
     cannot place is kept and labelled "India". Global sources (company career
-    pages, remote boards, job APIs) list jobs worldwide: with ``strict`` a job
-    is kept only when its location positively names India or an India-eligible
-    remote, and anything we cannot place is dropped.
+    pages, company ATS boards and remote boards; not the India-only Adzuna,
+    Jooble and JSearch queries) list jobs worldwide: with ``strict`` a job is
+    kept only when its location positively names India or an India-eligible
+    remote, and anything we cannot place is dropped. A bare "Remote" or
+    "Worldwide" counts as India-eligible in both modes.
     """
     text = re.sub(r"\s+", " ", unescape(str(raw or ""))).strip()
     low = text.lower()
@@ -256,7 +272,12 @@ def normalize_location(raw: str, strict: bool = False) -> Tuple[str, bool]:
         for word in REMOTE_WORDS:
             remainder = remainder.replace(word, " ")
         # "Remote - US or India" is open to India; "Remote (Americas)" is not.
-        if _india_place(remainder):
+        # "Bangalore or Remote (US)" is open to India only on site, so it is
+        # labelled with the city.
+        place = _india_place(remainder)
+        if place:
+            if place != "India" and (REMOTE_FOREIGN_RE.search(remainder) or looks_foreign(remainder)):
+                return (place, True)
             return ("Remote", True)
         if (REMOTE_FOREIGN_RE.search(remainder) or looks_foreign(remainder)
                 or US_STATE_CODE_RE.search(text) or INDIA_EXCLUDED_RE.search(low)):
@@ -268,6 +289,10 @@ def normalize_location(raw: str, strict: bool = False) -> Tuple[str, bool]:
     # "Kukatpally" contains "uk", "Perungudi" and "Sriperumbudur" contain "peru".
     # Word boundaries also stop "Indianapolis" from matching "india".
     city = _india_place(low)
+    # A minor place name followed by a US state code is the American town:
+    # "Salem, OR". Major Indian cities always win.
+    if city == "India" and US_STATE_CODE_ANY_RE.search(text):
+        return (text, False)
     if city:
         return (city, True)
 
@@ -789,13 +814,16 @@ def india_hint(*texts: str) -> Optional[str]:
     return None
 
 
-def export_location(location: str, source: str, title: str = "", url: str = "") -> Tuple[str, bool]:
+def export_location(
+    location: str, source: str, title: str = "", url: str = "", company: str = ""
+) -> Tuple[str, bool]:
     """(city, keep) for one vendor row. Global sources need a positive India
     match; a row with no location may still name its Indian city in the title
-    or URL. A title that names a foreign place ("...-Germany-EU") drops it."""
+    or URL. A title that names a foreign place ("...-Germany-EU") drops it;
+    the company name is ignored there ("NTT DATA North America")."""
     if not GLOBAL_SOURCE_RE.search(source or ""):
         return normalize_location(location)
-    if looks_foreign(title):
+    if looks_foreign(strip_company(title, company)):
         return (location, False)
     city, keep = normalize_location(location, strict=True)
     if keep or (location or "").strip():
@@ -863,7 +891,9 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             continue
 
         source = (row["source"] or "Unknown").strip() or "Unknown"
-        city, keep = export_location(row["location"] or "", source, row["title"] or "", url)
+        city, keep = export_location(
+            row["location"] or "", source, row["title"] or "", url, row["company"] or ""
+        )
         if not keep:
             dropped_foreign += 1
             continue
@@ -885,7 +915,8 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             continue
 
         # Count only rows that are actually exported, so `sources` adds up to
-        # `count`.
+        # `count`. The URL is marked seen only now too: an aged-out copy no
+        # longer hides a fresh, lower-scored copy of the same URL.
         seen.add(key)
         sources[source] = sources.get(source, 0) + 1
 

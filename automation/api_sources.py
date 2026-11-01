@@ -613,9 +613,12 @@ def build_job(
     public_title = clean_title(title, company)
     if not title_relevant(role, public_title, resolve_overlap=True):
         return None
-    if looks_foreign(title):
+    # The company name is left out: "NTT DATA North America" in a title names
+    # the employer, not where the job is.
+    place_title = strip_company(title, company)
+    if looks_foreign(place_title):
         return None
-    if TITLE_FOREIGN_REGION.search(title or ""):
+    if TITLE_FOREIGN_REGION.search(place_title):
         return None
     city, keep = norm_location(location, strict=strict_location)
     if not keep:
