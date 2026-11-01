@@ -210,7 +210,7 @@ jobhunt-hub/
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX / Business Analyst |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
-| Job card | `web/components/JobCard.tsx` | `JobCard`, `FLIP_MS`, `FlipIcon` | Front: monogram, score figure with tier word, title, company · city · experience, snippet, source · date, New, Apply. Back: the listing's words, the score's parts as bars (`matchAxes()`), company · city, Apply. Lights in the role colour where the pointer lands and turns over after 1.2 s (hover-capable pointers, motion not reduced); a turn-over button otherwise |
+| Job card | `web/components/JobCard.tsx` | `JobCard`, `FLIP_MS` | Front: monogram, score figure with tier word, title, company · city · experience, snippet, source · date, New, Apply. Back: the listing's words, the score's parts as bars (`matchAxes()`), company · city, Apply. Lights in the role colour where the pointer lands and turns over after 1.2 s (hover-capable pointers, motion not reduced); a click, tap, Enter or Space anywhere but Apply turns it over or back |
 | Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | Strip under the header: updated-when, job and company counts, top match, then the new-since-last-scrape jobs; pauses on hover, static when motion is reduced |
 | Hero gate | `web/components/HeroGate.tsx` | `HeroGate` | The role's gate beside the title, CSS only |
 | Best match | `web/components/BestMatch.tsx` | `BestMatch` | The top job of the role's default order as a solid tile linking to the posting |
@@ -332,7 +332,8 @@ to `HeroGate`, `BestMatch`, `MatchSignal` and `JobCard`.
 | Updates ticker | Data loaded | `UpdatesTicker`: the facts (`timeAgo(updatedAt)`, `jobs.length`, `uniqueCompanies()`, `topMatch()`), then `newJobs(jobs, role)` from `rank.ts`, first `SHOWN = 12`, on a CSS-translated track repeated once; pauses on hover/focus; "Nothing new since the last scrape" plus the facts when none |
 | Best match tile | Data loaded | `best = topMatch(jobs, role)` (unfiltered list, the role's default order) → `BestMatch`; the tile links to the posting |
 | Match signal | Data loaded | `MatchSignal`: `matchAxes(best, role)` (the file's parts when 3+, else `estimateParts()` with a footnote; radar when 3+ axes, bars otherwise) and `matchBands(jobs)` |
-| Card hover | Pointer over a card | `JobCard` `aim()` sets `--mx`/`--my`; `enter()` adds `.is-lit`, and after `FLIP_MS` = 1200 ms swaps it for `.is-flipped` (`.job-card-inner` turns `rotateY(180deg)`; the away face is `inert`); `leave()` clears both; only when `(hover: hover) and (prefers-reduced-motion: no-preference)`, else the `.flip-btn` in each face's footer toggles the flip |
+| Card hover | Pointer over a card | `JobCard` `aim()` sets `--mx`/`--my`; `enter()` adds `.is-lit`, and after `FLIP_MS` = 1200 ms swaps it for `.is-flipped` (`.job-card-inner` turns `rotateY(180deg)`; the away face is `inert`); `leave()` clears both; only when `(hover: hover) and (prefers-reduced-motion: no-preference)` |
+| Card click | Click/tap on a card (not a link or button), or Enter/Space with it focused | `JobCard` `click()` / `key()` → `toggle()`: cancels a pending hover turn and toggles `.is-flipped`; on every device |
 
 URL parameters:
 
@@ -755,7 +756,7 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
-| Card light / turn-over | `JobCard.tsx` (`FLIP_MS`) | `.job-card` (perspective), `.job-card-inner`, `.job-face`, `.job-back`, `.job-parts`, `.flip-btn`, `.job-card-light` in `globals.css` |
+| Card light / turn-over | `JobCard.tsx` (`FLIP_MS`) | `.job-card` (perspective), `.job-card-inner`, `.job-face`, `.job-back`, `.job-parts`, `.job-card-light`, `.job-card:focus-visible` in `globals.css` |
 | Edge lights | `globals.css` `.edge-light` | the two spans in `JobDashboard.tsx` |
 | Filter bar placement | `globals.css` `.filters` (scrolls with the page) | `.dashboard-jobs-anchor` scroll margin |
 | Grid columns per width | `globals.css` `.job-grid` (4 ≥1200px, 2, 1 ≤640px) | `PAGE_SIZE = 8` in `JobDashboard.tsx` |

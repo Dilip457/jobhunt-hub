@@ -2378,24 +2378,16 @@ a.best-match:hover {
   text-align: right;
 }
 
-/* Touch and reduced motion turn the card with this button instead of a hover. */
-.flip-btn {
-  display: inline-grid;
-  flex: none;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--border-strong);
-  border-radius: 50%;
-  background: transparent;
-  color: #fff;
+/* A click, tap or Enter anywhere but Apply turns the card (JobCard toggle()). */
+.job-card:not(.skeleton) {
   cursor: pointer;
+  border-radius: 20px;
+  outline: none;
 }
 
-.flip-btn[aria-pressed="true"] {
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--black);
+.job-card:focus-visible .job-face {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 @keyframes card-in {
@@ -3593,17 +3585,12 @@ a.best-match:hover {
     font-size: 15px;
   }
 
-  /* Source · date on its own line; the turn-over button and Apply share the next. */
   .job-footer {
-    flex-wrap: wrap;
-  }
-
-  .job-footer .job-meta {
-    flex-basis: 100%;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .apply-btn {
-    flex: 1 1 auto;
     justify-content: center;
   }
 

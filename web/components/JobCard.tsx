@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { Job, RoleSlug } from "@/lib/types";
 import { matchAxes } from "@/lib/rank";
 import { dateAgo, experienceLabel, initials, scoreTier, sourceColor } from "@/lib/utils";
@@ -24,8 +24,9 @@ export const FLIP_MS = 1200;
  * reduced, the role's light falls where the pointer lands and after FLIP_MS the
  * card turns over to its back: the listing's own words, how the score breaks
  * down (role fit, skills, tools, experience, domain) and Apply again. It turns
- * back when the pointer leaves. Touch and reduced motion get a "turn over"
- * button instead, so the back is reachable everywhere.
+ * back when the pointer leaves. A click or tap anywhere on the card except
+ * Apply turns it over or back, as does Enter or Space when the card has focus,
+ * so touch, keyboard and reduced motion reach the back too.
  */
 export default function JobCard({ job, role, showScore, accent, index = 0 }: Props) {
   const tier = scoreTier(job.score);
@@ -35,9 +36,7 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
   const flipTimer = useRef<number | null>(null);
   const [motion, setMotion] = useState(false);
   const [lit, setLit] = useState(false);
-  const [hoverFlip, setHoverFlip] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const flipped = hoverFlip || pinned;
+  const [flipped, setFlipped] = useState(false);
   const { axes } = matchAxes(job, role);
 
   useEffect(() => {
@@ -59,22 +58,49 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
     card.style.setProperty("--my", `${(((event.clientY - box.top) / box.height) * 100).toFixed(1)}%`);
   }
 
+  function stopTimer() {
+    if (flipTimer.current !== null) window.clearTimeout(flipTimer.current);
+    flipTimer.current = null;
+  }
+
   function enter(event: PointerEvent<HTMLElement>) {
     if (!motion) return;
     aim(event);
     setLit(true);
-    if (flipTimer.current !== null) window.clearTimeout(flipTimer.current);
+    stopTimer();
     flipTimer.current = window.setTimeout(() => {
+      flipTimer.current = null;
       setLit(false);
-      setHoverFlip(true);
+      setFlipped(true);
     }, FLIP_MS);
   }
 
   function leave() {
-    if (flipTimer.current !== null) window.clearTimeout(flipTimer.current);
-    flipTimer.current = null;
+    if (!motion) return;
+    stopTimer();
     setLit(false);
-    setHoverFlip(false);
+    setFlipped(false);
+  }
+
+  /** Turn the card by hand; a pending hover turn is cancelled so it doesn't undo the click. */
+  function toggle() {
+    stopTimer();
+    setLit(false);
+    setFlipped((value) => !value);
+  }
+
+  function click(event: MouseEvent<HTMLElement>) {
+    // Apply opens the posting; selecting text is not a click on the card.
+    if ((event.target as HTMLElement).closest("a, button")) return;
+    if (window.getSelection()?.toString()) return;
+    toggle();
+  }
+
+  function key(event: KeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggle();
   }
 
   const applyHref = job.apply_url || job.url;
@@ -90,9 +116,13 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
           "--source-color": sourceColor(job.source),
         } as CSSProperties
       }
+      tabIndex={0}
+      aria-label={`${job.title} at ${job.company}. ${flipped ? "Showing how it scores" : "Showing the job"}; press Enter to turn the card.`}
       onPointerEnter={enter}
       onPointerMove={aim}
       onPointerLeave={leave}
+      onClick={click}
+      onKeyDown={key}
     >
       <div className="job-card-inner">
         <div className="job-face job-front" inert={flipped}>
@@ -125,17 +155,6 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
               {job.source}
               {when ? <span className="job-seen"> · {when}</span> : null}
             </span>
-            {motion ? null : (
-              <button
-                type="button"
-                className="flip-btn"
-                aria-pressed={pinned}
-                aria-label={`Turn over: how ${job.title} at ${job.company} scores`}
-                onClick={() => setPinned(true)}
-              >
-                <FlipIcon />
-              </button>
-            )}
             <a
               className="apply-btn"
               href={applyHref}
@@ -168,17 +187,6 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
             <span className="job-meta">
               {job.company} · {job.location}
             </span>
-            {motion ? null : (
-              <button
-                type="button"
-                className="flip-btn"
-                aria-pressed={pinned}
-                aria-label="Turn back"
-                onClick={() => setPinned(false)}
-              >
-                <FlipIcon />
-              </button>
-            )}
             <a
               className="apply-btn"
               href={applyHref}
@@ -193,13 +201,5 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
         </div>
       </div>
     </article>
-  );
-}
-
-function FlipIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
-      <path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5" />
-    </svg>
   );
 }
