@@ -315,9 +315,14 @@ budget an integrated GPU can meet:
   ratio steps down 0.15 (never below 0.7); comfortably fast for 3 s and it steps back
   up 0.1 (never above the start). Before this the scene supersampled every display to
   at least 2×, which held an Intel UHD 630 at about 10 fps.
-- **Lights.** Three directional (key, rim, fill) and three point lights (red, blue,
-  face fill). Each gate's floor light is its additive glow plane, not a point light,
-  because every light is evaluated for every lit fragment.
+- **Lights.** Three directional (key, rim, fill) and four point lights (red, blue,
+  face fill, gate spill). Each gate's floor light is its additive glow plane, not a
+  point light, because every light is evaluated for every lit fragment. The gate
+  spill is one short-range (1.8 m) light shared by all five gates: during the walk it
+  rides just above the guide's crown, leaning toward the selected gate, in that
+  gate's colour, and brightens as he nears it. It sits at zero intensity otherwise
+  rather than being removed, because changing the light count recompiles every lit
+  material.
 - **Shadows.** One 1024 px `PCFShadowMap` from the key light. The character is the
   only caster, so the shadow camera is a 7 m box that follows him (`updateCharacter`
   moves the light and its target), which is sharper than the old 24 m, 2048 px soft

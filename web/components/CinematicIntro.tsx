@@ -638,6 +638,7 @@ interface Gate {
   strips: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[];
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   glow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  color: THREE.Color;
 }
 
 interface Props {
@@ -878,7 +879,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       scene.add(rim);
       // One fill from front-right stands in for the former front and side
       // fills. Every light is evaluated for every lit fragment, so the count
-      // is kept low: three directional and three point lights in all.
+      // is kept low: three directional and four point lights in all.
       const fill = new THREE.DirectionalLight(0xffeee4, isMobile ? 0.8 : 0.9);
       fill.position.set(1.4, 2.3, 4.6);
       scene.add(fill);
@@ -895,6 +896,17 @@ export default function CinematicIntro({ onComplete }: Props) {
       const faceFill = new THREE.PointLight(0xffeadf, isMobile ? 0.5 : 0.6, 4.2, 2);
       faceFill.position.set(0.28, 1.72, 1.55);
       scene.add(faceFill);
+      // The selected gate's colour on the guide's hair and shoulders while he
+      // walks to it. One short-range light serves all five gates and rides
+      // just above his crown, leaning toward the gate, so the colour lands on
+      // the hair the camera sees; a light at the gate itself mostly reaches
+      // his face, which is turned away. Its 1.8 m reach ends above the floor.
+      // It stays in the scene at zero intensity when idle, because adding or
+      // removing a light recompiles every lit material.
+      const gateSpill = new THREE.PointLight(0xffffff, 0, 1.8, 2);
+      scene.add(gateSpill);
+      const gatePoint = new THREE.Vector3();
+      const guideHead = new THREE.Vector3();
 
       // The floor, runway and gate frames are near-black and rough with little
       // environment response, so the character lights do not lay a grey sheen
@@ -1093,9 +1105,9 @@ export default function CinematicIntro({ onComplete }: Props) {
         core.position.set(0, 2.2, 0.32);
         group.add(core);
 
-        // The gate's light on the floor is the additive glow plane below, not
-        // a point light: five more point lights would be evaluated for every
-        // fragment in the scene, and the glow reads the same from the stage.
+        // The gate's light on the floor is the additive glow plane below; its
+        // light on the guide is the shared gateSpill, which takes this gate's
+        // colour when it is selected.
         const glow = new THREE.Mesh(
           new THREE.PlaneGeometry(4.2, 4.2),
           new THREE.MeshBasicMaterial({
@@ -1111,7 +1123,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         glow.visible = false;
         group.add(glow);
 
-        gates.push({ role, group, strips, ring, glow });
+        gates.push({ role, group, strips, ring, glow, color: new THREE.Color(color) });
       }
 
       gateRoles.forEach(addGate);
@@ -1575,6 +1587,30 @@ export default function CinematicIntro({ onComplete }: Props) {
           gate.glow.material.opacity = active ? 0.2 : preparing ? (isSelected ? 0.1 : 0.036) : 0.022;
           gate.ring.rotation.z += dt * (active ? 0.4 : 0.12);
         });
+
+        // The spill fades in as he sets off and strengthens as he nears the
+        // gate, the way its light would.
+        const walking = state.phase === "departing" || state.phase === "transition";
+        const selectedGate = walking ? gates.find((gate) => gate.role === state.selected) : undefined;
+        let spillIntensity = 0;
+        if (selectedGate) {
+          gatePoint.set(0, 2.0, 0.55);
+          selectedGate.group.localToWorld(gatePoint);
+          guideHead.copy(character.position);
+          guideHead.y += 1.7;
+          const distance = guideHead.distanceTo(gatePoint);
+          const near = 1 - clamp(distance / 6);
+          spillIntensity = 10 + 30 * near;
+          gateSpill.position
+            .copy(gatePoint)
+            .sub(guideHead)
+            .setY(0)
+            .setLength(0.4)
+            .add(guideHead);
+          gateSpill.position.y = guideHead.y + 0.55;
+          gateSpill.color.copy(selectedGate.color);
+        }
+        gateSpill.intensity = lerp(gateSpill.intensity, spillIntensity, 1 - Math.exp(-dt * 5));
       }
 
       function updateCamera(dt: number, time: number) {
