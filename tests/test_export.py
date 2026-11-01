@@ -141,3 +141,38 @@ def test_ats_and_remote_board_jobs_use_the_strict_rule():
     # Indian boards keep unknown localities.
     assert make("Kakkanad", source="Naukri", strict=False)["location"] == "India"
 
+
+def test_sources_count_only_exported_rows(tmp_path):
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+
+    import export
+
+    today = datetime.now(timezone.utc).date()
+    db = tmp_path / "jobs.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE jobs (job_id TEXT, title TEXT, company TEXT, location TEXT, url TEXT,
+           apply_url TEXT, source TEXT, posted_date TEXT, description TEXT, match_score REAL,
+           role_match REAL, skill_match REAL, experience_match REAL, tool_match REAL,
+           domain_match REAL, validation_status TEXT, is_new INTEGER, first_seen TEXT,
+           last_seen TEXT)"""
+    )
+    rows = [
+        ("1", "LinkedIn", today.isoformat()),
+        ("2", "LinkedIn", (today - timedelta(days=60)).isoformat()),  # aged out
+        ("3", "Indeed", (today - timedelta(days=90)).isoformat()),  # aged out
+    ]
+    for job_id, source, posted in rows:
+        conn.execute(
+            "INSERT INTO jobs VALUES (?, 'Data Engineer', 'Acme', 'Pune', ?, NULL, ?, ?, '', 50,"
+            " 0, 0, 0, 0, 0, 'VALID', 0, NULL, NULL)",
+            (job_id, f"https://x.test/{job_id}", source, posted),
+        )
+    conn.commit()
+    conn.close()
+
+    payload = export.export(str(db), "data", 0, 100, max_days=21)
+    assert payload["count"] == 1
+    assert payload["sources"] == {"LinkedIn": 1}
+    assert sum(payload["sources"].values()) == payload["count"]

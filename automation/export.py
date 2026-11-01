@@ -797,13 +797,9 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
             dropped_foreign += 1
             continue
 
-        seen.add(key)
-
         exp_min, exp_max, exp_source = extract_experience_with_source(
             row["title"], row["description"]
         )
-        source = (row["source"] or "Unknown").strip() or "Unknown"
-        sources[source] = sources.get(source, 0) + 1
 
         posted = (row["posted_date"] or "").strip()
         if not re.match(r"^\d{4}-\d{2}-\d{2}$", posted):
@@ -816,6 +812,11 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
         if posted and posted < cutoff:
             dropped_stale += 1
             continue
+
+        # Count only rows that are actually exported, so `sources` adds up to
+        # `count`.
+        seen.add(key)
+        sources[source] = sources.get(source, 0) + 1
 
         job = {
             "id": str(row["job_id"] or key),
