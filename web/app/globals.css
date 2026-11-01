@@ -2404,35 +2404,62 @@ a.best-match:hover {
   gap: 12px;
 }
 
-.job-card-id {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* The company as a wordmark in its own colour (companyHue in lib/utils.ts). */
+.job-wordmark {
+  flex: 1;
   min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--hue-text);
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.job-mono {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
+/* A soft bloom of the company colour in the front's top-right corner. */
+.job-bloom {
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--hue), transparent);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+/* Score above, New below, on the head's right. */
+.job-head-side {
+  display: flex;
   flex: none;
-  border-radius: 13px;
-  background: #fff;
-  color: var(--black);
-  font-family: var(--font-display), sans-serif;
-  font-size: 17px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.job-new {
+  padding: 2px 8px;
+  border: 1px solid var(--hue-text);
+  border-radius: 999px;
+  color: var(--hue-text);
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: -0.04em;
+  line-height: 1.4;
 }
 
 .job-score {
+  position: relative;
   text-align: right;
 }
 
 .job-score b {
   display: block;
-  color: var(--accent);
+  color: var(--white);
   font-family: var(--font-display), sans-serif;
   font-size: 40px;
   font-weight: 700;
@@ -2515,38 +2542,38 @@ a.best-match:hover {
   box-shadow: 0 0 8px var(--source-color);
 }
 
-.new-badge {
-  flex: none;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--black);
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
+/* Outlined, filling with the company's colour when the card or the button is
+   under the pointer or the button has focus; --hue-ink keeps the label legible. */
 .apply-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: none;
   padding: 9px 13px;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: #fff;
-  color: var(--black);
+  background: transparent;
+  color: #fff;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
   transition:
     transform 0.2s var(--ease-out),
     background 0.18s ease,
+    border-color 0.18s ease,
     color 0.18s ease;
+}
+
+.job-card:hover .apply-btn,
+.apply-btn:hover,
+.apply-btn:focus-visible {
+  border-color: var(--hue);
+  background: var(--hue);
+  color: var(--hue-ink);
 }
 
 .apply-btn:hover {
   transform: translateX(2px);
-  background: var(--red);
-  color: #fff;
 }
 
 /* Skeleton & states */

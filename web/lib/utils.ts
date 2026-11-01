@@ -285,6 +285,71 @@ export function initials(value: string): string {
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("");
 }
 
+export interface CompanyHue {
+  /** The company's colour: the wordmark, the corner bloom and Apply on hover. */
+  color: string;
+  /** Text on a fill of that colour: near-black or white, whichever reads better. */
+  ink: string;
+  /** The same hue lightened until it reads on the card (4.5:1): the wordmark. */
+  text: string;
+}
+
+const HUE_SATURATION = 72;
+const HUE_LIGHTNESS = 56;
+const INK_DARK = "#08090d";
+/** The card's face colour, which the wordmark has to read against. */
+const CARD_RGB: [number, number, number] = [16, 19, 26];
+const TEXT_CONTRAST = 4.5;
+
+/**
+ * A colour of the company's own, from its name: the same company always gets
+ * the same hue, and different names spread around the wheel. FNV-1a with a
+ * final avalanche, so every letter moves the hue, not mostly the last one.
+ * companyHue("Codemonk").color === companyHue("codemonk ").color
+ */
+export function companyHue(company: string): CompanyHue {
+  let hash = 0x811c9dc5;
+  for (const char of company.trim().toLowerCase()) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
+  const hue = (hash >>> 0) % 360;
+  const [r, g, b] = hslToRgb(hue, HUE_SATURATION / 100, HUE_LIGHTNESS / 100);
+  const light = relativeLuminance(r, g, b);
+  // WCAG contrast of the fill against white and against the near-black ink.
+  const onWhite = 1.05 / (light + 0.05);
+  const onDark = (light + 0.05) / (relativeLuminance(8, 9, 13) + 0.05);
+  const card = relativeLuminance(...CARD_RGB);
+  let textLightness = HUE_LIGHTNESS;
+  while (textLightness < 90) {
+    const [tr, tg, tb] = hslToRgb(hue, HUE_SATURATION / 100, textLightness / 100);
+    if ((relativeLuminance(tr, tg, tb) + 0.05) / (card + 0.05) >= TEXT_CONTRAST) break;
+    textLightness += 2;
+  }
+  return {
+    color: `hsl(${hue} ${HUE_SATURATION}% ${HUE_LIGHTNESS}%)`,
+    ink: onDark >= onWhite ? INK_DARK : "#ffffff",
+    text: `hsl(${hue} ${HUE_SATURATION}% ${textLightness}%)`,
+  };
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
 const SOURCE_COLORS: Record<string, string> = {
   linkedin: "#0a66c2",
   naukri: "#ff7555",

@@ -300,7 +300,9 @@ Each role page, in the role's own colour:
   the role by match band. The parts come from the role file, or are read from the listing
   in the browser until the next scrape publishes them;
 - the filters (they scroll with the page), then 8 job cards per page (four across on wide
-  screens, one on phones). A card lights in the role colour where the pointer lands and,
+  screens, one on phones). Each card names its company as a wordmark in a colour of the
+  company's own, worked out from its name, so no two neighbours look alike; Apply is
+  outlined and fills with that colour on hover. A card lights in the role colour where the pointer lands and,
   after 1.2 s, turns over to its back: the listing's own words, the score's parts as bars
   (role fit, skills, tools, experience, domain), company · city and Apply. A click or
   tap anywhere on the card except Apply turns it over or back (Enter or Space with the

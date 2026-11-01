@@ -210,7 +210,7 @@ jobhunt-hub/
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX / Business Analyst |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
-| Job card | `web/components/JobCard.tsx` | `JobCard`, `FLIP_MS` | Front: monogram, score figure with tier word, title, company · city · experience, snippet, source · date, New, Apply. Back: the listing's words, the score's parts as bars (`matchAxes()`), company · city, Apply. Lights in the role colour where the pointer lands and turns over after 1.2 s (hover-capable pointers, motion not reduced); a click, tap, Enter or Space anywhere but Apply turns it over or back |
+| Job card | `web/components/JobCard.tsx` | `JobCard`, `FLIP_MS` | Front: company wordmark in its own colour (`companyHue`) with a corner bloom, score in white with tier word and a New chip under it, title, city · experience, snippet, source · date, Apply (outlined, fills with the company colour on hover). Back: the listing's words, the score's parts as bars (`matchAxes()`), company · city, Apply. Lights in the role colour where the pointer lands and turns over after 1.2 s (hover-capable pointers, motion not reduced); a click, tap, Enter or Space anywhere but Apply turns it over or back |
 | Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | Strip under the header: updated-when, job and company counts, top match, then the new-since-last-scrape jobs; pauses on hover, static when motion is reduced |
 | Hero gate | `web/components/HeroGate.tsx` | `HeroGate` | The role's gate beside the title, CSS only |
 | Best match | `web/components/BestMatch.tsx` | `BestMatch` | The top job of the role's default order as a solid tile linking to the posting |
@@ -238,7 +238,7 @@ jobhunt-hub/
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
 | `web/lib/renderQuality.ts` | `createQualityGovernor` | Steps the WebGL pixel ratio down when frames run long and back up when there is headroom (see ARCHITECTURE 4.5.1) |
 | `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
-| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
+| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `companyHue`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
 
 ### 4.4 Static assets
 
@@ -756,6 +756,7 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
+| Company colour on a card | `web/lib/utils.ts` `companyHue()` (saturation, lightness, 4.5:1 text contrast) | `--hue`/`--hue-ink`/`--hue-text` set in `JobCard.tsx`; `.job-wordmark`, `.job-bloom`, `.job-new`, `.apply-btn` in `globals.css`; `tests/companyHue.test.ts` |
 | Card light / turn-over | `JobCard.tsx` (`FLIP_MS`) | `.job-card` (perspective), `.job-card-inner`, `.job-face`, `.job-back`, `.job-parts`, `.job-card-light`, `.job-card:focus-visible` in `globals.css` |
 | Edge lights | `globals.css` `.edge-light` | the two spans in `JobDashboard.tsx` |
 | Filter bar placement | `globals.css` `.filters` (scrolls with the page) | `.dashboard-jobs-anchor` scroll margin |
