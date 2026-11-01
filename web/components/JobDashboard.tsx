@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
@@ -18,23 +18,26 @@ import {
 import {
   cityCounts,
   compareNewest,
-  experienceBandPriority,
-  experiencePriority,
   matchesExperience,
   postedWithinDays,
   type ExperienceBucket,
 } from "@/lib/utils";
+import { compareByRole, topMatch } from "@/lib/rank";
 import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
 import { passwordError, type RefreshRejection } from "@/lib/refreshPrompt";
 import Filters from "./Filters";
+import BestMatch from "./BestMatch";
 import BrandMark from "./BrandMark";
 import { AlertIcon, MailIcon, RouteIcon, SparkIcon } from "./Icons";
 import ConfirmRefresh from "./ConfirmRefresh";
+import HeroGate from "./HeroGate";
 import JobCard from "./JobCard";
+import MatchSignal from "./MatchSignal";
 import Pagination from "./Pagination";
 import RefreshPanel from "./RefreshPanel";
 import RoleSwitcher from "./RoleSwitcher";
 import StatsBar from "./StatsBar";
+import UpdatesTicker from "./UpdatesTicker";
 
 const PAGE_SIZE = 8;
 const REFRESH_KEY_STORAGE = "jobhunt.refreshKey";
@@ -458,6 +461,8 @@ export default function JobDashboard({ role }: Props) {
     () => [...new Set([...Object.keys(data?.sources ?? {}), ...jobs.map((job) => job.source)])].sort(),
     [data, jobs],
   );
+  // The job the role's list opens with, whatever the filters say.
+  const best = useMemo(() => topMatch(jobs, role), [jobs, role]);
 
   // City and source options come from the data, so a shared link's value is
   // checked once this role's jobs are in; one no job has falls back to "all".
@@ -496,18 +501,7 @@ export default function JobDashboard({ role }: Props) {
     return list.sort((a, b) => {
       if (sort === "date") return compareNewest(a, b);
       if (sort === "company") return a.company.localeCompare(b.company);
-      // Business Analyst is an entry/1–3 year track: keep those roles first
-      // even when a senior listing has a slightly higher raw match score.
-      if (role === "ba") {
-        const priority = experiencePriority(a) - experiencePriority(b);
-        if (priority !== 0) return priority;
-      }
-      // SDE targets 3–8 years, so that band leads the score ordering.
-      if (role === "sde") {
-        const priority = experienceBandPriority(a) - experienceBandPriority(b);
-        if (priority !== 0) return priority;
-      }
-      return b.score - a.score;
+      return compareByRole(role)(a, b);
     });
   }, [jobs, deferredQuery, city, source, score, experience, dateRange, sort, role]);
 
@@ -543,7 +537,7 @@ export default function JobDashboard({ role }: Props) {
   const liveCount = data ? data.count : 0;
 
   return (
-    <div className="dashboard">
+    <div className="dashboard" style={{ "--accent": roleMeta.accent } as CSSProperties}>
       <div className="dashboard-ambient" aria-hidden>
         <span className="dashboard-glow dashboard-glow-red" />
         <span className="dashboard-glow dashboard-glow-blue" />
@@ -573,20 +567,20 @@ export default function JobDashboard({ role }: Props) {
             </Link>
           </div>
         </div>
+        {data ? (
+          <UpdatesTicker jobs={jobs} role={role} updatedAt={status?.lastRunAt ?? data.generated_at} />
+        ) : null}
       </header>
 
       <main className="shell dashboard-main">
         <section className="dashboard-hero">
           <div className="dashboard-hero-copy">
-            <p className="eyebrow">
-              <span className="eyebrow-line" />
-              Destination reached · {roleMeta.label}
-            </p>
             <h1>{roleMeta.fullLabel}</h1>
             <p className="hero-lede">
               {roleMeta.blurb} Curated from Naukri, Foundit, Indeed, Shine, LinkedIn, Wellfound,
               IIBA and more, with deduplicated links and a transparent match signal.
             </p>
+            {data ? <StatsBar data={data} status={status} /> : null}
             <div className="hero-actions">
               <a className="primary-btn" href="#jobs">
                 Explore {liveCount ? liveCount.toLocaleString("en-IN") : "live"} jobs
@@ -597,12 +591,7 @@ export default function JobDashboard({ role }: Props) {
             </div>
           </div>
 
-          <div className="dashboard-hero-art" aria-hidden>
-            <span className="hero-art-orbit hero-art-orbit-a" />
-            <span className="hero-art-orbit hero-art-orbit-b" />
-            <span className="hero-art-core" />
-            <span className="hero-art-label">NEXT / MOVE</span>
-          </div>
+          <HeroGate accent={roleMeta.accent} />
         </section>
 
         {data?.demo ? (
@@ -615,7 +604,12 @@ export default function JobDashboard({ role }: Props) {
           </div>
         ) : null}
 
-        {data ? <StatsBar data={data} role={roleMeta} status={status} /> : null}
+        {data ? (
+          <section className="overview" aria-label="Overview">
+            <BestMatch job={best} accent={roleMeta.accent} />
+            <MatchSignal job={best} jobs={jobs} accent={roleMeta.accent} />
+          </section>
+        ) : null}
 
         <div id="jobs" ref={resultsRef} className="dashboard-jobs-anchor" />
 
@@ -684,6 +678,7 @@ export default function JobDashboard({ role }: Props) {
                   key={`${job.source}-${job.id}`}
                   job={job}
                   showScore={showScores}
+                  accent={roleMeta.accent}
                   index={index}
                 />
               ))}

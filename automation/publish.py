@@ -22,7 +22,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
-from api_sources import title_relevant
+from api_sources import score_parts, title_relevant
 from export import canonical_url, dedupe_jobs, states_experience
 
 EXPERIENCE_FIELDS = ("experience_min", "experience_max", "experience_source", "experience_level")
@@ -187,7 +187,7 @@ def cap_posted_date(job: Dict[str, Any]) -> None:
         job["posted_date"] = first_seen
 
 
-def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any]:
+def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS, role: Optional[str] = None) -> Dict[str, Any]:
     """Fields derived at publish time, plus trimming of unused fields."""
     first_seen = (job.get("first_seen") or "")[:10]
     cap_posted_date(job)
@@ -203,8 +203,16 @@ def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any
     ):
         job["experience_min"] = None
         job["experience_max"] = None
-    # score_parts is not read by the web app and is all zeros for portal jobs.
-    job.pop("score_parts", None)
+    # The dashboard draws the parts of the top match's score. Jobs published
+    # before the parts existed, and ATS jobs that carried zeros, get theirs
+    # from today's rules; a set that is still all zeros is not a breakdown.
+    parts = dict(job.get("score_parts") or {})
+    if role and not any(parts.values()):
+        parts = score_parts(role, job.get("title") or "", job.get("snippet") or "")
+    if any(parts.values()):
+        job["score_parts"] = parts
+    else:
+        job.pop("score_parts", None)
     if job.get("apply_url") == job.get("url"):
         job.pop("apply_url", None)
     return job
@@ -461,7 +469,7 @@ def build_payloads(
 
         drop_offrole(payloads[role], role)
         for job in payloads[role]["jobs"]:
-            finalize_job(job)
+            finalize_job(job, role=role)
 
     return payloads, statuses
 

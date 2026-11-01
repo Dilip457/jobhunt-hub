@@ -559,16 +559,27 @@ MAX_SKILL_HITS = 6
 SCORE_CAP = 88.0
 
 
+# sde_band_adjust() returns between these two values.
+SDE_ADJUST_MIN = -9.0
+SDE_ADJUST_MAX = 8.0
+
+
+def _title_hits(role: str, title_l: str) -> int:
+    return sum(1 for token in ROLE_TITLE_TOKENS.get(role, []) if _hit(token, title_l))
+
+
+def _skill_hits(role: str, text: str) -> int:
+    # Short skills ("ui", "ux", "sql") need word boundaries: as substrings
+    # "ui" matched "build" and "ux" matched "linux".
+    return sum(1 for skill in ROLE_SKILLS.get(role, []) if _hit(skill, text))
+
+
 def score_job(role: str, title: str, snippet: str) -> float:
     text = f"{title} {snippet}".lower()
     title_l = (title or "").lower()
     score = SCORE_BASE
-    title_hits = sum(1 for token in ROLE_TITLE_TOKENS.get(role, []) if _hit(token, title_l))
-    score += TITLE_POINTS * min(title_hits, MAX_TITLE_HITS)
-    # Short skills ("ui", "ux", "sql") need word boundaries: as substrings
-    # "ui" matched "build" and "ux" matched "linux".
-    skill_hits = sum(1 for skill in ROLE_SKILLS.get(role, []) if _hit(skill, text))
-    score += SKILL_POINTS * min(skill_hits, MAX_SKILL_HITS)
+    score += TITLE_POINTS * min(_title_hits(role, title_l), MAX_TITLE_HITS)
+    score += SKILL_POINTS * min(_skill_hits(role, text), MAX_SKILL_HITS)
     if role == "ba":
         if BA_ENTRY_TITLE.search(title or ""):
             score += 9
@@ -577,6 +588,30 @@ def score_job(role: str, title: str, snippet: str) -> float:
     elif role == "sde":
         score += sde_band_adjust(title or "", snippet or "")
     return round(max(0.0, min(score, SCORE_CAP)), 1)
+
+
+def score_parts(role: str, title: str, snippet: str) -> Dict[str, float]:
+    """The parts of score_job() on a 0-100 scale, for the dashboard's match
+    signal: how much of the title and skill allowance the listing earned and,
+    for the two roles with an experience rule, how well its years fit the band.
+    Roles without such a rule publish only the first two."""
+    text = f"{title} {snippet}".lower()
+    title_l = (title or "").lower()
+    parts = {
+        "role": round(100.0 * min(_title_hits(role, title_l), MAX_TITLE_HITS) / MAX_TITLE_HITS, 1),
+        "skill": round(100.0 * min(_skill_hits(role, text), MAX_SKILL_HITS) / MAX_SKILL_HITS, 1),
+    }
+    if role == "sde":
+        adjust = sde_band_adjust(title or "", snippet or "")
+        parts["experience"] = round(100.0 * (adjust - SDE_ADJUST_MIN) / (SDE_ADJUST_MAX - SDE_ADJUST_MIN), 1)
+    elif role == "ba":
+        if BA_ENTRY_TITLE.search(title or ""):
+            parts["experience"] = 100.0
+        elif BA_SENIOR_TITLE.search(title or ""):
+            parts["experience"] = 0.0
+        else:
+            parts["experience"] = 50.0
+    return parts
 
 
 def build_job(
@@ -629,7 +664,7 @@ def build_job(
         "source": source,
         "posted_date": posted,
         "score": score_job(role, public_title, snippet),
-        "score_parts": {"role": 0.0, "skill": 0.0, "experience": 0.0, "tool": 0.0, "domain": 0.0},
+        "score_parts": score_parts(role, public_title, snippet),
         "experience_min": exp_min,
         "experience_max": exp_max,
         "experience_source": exp_source,

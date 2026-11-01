@@ -37,7 +37,7 @@ data branch: genai.json · data.json · uiux.json · ba.json · sde.json · mani
         ↓
 web/lib/github.ts → web/lib/service.ts → web/app/api/jobs/route.ts
         ↓
-web/components/JobDashboard.tsx → JobCard.tsx → ScoreRing.tsx
+web/components/JobDashboard.tsx → UpdatesTicker.tsx, HeroGate.tsx, StatsBar.tsx, BestMatch.tsx, MatchSignal.tsx, JobCard.tsx
 ```
 
 ### B. Direct portal and API/ATS jobs
@@ -134,9 +134,12 @@ jobhunt-hub/
 │  │  ├─ RoleDestinations.tsx     # four accessible role cards
 │  │  ├─ JobDashboard.tsx         # dashboard state, filters, refresh polling
 │  │  ├─ Filters.tsx              # search/city/source/score/experience/date/sort
-│  │  ├─ JobCard.tsx              # one job card
-│  │  ├─ ScoreRing.tsx            # score ring
-│  │  ├─ StatsBar.tsx             # job/company/source/updated stats
+│  │  ├─ JobCard.tsx              # one job card: tilt and role light on hover
+│  │  ├─ UpdatesTicker.tsx        # strip under the header: new since the last scrape
+│  │  ├─ HeroGate.tsx             # the destination gate beside the title, in CSS
+│  │  ├─ BestMatch.tsx            # the role's top job as a solid tile
+│  │  ├─ MatchSignal.tsx          # radar of the top job's score parts + match bands
+│  │  ├─ StatsBar.tsx             # job/company/source/updated figures, set as type
 │  │  ├─ RoleSwitcher.tsx         # in-dashboard role tabs
 │  │  ├─ ConfirmRefresh.tsx       # hidden-refresh confirmation dialog
 │  │  ├─ RefreshPanel.tsx         # queued/running/success/failed progress
@@ -205,9 +208,13 @@ jobhunt-hub/
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX / Business Analyst |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
-| Job card | `web/components/JobCard.tsx` | `JobCard`, `avatarHue` | Source badge, NEW badge, title, company, location, experience, snippet, dates, score, Apply |
-| Score ring | `web/components/ScoreRing.tsx` | `ScoreRing` | Overall score as a ring, tier and accessible label |
-| Stats | `web/components/StatsBar.tsx` | `StatsBar` | Open jobs, companies, sources, last updated |
+| Job card | `web/components/JobCard.tsx` | `JobCard`, `LIGHT_MS`, `TILT_DEG` | Monogram, score figure with tier word, title, company · city · experience, snippet, source · date, New, Apply; tilts toward the pointer and lights in the role colour for 1.2 s (hover-capable pointers, motion not reduced) |
+| Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | New-since-last-scrape strip under the header, pauses on hover, static when motion is reduced |
+| Hero gate | `web/components/HeroGate.tsx` | `HeroGate` | The role's gate beside the title, CSS only |
+| Best match | `web/components/BestMatch.tsx` | `BestMatch` | The top job of the role's default order as a solid tile linking to the posting |
+| Match signal | `web/components/MatchSignal.tsx` | `MatchSignal` | Radar of the top job's `score_parts` (3+ parts), parts bars, jobs by match band |
+| Ranking | `web/lib/rank.ts` | `compareByRole`, `rankJobs`, `topMatch`, `newJobs`, `scoreAxes`, `matchBands` | The role's default order shared by the list and the overview; parts and bands for the signal panel |
+| Stats | `web/components/StatsBar.tsx` | `StatsBar` | Open jobs, companies, sources, time since the last scrape, as type under the title |
 | Role switcher | `web/components/RoleSwitcher.tsx` | `RoleSwitcher` | In-dashboard role tabs |
 | Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh` | “Refresh … jobs?” dialog; password form (hidden `username` + `current-password` field, so browsers offer to save it), “Remember on this device”, inline “Wrong password” / lockout error (`aria-live`); Escape/backdrop cancel |
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
@@ -477,15 +484,15 @@ Consequences:
 |---|---|---|
 | Vendor DB | External SQLite | `match_score`, `role_match`, `skill_match`, `experience_match`, `tool_match`, `domain_match` |
 | Export | `automation/export.py` | `score: round(match_score, 1)`, `score_parts` object |
-| Publish | `automation/publish.py` | `merge_payloads()` keeps the fresh copy; `dedupe_jobs()` keeps the best-scored copy across boards; `finalize_job()` drops `score_parts` |
+| Publish | `automation/publish.py` | `merge_payloads()` keeps the fresh copy; `dedupe_jobs()` keeps the best-scored copy across boards; `finalize_job()` keeps `score_parts`, computing them with `score_parts()` for jobs that have none |
 | Type | `web/lib/types.ts` | `Job.score`, `ScoreParts` |
 | API | `web/app/api/jobs/route.ts` | returns `RoleData` |
 | Dashboard | `web/components/JobDashboard.tsx` | filter by `score`, sort by `score`, pass `showScore` |
-| Card | `web/components/JobCard.tsx` | renders `ScoreRing` and tier label |
-| Ring | `web/components/ScoreRing.tsx` | `Math.round(score)` and accessible match label |
+| Card | `web/components/JobCard.tsx` | `Math.round(score)` in the role colour with the tier word and an accessible match label |
+| Overview | `web/components/BestMatch.tsx`, `MatchSignal.tsx` | the top job's score as `/100`, its `score_parts` as a radar |
 | Tier labels | `web/lib/utils.ts` | `scoreTier()`: ≥85 Excellent, ≥75 Strong, ≥65 Good, ≥50 Fair, else Low |
 
-The UI shows only the **overall** score. `score_parts` is dropped at publish time because nothing renders it.
+Cards show the **overall** score. `MatchSignal` draws the top job's `score_parts`: `api_sources.score_parts()` publishes `role` (title hits), `skill` (skills matched) and, for BA and SDE, `experience` (fit to the role's band), each 0–100; vendor jobs may add `tool` and `domain`.
 
 ### 8.7 Important limitation
 
@@ -606,7 +613,7 @@ The export deliberately excludes full descriptions, resumes and PII.
 |---|---|
 | `_job_key()` | Canonical URL, fallback title/company/location |
 | `merge_payloads()` | Union previous + fresh, fresh copy wins, oldest `first_seen` / `posted_date` (capped at `first_seen`), newest `last_seen`, retention (undated jobs still listed are exempt) + unseen filter, cross-board dedupe |
-| `finalize_job()` | Cap `posted_date` at `first_seen`, recompute `is_new` from `first_seen`, drop `score_parts` and redundant `apply_url` |
+| `finalize_job()` | Cap `posted_date` at `first_seen`, recompute `is_new` from `first_seen`, keep or compute `score_parts` (all-zero sets are dropped), drop redundant `apply_url` |
 | `build_payloads()` | Per-role merge / fresh / kept-previous / missing decision |
 | `previous_file()` / `read_previous()` | Read previous JSON from `origin/data` as UTF-8; `None` only when the file is absent, `PublishError` (publish aborts) on any other failure |
 | `push_data_branch()` | Write `<role>.json`, `manifest.json`, branch-level `vercel.json`; push with `--force-with-lease` |
@@ -725,7 +732,7 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
-| Score tier colours/labels | `web/lib/utils.ts` `scoreTier()` | `ScoreRing.tsx`, `JobCard.tsx` |
+| Score tier colours/labels | `web/lib/utils.ts` `scoreTier()` | `JobCard.tsx` |
 | Resume profile / scoring keywords | External vendor `config.py` and `scoring_engine.py` (BA: `run_source.py` patches) | `automation/export.py`, `publish.py` |
 | Simple portal/API score | `automation/api_sources.py` `score_job()` | `build_job()`, portal/API collectors |
 | Search keywords/cities/score floor | `profiles/<role>.json` | `run_source.py`, workflow |

@@ -336,9 +336,16 @@ budget an integrated GPU can meet:
 
 The dashboard follows the same rule for scrolling: the sticky header and filter bar
 have no backdrop blur, the fixed background glows are gradients rather than blurred
-discs, card hover animates only `transform` and `border-color`, the below-the-fold
-info section uses `content-visibility: auto`, and the search box feeds the job
-filter through `useDeferredValue`, so keystrokes never wait for the list.
+discs, the below-the-fold info section uses `content-visibility: auto`, and the
+search box feeds the job filter through `useDeferredValue`, so keystrokes never wait
+for the list. Its own motion is transform and opacity only: the gate beside the title
+(`HeroGate`) and the radar in the match-signal panel turn on CSS keyframes; the
+updates ticker is one translating track that pauses under the pointer; a job card
+tilts toward the pointer (`--rx`/`--ry`, at most 6°) and lights in the role colour on
+a separate layer whose opacity fades after 1.2 s, and both run only on a pointer that
+can hover with motion not reduced (`JobCard` checks the media query once). Under
+`prefers-reduced-motion: reduce` the ticker stands still and scrolls, the gate and
+radar hold, and cards neither tilt nor light.
 
 ### 4.6 GitHub API
 
