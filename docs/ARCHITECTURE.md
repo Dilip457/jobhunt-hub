@@ -341,13 +341,17 @@ discs, the below-the-fold info section uses `content-visibility: auto`, and the
 search box feeds the job filter through `useDeferredValue`, so keystrokes never wait
 for the list. Its own motion is transform and opacity only: the gate beside the title
 (`HeroGate`) and the radar in the match-signal panel turn on CSS keyframes; the
-updates ticker is one translating track that pauses under the pointer; a job card
-tilts toward the pointer (`--rx`/`--ry`, at most 10°), lifts 18px toward the viewer
-(`--lift`) and lights in the role colour on a separate layer whose opacity fades after
-1.2 s, and both run only on a pointer that
-can hover with motion not reduced (`JobCard` checks the media query once). Under
-`prefers-reduced-motion: reduce` the ticker stands still and scrolls, the gate, radar
-and edge lights hold, and cards neither tilt nor light.
+updates ticker is one translating track that pauses under the pointer; a job card is
+two faces in one grid cell inside a `preserve-3d` box: the role colour lights where
+the pointer lands (a separate layer, opacity only) and after 1.2 s `JobCard` adds
+`.is-flipped`, which turns the box `rotateY(180deg)` over 0.7 s to the back face
+(the listing's words, the score's parts as bars that grow once the back shows,
+company · city, Apply); the face that is away is `inert`, so Apply is one tab stop.
+The hover turn runs only on a pointer that can hover with motion not reduced
+(`JobCard` checks the media query once); otherwise a turn-over button in the footer
+flips the card. Under `prefers-reduced-motion: reduce` the ticker stands still and
+scrolls, the gate, radar and edge lights hold, the light is off, and the button turns
+the card with no transition.
 
 ### 4.6 GitHub API
 
