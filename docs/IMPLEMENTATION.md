@@ -414,7 +414,7 @@ Exports the vendor SQLite database to public JSON:
 - Gates and publishes the same cleaned title (`clean_title()`), so `publish.py` re-checking the stored title agrees with the export.
 - Keeps only a **240-character snippet**, not the full description.
 - Extracts experience ranges only when the listing states them (board experience field, title or description). "Associate", "Senior", "Manager" and similar level words no longer turn into years: at JPMorgan an Associate role asked for 7+ years and at Amgen a Senior Associate role for 5-9, while the cards showed 0-2. Naukri's per-card "5-9 Yrs" and Foundit's min/max fields are read directly. `experience_source` records whether the value was stated; `publish.finalize_job()` clears older guessed values.
-- Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later keeps `score_parts`, computing them from today's rules when a job has none, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
+- Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later keeps `score_parts`, computing them from today's rules when a job has none or a set from before the `tool` part, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
 - Drops jobs below the score floor, with invalid URLs, with foreign locations, or older than the freshness window.
 - `sources` counts only exported jobs, so it adds up to `count` (aged-out rows used to be counted). A URL is marked as seen only once its row is exported, so an aged-out copy no longer hides a fresh, lower-scored copy of the same URL.
 - Sorts by score then posted date.
@@ -741,15 +741,15 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba`
 - In `selecting`, pointer drag on the canvas rotates a dedicated model turntable around the GLB’s vertical axis. `Auto-rotate` is **off by default** and can be enabled from the dock; a drag pauses it for 2.8 seconds. The camera, floor and lights do not move, and rotation is outside `AnimationMixer`, so walk/run animation is unaffected.
 - `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`: the same wide scene poster, a four-second `HI.` beat first, then the identical destinations. It never shows the greeting and role cards together.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
-- Listing page order: header with role switcher, then the **updates ticker** (jobs with `is_new`, best first, each linking to its posting; it pauses under the pointer); the **hero** (title, lede, four figures set as type, Explore / Change destination) beside the role's **gate**, drawn in CSS in the role colour and turning slowly; the **overview** row with the **Best match right now** tile (the first job of the role's default order, unfiltered, as a solid tile in the role colour) beside **How the top match scores** (a tilted, turning radar of that job's `score_parts`, then the role's jobs by match band); the sticky filters; the job grid; the pager; the info cards.
+- Listing page order: header with role switcher, then the **updates ticker** (when the data was published, the role's job and company counts and its top match, then the jobs with `is_new`, best first, each linking to its posting; it pauses under the pointer); the **hero** (title, lede, four figures set as type, Explore / Change destination) beside the role's **gate**, drawn in CSS in the role colour and turning slowly; the **overview** row with the **Best match right now** tile (the first job of the role's default order, unfiltered, as a solid tile in the role colour) beside **How the top match scores** (a tilted, turning radar of that job's `score_parts`, then the role's jobs by match band); the filters, which scroll with the page; the job grid; the pager; the info cards. The role's colour runs down both edges of the page as a thin fixed light that breathes slowly (`.edge-light`).
 - Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
 - Job grid: 8 cards per page, 4 columns at 1200px and wider, 2 below, 1 at 640px and narrower.
 - Job card: company monogram and New tag, the score in the role colour with its tier word (Excellent, Strong, Good, Fair, Low), title, `company · city · experience`, two-line snippet, `source · <relative date>`, Apply.
-- Card hover, on a pointer that can hover with motion not reduced: the card tilts toward the pointer at once (at most 6°) and the role colour lights where the pointer is, fading after 1.2 s while the tilt holds. Touch, keyboard and reduced motion get the same card without either.
+- Card hover, on a pointer that can hover with motion not reduced: the card tilts toward the pointer at once (at most 10°, with the grid's perspective at 900px so it reads on a 300px card), lifts 18px toward the viewer with a shadow, and the role colour lights where the pointer is, fading after 1.2 s while the tilt holds. Touch, keyboard and reduced motion get the same card without either.
 - Card date: `dateAgo(posted_date)`, else `first seen <dateAgo(first_seen)>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
 - The New tag and the ticker use `is_new`.
-- The match-signal radar needs three or more published parts; with fewer it shows the parts as bars, and with none it says the parts arrive with the next scrape. Match bands: 90+, 80–89, 70–79, 60–69, under 60, counted over all of the role's jobs.
+- The match-signal radar needs three or more parts (`RADAR_MIN_AXES`). `matchAxes()` uses the file's parts when it has that many; otherwise (files from before the parts existed, or before the `tool` part) it estimates the same parts from the job's title, snippet and years with `web/lib/estimate.ts`, a copy of the scraper's token lists and caps, and a line under the bars says the parts were read in the browser. With no job at all the panel says so. Match bands: 90+, 80–89, 70–79, 60–69, under 60, counted over all of the role's jobs.
 - Experience line: stated years (`5–9 yrs`, `7+ yrs`), else LinkedIn's level label, else “Not stated in posting”. The experience filter treats a level by its bucket (Internship/Entry → Fresher, Associate → Mid, Mid-Senior → Senior, Director/Executive → Lead); a job with nothing stated is listed only under “Any level”.
 - The date-range filter and date sort use `posted_date`, falling back to `first_seen` for boards that publish no date.
 - Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
@@ -830,7 +830,8 @@ The token is server-side only. Never prefix it with `NEXT_PUBLIC_`.
       "score": 82,
       "score_parts": {
         "role": 100,
-        "skill": 66.7
+        "skill": 50,
+        "tool": 33.3
       },
       "experience_min": 2,
       "experience_max": 5,
@@ -856,7 +857,7 @@ The token is server-side only. Never prefix it with `NEXT_PUBLIC_`.
 | `source` | string | `LinkedIn`, `Naukri`, `Foundit`, `Indeed`, `Shine`, `SimplyHired`, etc. |
 | `posted_date` | string \| null | Portal posted date (`YYYY-MM-DD`); may be null |
 | `score` | number | Match score |
-| `score_parts` | object | Score breakdown, 0–100 each: `role`, `skill`, and `experience` for BA and SDE (`api_sources.score_parts()`); vendor jobs may add `tool` and `domain`. Drawn by `MatchSignal` for the top job |
+| `score_parts` | object | Score breakdown, 0–100 each: `role` (title hits), `skill` (practices matched), `tool` (named products matched, the `ROLE_TOOLS` subset of the skill list), and `experience` for BA and SDE (`api_sources.score_parts()`); vendor jobs may add `domain`. Drawn by `MatchSignal` for the top job; estimated in the browser when a file has fewer than three |
 | `experience_min` | number \| null | Minimum years |
 | `experience_max` | number \| null | Maximum years |
 | `snippet` | string | Short description excerpt (max ~240 chars) |
@@ -1089,8 +1090,8 @@ Front-end smoke checks used for this redesign (all must pass before deploying):
 
 ```text
 /                         → clean boot, 4 s greeting with 0 cards, pullback, 3 gates, role dock, skip intro
-/jobs/genai               → ticker, red gate, figures, best-match tile, match signal, 8 cards + pager, filters, back/forward
-card hover (desktop)      → tilt toward the pointer at once; role light fades after 1.2 s; no tilt on touch or reduced motion
+/jobs/genai               → ticker (facts, then new jobs), red edge lights, red gate, figures, best-match tile, match signal (radar + "read in the browser" line on seed data), 8 cards + pager, filters scroll away with the page, back/forward
+card hover (desktop)      → tilt toward the pointer at once (clearly visible), lift and shadow; role light fades after 1.2 s; no tilt on touch or reduced motion
 /jobs/data                → Data Engineering cards, URL filters
 /jobs/uiux                → UI/UX cards on a 390×844 viewport, no overflow
 reduced-motion            → static intro: HI. with 0 cards, then 3 cards after 4 s; no WebGL canvas
@@ -1126,6 +1127,8 @@ Frame-budget pass (2026-11-01, PR #7, `a2ec259`): on an Intel UHD 630 at a 1366�
 Gate light on the guide (2026-11-01, PR #8, `108d798`): removing the gate point lights also removed the selected gate's colour from the guide's hair. One point light (`gateSpill`, reach 1.8 m) now serves all five gates: during `departing` and `transition` it sits 0.55 m above his crown, 0.4 m toward the selected gate, in that gate's colour, at an intensity of 10 rising to 40 as he nears the gate. It stays in the scene at zero intensity otherwise, so the light count and the compiled shaders never change. Compared with the build before PR #7 and the live site at the same moments of the walk: on the GenAI gate the hair's mean red went from 77 to 102 against the live site. Frame rates on the UHD 630: 52 fps on the intro walk, 55 selecting, 58 departing, 60 on the dashboard.
 
 Listing page rebuild (2026-11-01, PR #9, `c0994b3`): the role page was rebuilt from four concepts the owner reviewed (kept locally, not in the repo): from **Runway**, the role's gate beside the title (`HeroGate`), the figures set as type and the role light on card hover; from **Signal**, the updates ticker (`UpdatesTicker`) and the score breakdown (`MatchSignal`); from **Bento**, the best-match tile (`BestMatch`) and the card design, which now tilts toward the pointer. Removed: the orb art, the "Destination reached" label, the four stat tiles and `ScoreRing.tsx`. The role's default order moved to `web/lib/rank.ts` (`compareByRole`), shared by the list and the best-match tile. The scraper now publishes `score_parts` for portal and API/ATS jobs (`api_sources.score_parts()`) and `publish.finalize_job()` keeps them, computing them for jobs that have none, so the radar shows live parts from the next scrape on; until then it shows a note and the match bands. Checks: `tsc`, ESLint, 43 web tests (5 new in `tests/rank.test.ts`), 472 Python tests, a production build, screenshots at 1440, 1024 and 390 against live data and the seed data, and the frame harness on the UHD 630: 60 fps idle, 59 scrolling, 60 typing.
+
+Listing follow-ups (2026-11-01, branch `fix/listing-followups`): after the rebuild went live the owner reported four misses. The card tilt was too faint to see (6° at a 1400px perspective): it is now 10° at 900px, and the card lifts 18px with a shadow under the pointer. The filter bar was sticky and rode over the cards: it now scrolls with the page. The Runway concept's edge light was missing: two fixed strips in the role colour now run down the page's edges and breathe slowly. The match signal showed a note instead of the radar on live data, whose files predate `score_parts`: the scraper's rules are mirrored in the browser (`web/lib/estimate.ts`), `matchAxes()` uses them when a file has fewer than three parts, and a line under the bars says so; and so that every role has at least three parts, the skill allowance is reported as `skill` (practices) and `tool` (named products, `ROLE_TOOLS`), in the scraper and in the browser alike (`publish.finalize_job()` recomputes sets without `tool`). The ticker also leads with the role's facts (updated when, jobs and companies, top match) before the new jobs. Checks: `tsc`, ESLint (only the pre-existing warnings), 47 web tests (2 new), 473 Python tests (1 new), a production build, and Playwright screenshots at 1440, 1024 and 390 against the seed data confirming the tilt (computed transform read back), the static filter bar after a scroll, the edge lights and the radar.
 
 ---
 

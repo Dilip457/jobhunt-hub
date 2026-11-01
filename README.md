@@ -292,12 +292,17 @@ Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/job
 
 Each role page, in the role's own colour:
 
-- a ticker under the header with the jobs new since the last scrape, best match first;
+- a ticker under the header: when the data was published, the role's job and company
+  counts, the top match, then the jobs new since the last scrape, best match first;
 - the title beside the gate the guide walked through, with the role's job, company and source counts;
 - **Best match right now** as a solid tile, beside **How the top match scores**: a radar of
-  that job's role fit, skills and experience fit, and every job of the role by match band;
-- the filters, then 8 job cards per page (four across on wide screens, one on phones). A
-  card tilts toward the pointer and lights in the role colour for a moment on hover.
+  that job's role fit, skills, tools and (for BA and SDE) experience fit, and every job of
+  the role by match band. The parts come from the role file, or are read from the listing
+  in the browser until the next scrape publishes them;
+- the filters (they scroll with the page), then 8 job cards per page (four across on wide
+  screens, one on phones). A card tilts toward the pointer and lifts, and lights in the
+  role colour for a moment, on hover;
+- the role's colour as a thin breathing light down both edges of the page.
 
 ### The 3D guide is a prototype
 
@@ -368,7 +373,7 @@ If a role's scrape fails or returns zero jobs, the publisher **keeps the previou
 - The fresh copy of a job wins, so scoring changes reach old listings; `first_seen` and `posted_date` keep the oldest date and `last_seen` the newest.
 - Jobs that no scrape has returned for 7 days (`--unseen-days`) are treated as closed and dropped, and nothing older than 21 days is kept (an undated listing the boards still return stays until they stop returning it). Pruning is skipped when a run is much smaller than the previous data, so a blocked run cannot empty a role.
 - `is_new` (the card's New tag and the updates ticker) is recomputed at publish time: first collected within the last 2 days.
-- `apply_url` is dropped when it equals `url`; `score_parts` (role fit, skills, experience fit) stays, since the dashboard draws it for the top match.
+- `apply_url` is dropped when it equals `url`; `score_parts` (role fit, skills, tools, experience fit) stays, since the dashboard draws it for the top match.
 
 The push uses `--force-with-lease`, so if the PC agent and a cloud run publish at the same time, the second one re-reads the data and merges again instead of overwriting.
 

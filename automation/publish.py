@@ -204,10 +204,11 @@ def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS, role: Optional[s
         job["experience_min"] = None
         job["experience_max"] = None
     # The dashboard draws the parts of the top match's score. Jobs published
-    # before the parts existed, and ATS jobs that carried zeros, get theirs
-    # from today's rules; a set that is still all zeros is not a breakdown.
+    # before the parts existed, before the "tool" part was split out, and ATS
+    # jobs that carried zeros, get theirs from today's rules; a set that is
+    # still all zeros is not a breakdown.
     parts = dict(job.get("score_parts") or {})
-    if role and not any(parts.values()):
+    if role and (not any(parts.values()) or "tool" not in parts):
         parts = score_parts(role, job.get("title") or "", job.get("snippet") or "")
     if any(parts.values()):
         job["score_parts"] = parts

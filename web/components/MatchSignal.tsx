@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
-import { matchBands, scoreAxes } from "@/lib/rank";
-import type { Job } from "@/lib/types";
+import { matchAxes, matchBands, RADAR_MIN_AXES } from "@/lib/rank";
+import type { Job, RoleSlug } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
   job: Job | null;
   /** Every job of the role, for the match bands. */
   jobs: Job[];
+  role: RoleSlug;
   accent: string;
 }
 
@@ -24,13 +25,15 @@ function ring(count: number, radius: number): string {
 }
 
 /**
- * How the top match earns its score, as the scraper publishes it: role fit,
- * skills and, for roles with an experience rule, the fit of its years. Three
- * or more parts are drawn as a tilted radar that turns slowly; fewer are
- * bars only. Under it, how the role's jobs fall into match bands.
+ * How the top match earns its score: role fit, skills, tools and, for roles
+ * with an experience rule, the fit of its years. The parts come from the
+ * file when the scraper published them, else from the browser's copy of the
+ * same rules (a line under the bars says so). Three or more parts are drawn
+ * as a tilted radar that turns slowly; fewer are bars only. Under it, how
+ * the role's jobs fall into match bands.
  */
-export default function MatchSignal({ job, jobs, accent }: Props) {
-  const axes = job ? scoreAxes(job) : [];
+export default function MatchSignal({ job, jobs, role, accent }: Props) {
+  const { axes, estimated } = matchAxes(job, role);
   const bands = matchBands(jobs);
   const most = Math.max(1, ...bands.map((band) => band.count));
   const style = { "--signal": accent } as CSSProperties;
@@ -38,7 +41,7 @@ export default function MatchSignal({ job, jobs, accent }: Props) {
   return (
     <div className="match-signal" style={style}>
       <h2 className="match-signal-head">How the top match scores</h2>
-      {axes.length >= 3 ? (
+      {axes.length >= RADAR_MIN_AXES ? (
         <div className="radar" aria-hidden>
           <svg viewBox="0 0 240 240">
             <g className="radar-spin">
@@ -75,12 +78,11 @@ export default function MatchSignal({ job, jobs, accent }: Props) {
           ))}
         </dl>
       ) : (
-        <p className="signal-note">
-          {job
-            ? "The parts of each score arrive with the next scrape."
-            : "Nothing to take apart until this role has jobs."}
-        </p>
+        <p className="signal-note">Nothing to take apart until this role has jobs.</p>
       )}
+      {estimated ? (
+        <p className="signal-foot">Read from the listing in the browser; the next scrape publishes the exact parts.</p>
+      ) : null}
 
       <h3 className="match-signal-sub">
         {formatNumber(jobs.length)} jobs by match band

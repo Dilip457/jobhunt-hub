@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Job } from "../lib/types";
-import { matchBands, newJobs, rankJobs, scoreAxes, topMatch } from "../lib/rank";
+import { estimateParts } from "../lib/estimate";
+import { matchAxes, matchBands, newJobs, rankJobs, scoreAxes, topMatch } from "../lib/rank";
 
 let counter = 0;
 function job(overrides: Partial<Job>): Job {
@@ -78,4 +79,46 @@ test("matchBands counts every job exactly once", () => {
     bands.reduce((sum, band) => sum + band.count, 0),
     jobs.length,
   );
+});
+
+test("estimateParts mirrors the scraper's rules from the job's own fields", () => {
+  const sde = estimateParts(
+    job({
+      title: "Senior Software Engineer",
+      snippet: "4-8 years. C#, .NET Core, Azure, REST APIs, SQL Server, Python.",
+      experience_min: 4,
+      experience_max: 8,
+    }),
+    "sde",
+  );
+  assert.equal(sde.role, 100); // "software engineer" and "engineer"
+  assert.equal(sde.experience, 100); // squarely in the 3–8 band
+  assert.ok((sde.tool ?? 0) > 0 && (sde.skill ?? 0) > 0);
+
+  const data = estimateParts(
+    job({ title: "Senior Big Data Engineer", snippet: "spark, airflow, dbt, kafka, snowflake, databricks, etl" }),
+    "data",
+  );
+  assert.equal(data.tool, 100); // six tools fill the allowance
+  assert.equal(data.experience, undefined); // no experience rule for Data
+  assert.deepEqual(estimateParts(job({ title: "Coordinator", snippet: "" }), "uiux"), { role: 0, skill: 0, tool: 0 });
+  // "ui" needs word boundaries, as in api_sources._hit.
+  assert.equal(estimateParts(job({ title: "Build Lead", snippet: "" }), "uiux").role, 0);
+});
+
+test("matchAxes prefers published parts and estimates when the file has too few", () => {
+  const published = job({ score_parts: { role: 50, skill: 33.3, tool: 25 } });
+  assert.deepEqual(matchAxes(published, "data"), {
+    axes: scoreAxes(published),
+    estimated: false,
+  });
+
+  const older = job({ title: "Data Engineer", snippet: "spark pipelines", score_parts: { role: 50, skill: 20 } });
+  const fallback = matchAxes(older, "data");
+  assert.equal(fallback.estimated, true);
+  assert.deepEqual(
+    fallback.axes.map((axis) => axis.key),
+    ["role", "skill", "tool"],
+  );
+  assert.deepEqual(matchAxes(null, "sde"), { axes: [], estimated: false });
 });

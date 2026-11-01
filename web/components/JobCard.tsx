@@ -16,7 +16,7 @@ interface Props {
 /** How long the role's light stays on a card after the pointer arrives. */
 const LIGHT_MS = 1200;
 /** Largest tilt toward the pointer, in degrees. */
-const TILT_DEG = 6;
+const TILT_DEG = 10;
 
 /**
  * One job. On a pointer that can hover, and when motion is not reduced, the

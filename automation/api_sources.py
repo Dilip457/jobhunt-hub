@@ -185,6 +185,23 @@ ROLE_SKILLS = {
             "unit test", "system design", "data structure", "algorithm"],
 }
 
+# The entries of ROLE_SKILLS that name a product, language, framework or
+# platform rather than a practice. The score counts both lists as one
+# allowance; score_parts() reports them apart, so the dashboard's match signal
+# has a "Skills" and a "Tools" axis for every role. Every entry here must also
+# be in ROLE_SKILLS (tests/test_scoring.py checks).
+ROLE_TOOLS = {
+    "genai": ["langchain", "pytorch", "tensorflow", "transformers", "hugging face", "openai"],
+    "data": ["spark", "pyspark", "airflow", "dbt", "kafka", "snowflake", "databricks",
+             "sql", "python", "aws", "glue", "redshift", "bigquery", "hadoop", "scala", "azure"],
+    "uiux": ["figma", "sketch", "adobe xd", "html", "css", "framer", "invision"],
+    "ba": ["sql", "jira", "confluence", "visio", "excel", "power bi", "tableau", "balsamiq",
+           "figma", "postman"],
+    "sde": ["c#", ".net", "dotnet", "asp.net", "python", "react", "javascript", "typescript",
+            "java", "azure", "sql", "docker", "kubernetes", "github actions", "git", "flask",
+            "entity framework", "mongodb", "redis"],
+}
+
 # The BA track keeps only Business Analyst and Data Analyst titles. Any other
 # analyst family (product, functional, systems, process, QA, financial, ...) is
 # left out, even when the work overlaps. Domain words do not matter:
@@ -590,16 +607,27 @@ def score_job(role: str, title: str, snippet: str) -> float:
     return round(max(0.0, min(score, SCORE_CAP)), 1)
 
 
+def _part(hits: int, allowance: int) -> float:
+    allowance = max(1, min(MAX_SKILL_HITS, allowance))
+    return round(100.0 * min(hits, allowance) / allowance, 1)
+
+
 def score_parts(role: str, title: str, snippet: str) -> Dict[str, float]:
     """The parts of score_job() on a 0-100 scale, for the dashboard's match
-    signal: how much of the title and skill allowance the listing earned and,
-    for the two roles with an experience rule, how well its years fit the band.
-    Roles without such a rule publish only the first two."""
+    signal: how much of the title allowance the listing earned, how much of
+    the skill allowance came from practices ("skill") and from named products
+    ("tool", the ROLE_TOOLS subset), and, for the two roles with an experience
+    rule, how well its years fit the band. Roles without such a rule publish
+    only the first three. The web estimates the same parts for files that
+    predate them (web/lib/rank.ts), so the two must agree."""
     text = f"{title} {snippet}".lower()
     title_l = (title or "").lower()
+    tools = ROLE_TOOLS.get(role, [])
+    practices = [skill for skill in ROLE_SKILLS.get(role, []) if skill not in tools]
     parts = {
         "role": round(100.0 * min(_title_hits(role, title_l), MAX_TITLE_HITS) / MAX_TITLE_HITS, 1),
-        "skill": round(100.0 * min(_skill_hits(role, text), MAX_SKILL_HITS) / MAX_SKILL_HITS, 1),
+        "skill": _part(sum(1 for skill in practices if _hit(skill, text)), len(practices)),
+        "tool": _part(sum(1 for tool in tools if _hit(tool, text)), len(tools)),
     }
     if role == "sde":
         adjust = sde_band_adjust(title or "", snippet or "")
