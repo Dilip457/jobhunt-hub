@@ -535,7 +535,7 @@ for each role in (genai, data, uiux, ba, sde):
 1. Index every job by canonical URL (fallback `title|company|location`).
 2. If the same job appears twice, keep the version with the higher `score`.
 3. Set `first_seen` and `posted_date` to the earliest non-null value.
-4. Cap `posted_date` at `first_seen`, then drop jobs older than `retention_days` (default 21), using `posted_date` or, when it is null, `first_seen`. A job the fresh scrape lists without a `posted_date` is not aged out by `first_seen`: it stays while the board lists it and is aged as usual once it stops (otherwise it would return next run with a new `first_seen` and the NEW badge).
+4. Cap `posted_date` at `first_seen`, then drop jobs older than `retention_days` (default 21), using `posted_date` or, when it is null, `first_seen`. A job the fresh scrape lists without a `posted_date` is not aged out by `first_seen`: it stays while the board lists it and is aged as usual once it stops (otherwise it would return next run with a new `first_seen`, tagged New again).
 5. Sort by score descending, then posted date ascending/empty.
 6. Recompute `sources` counts.
 7. Set `generated_at` to the later of the two payload timestamps, compared as times (not strings) and written in UTC; `publish.py` writes every timestamp it produces in UTC.
@@ -741,11 +741,15 @@ Each role is a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba`
 - In `selecting`, pointer drag on the canvas rotates a dedicated model turntable around the GLB’s vertical axis. `Auto-rotate` is **off by default** and can be enabled from the dock; a drag pauses it for 2.8 seconds. The camera, floor and lights do not move, and rotation is outside `AnimationMixer`, so walk/run animation is unaffected.
 - `prefers-reduced-motion: reduce`, WebGL failure, model failure or a 12-second load timeout render `StaticIntro`: the same wide scene poster, a four-second `HI.` beat first, then the identical destinations. It never shows the greeting and role cards together.
 - Role routes are pre-rendered via `generateStaticParams`; unknown slugs redirect to `/`.
+- Listing page order: header with role switcher, then the **updates ticker** (jobs with `is_new`, best first, each linking to its posting; it pauses under the pointer); the **hero** (title, lede, four figures set as type, Explore / Change destination) beside the role's **gate**, drawn in CSS in the role colour and turning slowly; the **overview** row with the **Best match right now** tile (the first job of the role's default order, unfiltered, as a solid tile in the role colour) beside **How the top match scores** (a tilted, turning radar of that job's `score_parts`, then the role's jobs by match band); the sticky filters; the job grid; the pager; the info cards.
 - Dashboard filters: search, city, source, experience bucket, minimum score, date range, sort.
-- Job card: title, company, location, experience, posted date, first-seen date, snippet, source badge, score tier, Apply button.
-- Job card date line: `Posted <relative> · First seen <relative>`.
+- Job grid: 8 cards per page, 4 columns at 1200px and wider, 2 below, 1 at 640px and narrower.
+- Job card: company monogram and New tag, the score in the role colour with its tier word (Excellent, Strong, Good, Fair, Low), title, `company · city · experience`, two-line snippet, `source · <relative date>`, Apply.
+- Card hover, on a pointer that can hover with motion not reduced: the card tilts toward the pointer at once (at most 6°) and the role colour lights where the pointer is, fading after 1.2 s while the tilt holds. Touch, keyboard and reduced motion get the same card without either.
+- Card date: `dateAgo(posted_date)`, else `first seen <dateAgo(first_seen)>`.
 - `dateAgo()` is date-only: “today”, “yesterday”, “N days ago”, then a formatted date.
-- `NEW` badge uses `is_new`; “First seen” uses `first_seen`.
+- The New tag and the ticker use `is_new`.
+- The match-signal radar needs three or more published parts; with fewer it shows the parts as bars, and with none it says the parts arrive with the next scrape. Match bands: 90+, 80–89, 70–79, 60–69, under 60, counted over all of the role's jobs.
 - Experience line: stated years (`5–9 yrs`, `7+ yrs`), else LinkedIn's level label, else “Not stated in posting”. The experience filter treats a level by its bucket (Internship/Entry → Fresher, Associate → Mid, Mid-Senior → Senior, Director/Executive → Lead); a job with nothing stated is listed only under “Any level”.
 - The date-range filter and date sort use `posted_date`, falling back to `first_seen` for boards that publish no date.
 - Contact link in the “Built in the open” card: `mailto:heyjarvis.03@gmail.com`.
@@ -825,11 +829,8 @@ The token is server-side only. Never prefix it with `NEXT_PUBLIC_`.
       "posted_date": "2026-10-18",
       "score": 82,
       "score_parts": {
-        "role": 20,
-        "skill": 18,
-        "experience": 10,
-        "tool": 8,
-        "domain": 6
+        "role": 100,
+        "skill": 66.7
       },
       "experience_min": 2,
       "experience_max": 5,
@@ -859,7 +860,7 @@ The token is server-side only. Never prefix it with `NEXT_PUBLIC_`.
 | `experience_min` | number \| null | Minimum years |
 | `experience_max` | number \| null | Maximum years |
 | `snippet` | string | Short description excerpt (max ~240 chars) |
-| `is_new` | boolean | Source-provided new flag |
+| `is_new` | boolean | First collected within the last 2 days; recomputed by `publish.finalize_job()` from `first_seen` |
 | `first_seen` | string \| null | First scrape date (`YYYY-MM-DD`) |
 
 ### 7.3 Manifest
@@ -1088,7 +1089,8 @@ Front-end smoke checks used for this redesign (all must pass before deploying):
 
 ```text
 /                         → clean boot, 4 s greeting with 0 cards, pullback, 3 gates, role dock, skip intro
-/jobs/genai               → GenAI cards, filters, back/forward
+/jobs/genai               → ticker, red gate, figures, best-match tile, match signal, 8 cards + pager, filters, back/forward
+card hover (desktop)      → tilt toward the pointer at once; role light fades after 1.2 s; no tilt on touch or reduced motion
 /jobs/data                → Data Engineering cards, URL filters
 /jobs/uiux                → UI/UX cards on a 390×844 viewport, no overflow
 reduced-motion            → static intro: HI. with 0 cards, then 3 cards after 4 s; no WebGL canvas
@@ -1118,6 +1120,12 @@ The refresh panel counts elapsed time from the current request rather than the p
 Animated favicon pass (2026-10-29, local production build): `npx tsc --noEmit` and `npm run build` pass. The tab icon is now a transparent mark of the guide climbing a white staircase with blue tread lips and a red destination flag. The first SVG attempt had two defects: a CSS `transform` animation overrode the walker's `transform="translate(...)"` attribute and moved the figure off-canvas, and `currentColor` rendered the steps black. Both are fixed by using explicit palette colours and nested groups. Chromium does not animate SVG favicons, so `web/components/AnimatedFavicon.tsx` draws the same scene to a 64×64 canvas at roughly 12 fps and repoints every `rel="icon"` / `rel="shortcut icon"` link at the PNG data URL; it pauses on `visibilitychange` and leaves the static files untouched under `prefers-reduced-motion: reduce`. Static fallbacks are `favicon.svg`, `favicon.ico` (16/32/48), `favicon-16/32/48.png`, `apple-touch-icon.png` (180), `icon-192/512.png` and `manifest.json`; all preserve alpha and use the palette `#08090D`, `#287BFF`, `#FF304F`, `#FFFFFF` and `#E8B48F`. Icon, manifest and shortcut URLs are versioned with `?v=6` to break stale browser favicon caches. A Playwright check against the local production server found one dynamic icon link, confirmed its data URL changed after 600 ms, sampled four distinct frames, and verified that `prefers-reduced-motion: reduce` leaves only the static links; there were no console or page errors. The 32×32 and 16×16 renders were inspected on both light (`#F4F5F7`) and dark (`#202124`) backgrounds and remain legible. The icon links are declared explicitly in `web/app/layout.tsx` rather than through `metadata.icons`, because Next.js re-injected the metadata set during hydration and produced a duplicate second set. Live verification after the push (`7bfbbb3`, Vercel deployment completed): the live DOM held one dynamic icon link plus five static links with no duplicates, the animated href changed after 600 ms, and reduced motion left the static set. `/favicon.svg?v=6` (4,900 B) contained the staircase and no background rect, `/favicon-32.png?v=6` (896 B) retained alpha, and `/favicon.ico?v=6` (2,887 B) carried three frames. No console or page errors were reported.
 
 Brand mark and favicon clarity pass (2026-10-29, local production build): the static gradient-square spark in the intro topbar, boot screen, static fallback and dashboard header is replaced by `web/components/BrandMark.tsx`, a CSS 3D cube with the white spark on its front and back faces. It rocks ±28° on Y every 7 s and floats 1.5px, and the reduced-motion path freezes it at `rotateX(-18deg) rotateY(-24deg)`; the boot screen does not load a second WebGL context. The mark measures 42×42px on desktop and 36×36px at ≤520px. The favicon was redrawn around two chunky steps instead of four thin steps and a flag, and the guide was enlarged from roughly 13.8 to 17.7 viewBox units, so the figure fills much more of the 16×16 tab icon. `favicon.svg`, the 16/32/48/180/192/512 PNGs and the three-frame `favicon.ico` were regenerated with alpha. Icon, shortcut, apple, mask and manifest URLs now use `?v=6`. `npx tsc --noEmit` and `npm run build` pass. Playwright checks against the local production server found no console or page errors, confirmed the dynamic favicon href still changes after 600 ms with `?v=6` links, and captured the 42px desktop / 36px phone brand mark at multiple rotation phases; the spark remained visible through the rock. The 16×16 and 32×32 favicon renders were inspected on light (`#F4F5F7`) and dark (`#202124`) backgrounds. Live verification after the push (`e8535e4`, Vercel deployment completed): the live DOM held one dynamic icon link plus five static links with `?v=6`, the animated href changed after 700 ms, and no console or page errors were reported. `/favicon.svg?v=6` was 3,973 B with the new two-step path and no full-canvas background; `/favicon-32.png?v=6` was 928 B with alpha; `/favicon.ico?v=6` was 2,998 B with three frames. The live brand mark exposed all six cube faces and `animationName: brand-cube-rock`, at 42px on desktop and 36px on a 390px phone. Under `prefers-reduced-motion: reduce` the dynamic link count was 0, the five static links remained, and the brand animation was `none`.
+
+Frame-budget pass (2026-11-01, PR #7, `a2ec259`): on an Intel UHD 630 at a 1366×860 window the intro ran at 9.5 fps on the walk, 8.7 fps while selecting and 10.9 fps departing. The canvas no longer supersamples: the pixel ratio starts at the display's ratio capped at 1.5 and `lib/renderQuality.ts` lowers it on long frames and raises it after a quiet cool-down (seven unit tests). The key light's single 1024 px `PCFShadowMap` follows the guide; the front fill and the five gate point lights were removed and the physical floor, path and frame materials became standard ones. Blurred discs became radial gradients and the sticky bars lost their backdrop blur; the search feeds the filter through `useDeferredValue`; the animated favicon stands down while the scene draws and for 400 ms after input. Measured afterwards on the same machine: 56 fps walk, 58 selecting, 60 departing, and about 60 on the dashboard while scrolling and typing.
+
+Gate light on the guide (2026-11-01, PR #8, `108d798`): removing the gate point lights also removed the selected gate's colour from the guide's hair. One point light (`gateSpill`, reach 1.8 m) now serves all five gates: during `departing` and `transition` it sits 0.55 m above his crown, 0.4 m toward the selected gate, in that gate's colour, at an intensity of 10 rising to 40 as he nears the gate. It stays in the scene at zero intensity otherwise, so the light count and the compiled shaders never change. Compared with the build before PR #7 and the live site at the same moments of the walk: on the GenAI gate the hair's mean red went from 77 to 102 against the live site. Frame rates on the UHD 630: 52 fps on the intro walk, 55 selecting, 58 departing, 60 on the dashboard.
+
+Listing page rebuild (2026-11-01, PR #9, `c0994b3`): the role page was rebuilt from four concepts the owner reviewed (kept locally, not in the repo): from **Runway**, the role's gate beside the title (`HeroGate`), the figures set as type and the role light on card hover; from **Signal**, the updates ticker (`UpdatesTicker`) and the score breakdown (`MatchSignal`); from **Bento**, the best-match tile (`BestMatch`) and the card design, which now tilts toward the pointer. Removed: the orb art, the "Destination reached" label, the four stat tiles and `ScoreRing.tsx`. The role's default order moved to `web/lib/rank.ts` (`compareByRole`), shared by the list and the best-match tile. The scraper now publishes `score_parts` for portal and API/ATS jobs (`api_sources.score_parts()`) and `publish.finalize_job()` keeps them, computing them for jobs that have none, so the radar shows live parts from the next scrape on; until then it shows a note and the match bands. Checks: `tsc`, ESLint, 43 web tests (5 new in `tests/rank.test.ts`), 472 Python tests, a production build, screenshots at 1440, 1024 and 390 against live data and the seed data, and the frame harness on the UHD 630: 60 fps idle, 59 scrolling, 60 typing.
 
 ---
 

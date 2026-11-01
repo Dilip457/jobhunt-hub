@@ -193,7 +193,7 @@ jobhunt-hub/
 - boot / loading screen
 - in-scene role dock and mobile sheet
 - static / reduced-motion intro
-- dashboard, stats, filters, job grid, score ring, states
+- dashboard: updates ticker, hero gate, figures, best-match tile, match signal (radar + bands), filters, job grid and card (tilt + role light), pager, states
 - modal, refresh panel and toasts
 - responsive rules and `prefers-reduced-motion: reduce`
 
@@ -290,7 +290,20 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 
 ## 6. Dashboard actions and flow
 
-`web/components/JobDashboard.tsx` is the controller.
+`web/components/JobDashboard.tsx` is the controller. The page, top to bottom:
+
+```text
+header: brand · RoleSwitcher · Live · Journey
+  └─ UpdatesTicker        new since the last scrape (is_new), best first, each a link
+hero: h1 · lede · StatsBar (4 figures as type) · Explore / Change destination   |   HeroGate (role colour)
+overview: BestMatch (topMatch, solid role-colour tile)   |   MatchSignal (radar of score_parts + match bands)
+Filters (sticky)
+job grid: 8 JobCards per page (4 columns ≥1200px, 2 below, 1 ≤640px) → Pagination
+info cards (pipeline, contact/credits)
+```
+
+The role colour (`roles.ts` `accent`) is set once as `--accent` on `.dashboard` and passed
+to `HeroGate`, `BestMatch`, `MatchSignal` and `JobCard`.
 
 | Action | Trigger | Code path |
 |---|---|---|
@@ -302,7 +315,7 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 | Filter match score | Match select | `job.score >= Number(score)` |
 | Filter experience | Experience select | `matchesExperience()` in `web/lib/utils.ts` |
 | Filter posted date | Posted select | `postedWithinDays()`: `posted_date`, else `first_seen`, age in days |
-| Sort | Sort select | score / date / company |
+| Sort | Sort select | score / date / company; the score order is `compareByRole(role)` in `web/lib/rank.ts` (BA entry levels first, SDE 3–8 year band first, then score) |
 | Change page | Pager (`web/components/Pagination.tsx`) | `setPage(n)`; 8 jobs per page (`PAGE_SIZE = 8`), page numbers from `pageItems()` in `web/lib/utils.ts`; any filter, sort or role change goes back to page 1 |
 | Share filters | Any filter or page change | `window.history.replaceState(window.history.state, …)` with query params (`page` included when > 1), only after the URL has been read (`hydrated`) |
 | Switch role | Role tabs | `prefetchRole(next)` + `router.push("/jobs/<role>")` |
@@ -312,6 +325,10 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 | Poll refresh | Queued/running status | `/api/status` every 8 seconds, with `&since=<dispatchedAt>` while a dispatch is pending |
 | Load fresh jobs | State changes to success | `freshRef.current = true` → `/api/jobs?role=…&fresh=<timestamp>` with `x-refresh-token` |
 | Show toast | Refresh/load outcomes | `pushToast()` |
+| Updates ticker | Data loaded | `UpdatesTicker`: `newJobs(jobs, role)` from `rank.ts`, first `SHOWN = 12` on a CSS-translated track repeated once; pauses on hover/focus; "Nothing new since the last scrape" when none |
+| Best match tile | Data loaded | `best = topMatch(jobs, role)` (unfiltered list, the role's default order) → `BestMatch`; the tile links to the posting |
+| Match signal | Data loaded | `MatchSignal`: `scoreAxes(best)` (radar when 3+ parts, bars otherwise, a note when none) and `matchBands(jobs)` |
+| Card hover | Pointer over a card | `JobCard` `aim()` sets `--rx`/`--ry` (≤ `TILT_DEG` = 6°) and `--mx`/`--my`; `enter()` adds `.is-lit` for `LIGHT_MS` = 1200 ms; only when `(hover: hover) and (prefers-reduced-motion: no-preference)` |
 
 URL parameters:
 
@@ -467,14 +484,15 @@ from api_sources import ROLE_SEARCH_TERMS, build_job, to_date
 | `ROLE_TITLE_EXCLUDE` | Obvious wrong-role titles |
 | `ROLE_SKILLS` | Role skill keywords |
 | `title_relevant()`, `title_tracks()` | Rejects unrelated titles; with `resolve_overlap=True` (collectors) a title several tracks accept goes to the one whose role it names; `publish.py` uses the default per-track rule |
-| `score_job()` | Base 30, +8 per title hit, +3 per skill hit, capped at 97 |
+| `score_job()` | Base 30, +8 per title hit (max 2), +3 per skill hit (max 6), BA/SDE experience nudges, capped at 88 (`SCORE_CAP`) |
+| `score_parts()` | The parts behind `score_job()` on 0–100: `role` (title hits of the 2 allowed), `skill` (skills of the 6 allowed), and for SDE `experience` (`sde_band_adjust()` mapped from −9…+8) or for BA `experience` (entry title 100, senior 0, else 50) |
 | `build_job()` | Builds the public job object and calls `score_job()` |
 
 This is a **title + snippet keyword score**, not the hardcoded resume profile score.
 
 Consequences:
 
-- Vendor LinkedIn/company-page jobs can carry the resume-style score and `score_parts`.
+- Vendor LinkedIn/company-page jobs carry the resume-style score and its five `score_parts`; portal and API/ATS jobs carry `score_parts()` (two or three parts).
 - Direct portal and API/ATS jobs carry the simpler score. It is capped (2 title hits, 6 skills; at most 64 before BA/SDE nudges) so a keyword match cannot outrank a strong resume match; uncapped, Foundit's skill-tag lists scored up to 97 and filled the first page.
 - The merged board can therefore contain two scoring methods side by side. The constants live at the top of `score_job()` in `api_sources.py`.
 
@@ -654,7 +672,7 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | Field | Type | Produced by | Used by |
 |---|---|---|---|
 | `role` | `"genai"`, `"data"`, `"uiux"`, `"ba"` or `"sde"` | `automation/export.py`, `automation/publish.py` | `web/lib/types.ts`, dashboard |
-| `generated_at` | ISO string | `export.py`, `publish.py` | `StatsBar` |
+| `generated_at` | ISO string | `export.py`, `publish.py` | `StatsBar`, `UpdatesTicker` (when nothing is new) |
 | `count` | number | `export.py`, `publish.py` | `StatsBar`, dashboard |
 | `sources` | name → count | `export.py`, `portal_scrapers.py`, `api_sources.py`, `publish.py` | filters, stats |
 | `jobs` | `Job[]` | all collectors | dashboard |
@@ -667,13 +685,14 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | `Job.apply_url` | string, omitted when equal to `url` | export/build_job | Apply |
 | `Job.source` | string | export/build_job | filter, badge |
 | `Job.posted_date` | date/null | export/build_job | date filter, card |
-| `Job.score` | number | vendor engine or `score_job()` | filter, sort, ring |
+| `Job.score` | number | vendor engine or `score_job()` | filter, sort, card figure, best-match tile, match bands, ticker |
+| `Job.score_parts` | `{role, skill, experience?, tool?, domain?}`, 0–100 each; omitted when none or all zero | vendor export, `api_sources.score_parts()`, `publish.finalize_job()` | `MatchSignal` radar for the top match |
 | `Job.experience_min/max` | number/null | `extract_experience_with_source()` | experience label/filter |
 | `Job.experience_source` | `"board"`, `"text"`, `"page"`, `"level"`, `"title"` or null | export/build_job/enrich_experience | where the experience came from; publish keeps page/level answers across runs |
 | `Job.experience_level` | string/null | `enrich_experience.py` | LinkedIn's "Seniority level" when no years are stated; shown as-is |
 | `Job.experience_checked` | date/null | `enrich_experience.py` | last posting-page look; retried after 7 days |
 | `Job.snippet` | string | `make_snippet()` | search, card |
-| `Job.is_new` | boolean | `publish.finalize_job()`: first seen ≤ 2 days ago | NEW badge |
+| `Job.is_new` | boolean | `publish.finalize_job()`: first seen ≤ 2 days ago | card's New tag, `UpdatesTicker` |
 | `Job.first_seen` | date/null | export/publish merge | “First seen”; date filter fallback |
 | `Job.last_seen` | date | `publish.stamp_seen()` | drops jobs unseen for 7 days |
 
@@ -732,9 +751,15 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
+| Card hover tilt / light | `JobCard.tsx` (`TILT_DEG`, `LIGHT_MS`) | `.job-card`, `.job-card-light` in `globals.css` |
+| Grid columns per width | `globals.css` `.job-grid` (4 ≥1200px, 2, 1 ≤640px) | `PAGE_SIZE = 8` in `JobDashboard.tsx` |
+| Updates ticker | `web/components/UpdatesTicker.tsx` (`SHOWN`) | `.ticker*` styles, `newJobs()` in `web/lib/rank.ts` |
+| Hero gate | `web/components/HeroGate.tsx` | `.hero-gate`, `.gate*` styles |
+| Best match choice | `web/lib/rank.ts` `topMatch()`, `compareByRole()` | `BestMatch.tsx`, the dashboard's score sort |
+| Match signal parts / bands | `web/lib/rank.ts` `scoreAxes()`, `matchBands()` | `MatchSignal.tsx`, `automation/api_sources.py` `score_parts()` |
 | Score tier colours/labels | `web/lib/utils.ts` `scoreTier()` | `JobCard.tsx` |
 | Resume profile / scoring keywords | External vendor `config.py` and `scoring_engine.py` (BA: `run_source.py` patches) | `automation/export.py`, `publish.py` |
-| Simple portal/API score | `automation/api_sources.py` `score_job()` | `build_job()`, portal/API collectors |
+| Simple portal/API score | `automation/api_sources.py` `score_job()` | `score_parts()` (keep the two in step), `build_job()`, portal/API collectors |
 | Search keywords/cities/score floor | `profiles/<role>.json` | `run_source.py`, workflow |
 | Add a portal source | `automation/portal_scrapers.py` `fetch_*`, `SOURCES` | `collect_portal_jobs()` |
 | Add an API/ATS source | `automation/api_sources.py` `fetch_*`, `SOURCES` | `collect_api_jobs()` |
