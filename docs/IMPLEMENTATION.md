@@ -22,7 +22,6 @@ For the high-level design, see [Architecture](ARCHITECTURE.md).
 
 | Requirement | Use |
 |---|---|
-| Adzuna / Jooble / JSearch keys | Extra API sources (off in the cloud workflow) |
 | Cloudflare WARP | Indeed / SimplyHired access; installed by the workflow |
 | Local PC agent | Residential-IP fallback for Indeed; not required |
 
@@ -199,7 +198,7 @@ Artifact name: `jobs-<role>`; retention: 14 days.
 
 **Important:** `--no-playwright` removes the *vendor* Playwright source from the profile. It does **not** disable Playwright inside `portal_scrapers.py`; Naukri still uses real Chrome.
 
-**Important:** `--no-apis` disables `api_sources.py` (Adzuna, Jooble, JSearch, Remotive, Himalayas, ATS) in the cloud. The vendor repo's `linkedin` and `company_pages` sources still run because they are listed in the profile.
+**Important:** `--no-apis` disables `api_sources.py` (Remotive, Himalayas, Remote OK, We Work Remotely, ATS) inside the main scrape. The vendor repo's `linkedin` and `company_pages` sources still run because they are listed in the profile.
 
 ### 3.5 `warp` job
 
@@ -383,27 +382,23 @@ Direct, account-free scrapers. Each fetcher returns a list of normalized job dic
 
 Naukri, Shine and Foundit use the portal's posted date. Indeed and SimplyHired read the card's age stamp (`_card_posted_date()`: “Just posted”, “Today”, “Posted 3 days ago”, “Active 5 days ago”, “30+ days ago”, “a day ago”, SimplyHired's “3d” / “30d+”; dates are UTC days, like `first_seen`); a card without one gets `posted_date: null`, never the scrape date. `publish.py` keeps the earliest known `posted_date` for a job, caps it at `first_seen` (a job cannot be posted after we first collected it, which also retires the scrape dates published before this change), and ages undated jobs out from `first_seen`.
 
-### 4.4 `api_sources.py` (optional)
+### 4.4 `api_sources.py` (keyless extra sources)
 
-The main scrape disables this module with `--no-apis`. The workflow's "Fetch extra API sources" step runs it afterwards for `ba` and `sde`, passing the keys below from repository secrets (a source whose key is unset is skipped). It can be run locally for any role.
+The main scrape disables this module with `--no-apis`. The workflow's "Fetch extra keyless sources" step runs it afterwards for `ba` and `sde`. No source needs a key. It can be run locally for any role.
 
-| Source | Key | Notes |
-|---|---|---|
-| Company ATS boards | none | Greenhouse, Lever, Ashby, SmartRecruiters; tokens in `automation/companies.json` |
-| Adzuna | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Free India API |
-| Jooble | `JOOBLE_API_KEY` | Free India API |
-| Google Jobs (JSearch) | `JSEARCH_API_KEY` | RapidAPI free tier |
-| Remotive | none | Remote roles |
-| Himalayas | none | Remote roles |
-| Remote OK | none | Public remote jobs API (BA API step) |
-| We Work Remotely | none | Public RSS feed (BA API step) |
+| Source | Notes |
+|---|---|
+| Company ATS boards | Greenhouse, Lever, Ashby, SmartRecruiters; tokens in `automation/companies.json` |
+| Remotive | Remote roles |
+| Himalayas | Remote roles |
+| Remote OK | Public remote jobs API |
+| We Work Remotely | Public RSS feed |
 
-Missing keys are skipped silently. All results go through `build_job()` and are merged by canonical URL.
+All results go through `build_job()` with the strict location rule (every source lists jobs worldwide) and are merged by canonical URL.
 
 For `ba` and `sde`, the workflow runs this module separately after the main scrape and writes
-`artifacts/<role>.apis.json`, so those tracks get Remote OK, We Work Remotely and ATS results,
-plus Adzuna, Jooble and Google Jobs once their secrets are set, even though the main scrape
-uses `--no-apis`.
+`artifacts/<role>.apis.json`, so those tracks get remote-board and ATS results even though the
+main scrape uses `--no-apis`.
 
 ### 4.5 `export.py`
 
@@ -427,7 +422,7 @@ Exports the vendor SQLite database to public JSON:
 - Indian cities and states are matched first, on word boundaries; foreign markers are matched on word boundaries too. (A plain substring check used to drop “Kukatpally” for containing “uk” and “Perungudi” for “peru”.)
 - Drops known foreign locations (for example “Remote - US”, “Remote (Americas)”, “EMEA”, “Europe”, “APAC (excluding India)”, “San Jose, CA”, “Sofia, Bulgaria”). US state codes are recognised after a comma (“Bellevue, WA”); codes that are also Indian state or country codes (TN, GA, IN, ...) are not, so “Chennai, TN” and “Pune, IN” stay Indian. “Indianapolis” does not match “India”.
 - Indian boards: an unknown location is kept and labelled “India” so it is not silently lost.
-- Global sources (company ATS boards, remote boards, vendor company career pages) are **strict**: a job is kept only when its location names an Indian city, state, state code (“Sanand, GJ”) or minor place (`INDIA_PLACES`), or an India-eligible remote. Unknown places are dropped; before, a global board's “Santa Clara, California” or “Ho Chi Minh City” was published as India. Adzuna, Jooble and JSearch are queried for India only and keep the lenient rule.
+- Global sources (company ATS boards, remote boards, vendor company career pages) are **strict**: a job is kept only when its location names an Indian city, state, state code (“Sanand, GJ”) or minor place (`INDIA_PLACES`), or an India-eligible remote. Unknown places are dropped; before, a global board's “Santa Clara, California” or “Ho Chi Minh City” was published as India. Indian job boards keep the lenient rule, since they rarely list a foreign city.
 - A minor place followed by a US state code is American (“Salem, OR”), and the HR/KL codes are not read as Haryana/Kerala (they are also Croatia and Kuala Lumpur). A bare “Remote”, “Worldwide” or “Anywhere” counts as India-eligible in both modes, including on global boards. “Bangalore or Remote (US)” is kept and labelled with the city.
 
 **Title relevance**

@@ -49,7 +49,7 @@ automation/portal_scrapers.py
         ↓
 automation/api_sources.py
   ├─ score_job()  (title + snippet keyword score)
-  ├─ Adzuna · Jooble · JSearch · Remotive · Himalayas
+  ├─ Remotive · Himalayas · Remote OK · We Work Remotely
   └─ ATS: Greenhouse · Lever · Ashby · SmartRecruiters
         ↓
 merge into the same artifacts/<role>.json
@@ -560,15 +560,14 @@ Vendor touchpoints used by the wrapper:
 
 Shared helpers: `_session()`, `_relative_date()`, `_absolute()`, `_open_browser()`, `_new_page()`, `_proxy_kwargs()`, `_warp_reconnect()`, `collect_portal_jobs()`, `merge_portal_jobs()`.
 
-### 9.5 Cloud-safe APIs and ATS (`automation/api_sources.py`)
+### 9.5 Keyless feeds and ATS (`automation/api_sources.py`)
 
 | Source | Function |
 |---|---|
-| Adzuna | `fetch_adzuna()` |
-| Jooble | `fetch_jooble()` |
-| Google Jobs / JSearch | `fetch_jsearch()` |
 | Remotive | `fetch_remotive()` |
 | Himalayas | `fetch_himalayas()` |
+| Remote OK | `fetch_remoteok()` |
+| We Work Remotely | `fetch_weworkremotely()` |
 | Greenhouse | `_greenhouse()` |
 | Lever | `_lever()` |
 | Ashby | `_ashby()` |

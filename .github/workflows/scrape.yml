@@ -143,19 +143,12 @@ jobs:
             --parallel-portals 4 \
             --previous "previous/${{ matrix.role }}.json"
 
-      - name: Fetch extra API sources (BA, SDE)
+      - name: Fetch extra keyless sources (BA, SDE)
         if: matrix.role == 'ba' || matrix.role == 'sde'
         continue-on-error: true
         working-directory: portal
         env:
           PYTHONUNBUFFERED: "1"
-          # Optional job APIs (see README "Add the keys"). api_sources.py reads
-          # these from the environment and skips a source whose key is unset,
-          # so a missing secret only leaves that source off.
-          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
-          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
-          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
-          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
         run: |
           python automation/api_sources.py \
             --role "${{ matrix.role }}" \

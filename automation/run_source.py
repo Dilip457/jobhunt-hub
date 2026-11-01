@@ -738,7 +738,7 @@ def run(args) -> int:
         finally:
             portal_pool.shutdown(wait=False)
 
-    # Cloud-safe API sources (Adzuna, Jooble, Google Jobs, Remotive, Himalayas).
+    # Cloud-safe keyless sources (remote boards and company ATS boards).
     # Always attempted, so the portal still gets data even when every scraper is blocked.
     if not args.no_apis:
         try:

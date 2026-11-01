@@ -254,11 +254,10 @@ def normalize_location(raw: str, strict: bool = False) -> Tuple[str, bool]:
 
     Indian job boards rarely list a foreign city, so by default a location we
     cannot place is kept and labelled "India". Global sources (company career
-    pages, company ATS boards and remote boards; not the India-only Adzuna,
-    Jooble and JSearch queries) list jobs worldwide: with ``strict`` a job is
-    kept only when its location positively names India or an India-eligible
-    remote, and anything we cannot place is dropped. A bare "Remote" or
-    "Worldwide" counts as India-eligible in both modes.
+    pages, company ATS boards and remote boards) list jobs worldwide: with
+    ``strict`` a job is kept only when its location positively names India or
+    an India-eligible remote, and anything we cannot place is dropped. A bare
+    "Remote" or "Worldwide" counts as India-eligible in both modes.
     """
     text = re.sub(r"\s+", " ", unescape(str(raw or ""))).strip()
     low = text.lower()
