@@ -115,6 +115,15 @@ def _days_ago(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
 
 
+def _count_sources(jobs: list[Dict[str, Any]]) -> Dict[str, int]:
+    """Jobs per source, largest first (the shape the manifest and site expect)."""
+    sources: Dict[str, int] = {}
+    for job in jobs:
+        name = job.get("source") or "Unknown"
+        sources[name] = sources.get(name, 0) + 1
+    return dict(sorted(sources.items(), key=lambda kv: -kv[1]))
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -249,16 +258,11 @@ def merge_payloads(
     jobs = dedupe_jobs(jobs)
     jobs.sort(key=lambda j: (-(j.get("score") or 0), j.get("posted_date") or ""))
 
-    sources: Dict[str, int] = {}
-    for job in jobs:
-        name = job.get("source") or "Unknown"
-        sources[name] = sources.get(name, 0) + 1
-
     return {
         "role": fresh.get("role") or previous.get("role"),
         "generated_at": newest_stamp([previous.get("generated_at"), fresh.get("generated_at")]) or utc_now(),
         "count": len(jobs),
-        "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
+        "sources": _count_sources(jobs),
         "jobs": jobs,
         "demo": False,
     }
@@ -426,9 +430,12 @@ def drop_offrole(payload: Dict[str, Any], role: str) -> int:
     jobs = payload.get("jobs") or []
     kept = [job for job in jobs if title_relevant(role, job.get("title") or "")]
     dropped = len(jobs) - len(kept)
+    # Always recount: the manifest copies count and sources from here, and
+    # they must describe the jobs actually published.
+    payload["jobs"] = kept
+    payload["count"] = len(kept)
+    payload["sources"] = _count_sources(kept)
     if dropped:
-        payload["jobs"] = kept
-        payload["count"] = len(kept)
         print(f"[publish] {role}: dropped {dropped} jobs whose titles no longer match the role")
     return dropped
 

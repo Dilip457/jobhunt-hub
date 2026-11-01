@@ -139,3 +139,24 @@ def test_generated_at_falls_back_to_now_in_utc():
     out = publish.merge_payloads({}, {"role": "data", "jobs": [job("a")], "generated_at": "junk"}, 21)
     assert out["generated_at"].endswith("+00:00")
     assert publish.utc_now().endswith("+00:00")
+
+
+def test_dropping_offrole_jobs_recounts_sources(tmp_path):
+    import json
+
+    def ba(jobs):
+        return {**payload(jobs), "role": "ba"}
+
+    fresh = [job("a", title="Business Analyst", source="Naukri")]
+    old = [
+        job("b", title="Product Analyst", source="Indeed", last_seen=day(1)),
+        job("c", title="Business Analyst II", source="Indeed", last_seen=day(1)),
+        job("d", title="Functional Analyst", source="Shine", last_seen=day(1)),
+    ]
+    (tmp_path / "ba.json").write_text(json.dumps(ba(fresh)))
+    payloads, statuses = publish.build_payloads(str(tmp_path), {"ba": json.dumps(ba(old))}, 21, 7, False)
+    out = payloads["ba"]
+    assert out["count"] == len(out["jobs"]) == 2
+    assert out["sources"] == {"Naukri": 1, "Indeed": 1}
+    manifest = publish.build_manifest(payloads, statuses, publish.utc_now())
+    assert sum(manifest["roles"]["ba"]["sources"].values()) == manifest["roles"]["ba"]["count"]
