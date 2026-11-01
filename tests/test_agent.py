@@ -74,3 +74,35 @@ def test_agent_run_does_not_leave_old_artifacts_for_publish(tmp_path, monkeypatc
     assert sorted(p.name for p in artifacts.iterdir()) == []
     assert any("run_source.py" in " ".join(c) and "genai" in c for c in commands)
     assert any("publish.py" in " ".join(c) for c in commands)
+
+
+def test_git_env_disables_credential_prompts():
+    env = agent.git_env()
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+    assert env["GCM_INTERACTIVE"] == "never"
+
+
+def test_failed_clone_leaves_no_partial_vendor_folder(tmp_path, monkeypatch):
+    portal = tmp_path / "portal"
+    (portal / "automation").mkdir(parents=True)
+    (portal / "profiles").mkdir()
+    (portal / "profiles" / "genai.json").write_text(json.dumps({"repo": "someone/genai"}))
+    repo_dir = portal / "vendor" / "genai"
+
+    commands = []
+
+    def fake_run(cmd, cwd, check=False):
+        commands.append(cmd)
+        if cmd[:2] == ["git", "clone"]:
+            # A clone that times out half way leaves a folder behind.
+            (repo_dir / ".git").mkdir(parents=True)
+            return 124
+        return 0
+
+    monkeypatch.setattr(agent, "run", fake_run)
+    monkeypatch.setattr(agent, "published_age_hours", lambda portal_dir: 1.0)
+    monkeypatch.setattr(sys, "argv", ["agent.py", "--portal-dir", str(portal), "--roles", "genai"])
+    assert agent.main() == 0
+
+    assert not repo_dir.exists()
+    assert not any("run_source.py" in " ".join(c) for c in commands)

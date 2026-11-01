@@ -113,6 +113,7 @@ def test_git_calls_disable_terminal_prompts(monkeypatch):
     monkeypatch.setattr(publish.subprocess, "run", fake_run)
     publish.git(["status"], ".")
     assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert seen["env"]["GCM_INTERACTIVE"] == "never"
     assert seen["encoding"] == "utf-8"
     assert seen["timeout"] == publish.GIT_TIMEOUT
 

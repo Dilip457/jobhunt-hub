@@ -49,7 +49,9 @@ class PublishError(RuntimeError):
 
 def _git_env() -> Dict[str, str]:
     # Fail instead of waiting for a username/password nobody will type.
-    return {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    # GIT_TERMINAL_PROMPT covers the console prompt; GCM_INTERACTIVE stops
+    # Git Credential Manager's sign-in window on Windows.
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
 
 
 def git(args: list[str], cwd: Optional[str], check: bool = True, timeout: int = GIT_TIMEOUT) -> subprocess.CompletedProcess:

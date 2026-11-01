@@ -22,6 +22,7 @@ import argparse
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -75,7 +76,9 @@ def log(message: str) -> None:
 
 def git_env() -> Dict[str, str]:
     # Fail instead of waiting for a username/password nobody will type.
-    return {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    # GIT_TERMINAL_PROMPT covers the console prompt; GCM_INTERACTIVE stops
+    # Git Credential Manager's sign-in window on Windows.
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
 
 
 def run(cmd: List[str], cwd: str, check: bool = False) -> int:
@@ -283,7 +286,13 @@ def main() -> int:
                     log(f"{role}: no repo in profile; skipping")
                     continue
                 log(f"{role}: cloning {repo}")
-                run(["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir], cwd=portal)
+                if run(["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir], cwd=portal):
+                    # A failed or timed-out clone can leave a partial folder
+                    # that later runs would try to pull; remove it so the next
+                    # run clones again.
+                    shutil.rmtree(repo_dir, ignore_errors=True)
+                    log(f"{role}: clone failed; skipping")
+                    continue
             else:
                 run(["git", "-C", repo_dir, "pull", "--ff-only", "--quiet"], cwd=portal)
 
