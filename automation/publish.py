@@ -174,6 +174,12 @@ def _backfill_last_seen(payload: Dict[str, Any]) -> None:
 def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any]:
     """Fields derived at publish time, plus trimming of unused fields."""
     first_seen = (job.get("first_seen") or "")[:10]
+    # A listing was posted no later than we first collected it. Indeed and
+    # SimplyHired used to stamp the scrape date as posted_date, refreshed every
+    # run; capping at first_seen retires those fake dates.
+    posted = (job.get("posted_date") or "")[:10]
+    if posted and first_seen and posted > first_seen:
+        job["posted_date"] = first_seen
     # NEW means "first collected in the last couple of days". The vendor
     # is_new flag stuck for weeks after merges, so it is recomputed here.
     job["is_new"] = bool(first_seen and first_seen >= _days_ago(new_days))
@@ -202,9 +208,11 @@ def merge_payloads(
     """Union two role payloads so a lighter run never removes recent data.
 
     The fresh copy of a job wins (it carries the current title, snippet and
-    scoring rules); first_seen keeps the oldest value and last_seen the newest.
-    With unseen_days set, jobs that no scrape has returned for that many days
-    are treated as closed and dropped.
+    scoring rules); first_seen and posted_date keep the oldest value and
+    last_seen the newest. Jobs older than retention_days (by posted_date, or
+    first_seen when the board gave no date) are dropped. With unseen_days set,
+    jobs that no scrape has returned for that many days are treated as closed
+    and dropped.
     """
     merged: Dict[str, Dict[str, Any]] = {}
 
@@ -239,6 +247,11 @@ def merge_payloads(
             merged_job["first_seen"] = min(firsts) if firsts else None
             lasts = [v for v in (current.get("last_seen"), job.get("last_seen")) if v]
             merged_job["last_seen"] = max(lasts) if lasts else None
+            # Keep the earliest known posted date. A board that re-dates a
+            # listing (or a copy with no date) must not make it look new or
+            # restart its retention clock.
+            posts = [v for v in (current.get("posted_date"), job.get("posted_date")) if v]
+            merged_job["posted_date"] = min(posts, key=lambda v: str(v)[:10]) if posts else None
 
             merged[key] = merged_job
 

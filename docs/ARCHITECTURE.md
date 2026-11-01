@@ -430,7 +430,7 @@ Browser
 
 - **Identity:** canonical URL, falling back to `title|company|location`.
 - **Winner:** the version with the higher `score`.
-- **First seen:** the earliest non-null `first_seen` across both versions.
+- **First seen / posted date:** the earliest non-null value across both versions; `posted_date` is capped at `first_seen`.
 - **Retention:** drop when `posted_date` (or `first_seen` fallback) is older than 21 days.
 - **Sort:** score descending, then posted date.
 - **Counts:** recomputed from the final job list.
@@ -457,7 +457,7 @@ Each card distinguishes two dates:
 | `posted_date` | When the portal says the job was posted | Portal / vendor scraper |
 | `first_seen` | When **this site** first scraped the job | Scraper run date |
 
-> **Note:** Indeed and SimplyHired currently use the scrape date as `posted_date` because their relative timestamps are not parsed reliably. For those two sources, “Posted” is effectively the scrape date; `first_seen` remains the authoritative first-scrape date.
+> **Note:** Indeed and SimplyHired dates come from the card's age stamp (“Posted 3 days ago”, “30d+”); cards without one have `posted_date: null` and the card shows only “First seen”. The publisher keeps the earliest known `posted_date` and caps it at `first_seen`, so a re-dated listing never looks new again.
 
 The card renders:
 
