@@ -132,7 +132,7 @@ The workflow has four job groups:
 | `prepare` | Build the role matrix (`genai`, `data`, `uiux`, `ba`, `sde`) | default | one job |
 | `scrape` | Run the vendor pipeline + direct portal scrapers per role | 75 min per role | **all roles at once** (`max-parallel: 5`) |
 | `warp` | Run Indeed SEO + SimplyHired through Cloudflare WARP | 12 min per role | **all roles at once**, `continue-on-error` |
-| `publish` | Merge artifacts and force-push the `data` branch | default | one job, `if: always()` |
+| `publish` | Merge artifacts and force-push the `data` branch | default | one job, `if: always()`; the only job with `contents: write` |
 
 The `scrape` and `warp` groups both depend only on `prepare`, so GitHub may run them concurrently. Within each group every role is its own job on its own runner with its own vendor checkout, so the matrix runs them all in parallel — the run costs the *slowest* role rather than the sum. Both groups used to be `max-parallel: 1`, which serialised them.
 
