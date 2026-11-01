@@ -69,6 +69,9 @@ export interface Manifest {
 /** Header the dashboard sends with the refresh key (see REFRESH_TOKEN). */
 export const REFRESH_TOKEN_HEADER = "x-refresh-token";
 
+/** Shown when a production deployment has no REFRESH_TOKEN (refresh fails closed). */
+export const REFRESH_DISABLED_MESSAGE = "Refresh is disabled: REFRESH_TOKEN is not configured.";
+
 export type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelled";
 
 export interface StatusResponse {
@@ -84,7 +87,23 @@ export interface StatusResponse {
   cooldownMinutesLeft?: number;
   /** True when the deployment requires a refresh key (REFRESH_TOKEN is set). */
   refreshProtected?: boolean;
+  /** True when refresh is switched off: a production build without REFRESH_TOKEN. */
+  refreshDisabled?: boolean;
+  /**
+   * True when the caller passed `since` and GitHub lists no run created after
+   * it yet: the dispatched run is still being created, so state is "queued".
+   */
+  awaitingRun?: boolean;
   demo?: boolean;
+}
+
+/** Body of a 202 from POST /api/refresh. */
+export interface RefreshAccepted {
+  ok: true;
+  role: RoleSlug | "all";
+  state: "queued";
+  /** Server time just before the dispatch; pass it to /api/status as `since`. */
+  dispatchedAt: string;
 }
 
 export interface RoleMeta {
