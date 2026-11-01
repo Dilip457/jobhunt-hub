@@ -251,6 +251,7 @@ The `web/` directory is a Next.js 16 app deployed with **Root Directory = `web`*
 - `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde` are static, shareable dashboards.
 - `/jobs/[role]` is pre-rendered for the five known roles; any other slug redirects to `/`.
 - The dashboard is a client component with filters, a role switcher, numbered pages of 8 jobs and shareable query parameters (including `page`).
+- It opens with what changed and what is best, before the list: a ticker of jobs new since the last scrape, the role's gate beside the title, the best match as a solid tile, and how that match earns its score (a radar of its published `score_parts`) next to the role's jobs by match band. All of it is computed in the browser from the one role file the page already loads; nothing extra is fetched.
 - `/api/jobs` reads a role's JSON from the `data` branch.
 - `/api/refresh` dispatches the GitHub Actions workflow.
 - `/api/status` reports the latest workflow run for the role.
