@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { dispatchWorkflow, getRunStatus, isConfigured, REFRESH_COOLDOWN_MINUTES } from "@/lib/github";
-import { checkRefreshKey } from "@/lib/refreshAuth";
+import { checkRefreshAttempt, clientIp, wrongKeyDelay } from "@/lib/refreshAuth";
+import { TOO_MANY_ATTEMPTS_CODE, tooManyAttemptsMessage } from "@/lib/refreshPrompt";
 import { createKeyedLock } from "@/lib/ttlCache";
 import {
   isRoleSlug,
@@ -62,14 +63,28 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Blocked origin" }, { status: 403 });
   }
 
-  // The refresh key is the access control; hiding the control is only a UX
-  // guard. A production build without REFRESH_TOKEN refuses every refresh.
-  const access = checkRefreshKey(request.headers.get(REFRESH_TOKEN_HEADER));
-  if (access === "disabled") {
+  // The refresh key (the owner's password) is the access control; hiding the
+  // control is only a UX guard. A production build without REFRESH_TOKEN
+  // refuses every refresh. Wrong passwords are rate limited, so a short,
+  // memorable one cannot be guessed by brute force (see refreshAuth.ts).
+  const given = request.headers.get(REFRESH_TOKEN_HEADER);
+  const result = checkRefreshAttempt(given, clientIp(request.headers));
+  if (result.access === "disabled") {
     return Response.json({ error: REFRESH_DISABLED_MESSAGE, code: "refresh_disabled" }, { status: 503 });
   }
-  if (access === "invalid") {
-    return Response.json({ error: "A valid refresh key is required." }, { status: 401 });
+  if (result.access === "locked") {
+    return Response.json(
+      {
+        error: tooManyAttemptsMessage(result.minutesLeft),
+        code: TOO_MANY_ATTEMPTS_CODE,
+        minutesLeft: result.minutesLeft,
+      },
+      { status: 429, headers: { "Retry-After": String(result.minutesLeft * 60) } },
+    );
+  }
+  if (result.access === "invalid") {
+    await wrongKeyDelay();
+    return Response.json({ error: given ? "Wrong password." : "A password is required." }, { status: 401 });
   }
 
   let role: string;
@@ -132,9 +147,9 @@ export async function POST(request: NextRequest) {
   // Taken before the call: GitHub creates the run after this moment, and
   // /api/status?since= uses it to tell the new run from the previous one.
   const dispatchedAt = new Date().toISOString();
-  const result = await dispatchWorkflow(target);
-  if (!result.ok) {
-    return refuse({ error: "Could not start the scrape.", status: result.status, detail: result.detail }, 502);
+  const dispatch = await dispatchWorkflow(target);
+  if (!dispatch.ok) {
+    return refuse({ error: "Could not start the scrape.", status: dispatch.status, detail: dispatch.detail }, 502);
   }
 
   const body: RefreshAccepted = { ok: true, role: target, state: "queued", dispatchedAt };

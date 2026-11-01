@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { checkRefreshKey } from "@/lib/refreshAuth";
+import { checkRefreshAttempt, clientIp } from "@/lib/refreshAuth";
 import { getRoleData } from "@/lib/service";
 import { isRoleSlug, REFRESH_TOKEN_HEADER } from "@/lib/types";
 
@@ -15,8 +15,13 @@ export async function GET(request: NextRequest) {
   // `fresh` skips the server's cached GitHub read, so it is only honoured with
   // the refresh key (the admin's reload after a refresh). Without one it is
   // ignored, so anyone adding ?fresh=1 cannot drain the GitHub API quota.
+  // Wrong keys count towards the same lockout as POST /api/refresh, and a
+  // locked client is ignored even with the right key, so this cannot be used
+  // to test passwords without limit.
   const freshAsked = request.nextUrl.searchParams.has("fresh");
-  const fresh = freshAsked && checkRefreshKey(request.headers.get(REFRESH_TOKEN_HEADER)) === "ok";
+  const fresh =
+    freshAsked &&
+    checkRefreshAttempt(request.headers.get(REFRESH_TOKEN_HEADER), clientIp(request.headers)).access === "ok";
 
   try {
     const data = await getRoleData(role, { fresh });
