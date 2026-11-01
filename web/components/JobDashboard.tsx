@@ -6,8 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
 import { filterSearch, knownOrAll, parseFilterParams } from "@/lib/filters";
 import {
+  REFRESH_DISABLED_MESSAGE,
   REFRESH_TOKEN_HEADER,
   type Job,
+  type RefreshAccepted,
   type RoleData,
   type RoleSlug,
   type RunState,
@@ -35,6 +37,25 @@ import StatsBar from "./StatsBar";
 
 const PAGE_SIZE = 8;
 const REFRESH_KEY_STORAGE = "jobhunt.refreshKey";
+/** Give up waiting if GitHub has not listed the dispatched run after this long. */
+const AWAIT_RUN_TIMEOUT_MS = 5 * 60_000;
+
+/** A dispatch this browser is waiting on: GitHub accepted it but may not list it yet. */
+interface PendingRun {
+  role: RoleSlug;
+  /** Server time of the dispatch (dispatchedAt from POST /api/refresh). */
+  since: string;
+  requestedAt: number;
+}
+
+/**
+ * While a dispatch is pending, ask for runs created after it, or the poll
+ * would report the previous run as if it were the one just started.
+ */
+function statusUrl(role: RoleSlug, pending: PendingRun | null): string {
+  const since = pending && pending.role === role ? `&since=${encodeURIComponent(pending.since)}` : "";
+  return `/api/status?role=${role}${since}`;
+}
 
 interface Toast {
   id: number;
@@ -79,6 +100,9 @@ export default function JobDashboard({ role }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const refreshStartRef = useRef<number | null>(null);
+  const pendingRunRef = useRef<PendingRun | null>(null);
+  // Read by the jobs loader, which only re-runs on a role or reload change.
+  const refreshKeyRef = useRef("");
 
   const pushToast = useCallback((kind: Toast["kind"], text: string) => {
     const id = Date.now() + Math.random();
@@ -110,6 +134,10 @@ export default function JobDashboard({ role }: Props) {
       const target = event.target as HTMLElement | null;
       if (target && target.closest("input, textarea, select, [contenteditable='true']")) return;
       event.preventDefault();
+      if (status?.refreshDisabled) {
+        pushToast("error", REFRESH_DISABLED_MESSAGE);
+        return;
+      }
       if (status?.state === "queued" || status?.state === "running") {
         pushToast("info", "A scrape is already running.");
         return;
@@ -127,12 +155,16 @@ export default function JobDashboard({ role }: Props) {
     setError(null);
     setData((current) => (current?.role === role ? current : null));
 
-    const fresh = freshRef.current ? "&fresh=1" : "";
+    // After a refresh, skip every cache. The server only honours `fresh` with
+    // the refresh key, and the unique value keeps the CDN out of the way.
+    const fresh = freshRef.current ? `&fresh=${Date.now()}` : "";
     freshRef.current = false;
     const warm = fresh ? null : takePrefetchedRole(role);
+    const headers: Record<string, string> = {};
+    if (fresh && refreshKeyRef.current) headers[REFRESH_TOKEN_HEADER] = refreshKeyRef.current;
     const request =
       warm ??
-      fetch(`/api/jobs?role=${role}${fresh}`).then((response) => {
+      fetch(`/api/jobs?role=${role}${fresh}`, { headers }).then((response) => {
         if (!response.ok) throw new Error("Could not load jobs");
         return response.json() as Promise<RoleData>;
       });
@@ -172,7 +204,7 @@ export default function JobDashboard({ role }: Props) {
   // ── Status + polling ───────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
-    fetch(`/api/status?role=${role}`)
+    fetch(statusUrl(role, pendingRunRef.current))
       .then((response) => response.json() as Promise<StatusResponse>)
       .then((payload) => {
         if (active) setStatus(payload);
@@ -189,19 +221,35 @@ export default function JobDashboard({ role }: Props) {
     if (!status || (status.state !== "queued" && status.state !== "running")) return;
     const timer = window.setInterval(async () => {
       try {
-        const response = await fetch(`/api/status?role=${role}`);
-        setStatus((await response.json()) as StatusResponse);
+        const pending = pendingRunRef.current;
+        const response = await fetch(statusUrl(role, pending));
+        const next = (await response.json()) as StatusResponse;
+        if (pending && (next.awaitingRun || next.state === "idle")) {
+          if (Date.now() - pending.requestedAt > AWAIT_RUN_TIMEOUT_MS) {
+            pendingRunRef.current = null;
+            setRefreshOpen(false);
+            pushToast("error", "GitHub has not started the run yet. Check the Actions tab.");
+            setStatus({ ...next, state: "idle", awaitingRun: false });
+            return;
+          }
+          // "idle" while waiting means the check itself failed; keep waiting.
+          if (next.state === "idle") return;
+        }
+        setStatus(next);
       } catch {
         /* keep the last known state */
       }
     }, 8000);
     return () => window.clearInterval(timer);
-  }, [status, role]);
+  }, [status, role, pushToast]);
 
   const previousState = useRef<RunState | null>(null);
   useEffect(() => {
     if (!status) return;
     const before = previousState.current;
+    if (status.state === "success" || status.state === "failed" || status.state === "cancelled") {
+      pendingRunRef.current = null;
+    }
     if (before && before !== status.state) {
       if (status.state === "success") {
         freshRef.current = true;
@@ -240,13 +288,16 @@ export default function JobDashboard({ role }: Props) {
   // The refresh key is remembered on this browser only, so the owner types it once.
   useEffect(() => {
     try {
-      setRefreshKey(window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "");
+      const stored = window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "";
+      refreshKeyRef.current = stored;
+      setRefreshKey(stored);
     } catch {
       /* storage can be unavailable (private mode) */
     }
   }, []);
 
   function rememberRefreshKey(value: string) {
+    refreshKeyRef.current = value;
     setRefreshKey(value);
     try {
       if (value) window.localStorage.setItem(REFRESH_KEY_STORAGE, value);
@@ -271,14 +322,37 @@ export default function JobDashboard({ role }: Props) {
       if (response.status === 401) {
         setRefreshOpen(false);
         rememberRefreshKey("");
-        pushToast("error", "That refresh key was not accepted.");
+        pushToast(
+          "error",
+          key
+            ? "That refresh key was not accepted."
+            : "This deployment needs a refresh key. Press the shortcut again to enter it.",
+        );
+        // The dialog asks for a key only when status says so; make sure it does next time.
+        setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshProtected: true }));
         return;
       }
       if (key) rememberRefreshKey(key);
 
       if (response.status === 202) {
+        const payload = (await response.json().catch(() => ({}))) as Partial<RefreshAccepted>;
+        pendingRunRef.current = {
+          role,
+          since: payload.dispatchedAt ?? new Date(refreshStartRef.current ?? Date.now()).toISOString(),
+          requestedAt: Date.now(),
+        };
         pushToast("info", "Scrape queued. This usually takes 10–15 minutes.");
-        setStatus((current) => (current ? { ...current, state: "queued" } : current));
+        // Until GitHub lists the new run, the link and times belong to the
+        // previous one, so drop them. A missing status still starts polling.
+        setStatus((current) => ({
+          configured: true,
+          role,
+          ...current,
+          state: "queued",
+          awaitingRun: true,
+          runUrl: undefined,
+          startedAt: undefined,
+        }));
       } else if (response.status === 409) {
         setRefreshOpen(false);
         pushToast("info", "A scrape is already running.");
@@ -288,7 +362,11 @@ export default function JobDashboard({ role }: Props) {
         pushToast("info", payload.error ?? "Please wait before refreshing again.");
       } else if (response.status === 503) {
         setRefreshOpen(false);
-        pushToast("error", "Refresh is not configured on this deployment yet.");
+        const payload = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+        if (payload.code === "refresh_disabled") {
+          setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshDisabled: true }));
+        }
+        pushToast("error", payload.error ?? "Refresh is not configured on this deployment yet.");
       } else {
         setRefreshOpen(false);
         const payload = (await response.json().catch(() => ({}))) as {
@@ -309,6 +387,8 @@ export default function JobDashboard({ role }: Props) {
 
   useEffect(() => {
     setConfirmOpen(false);
+    // A pending dispatch belongs to the role it was started from.
+    if (pendingRunRef.current && pendingRunRef.current.role !== role) pendingRunRef.current = null;
   }, [role]);
 
   function switchRole(next: RoleSlug) {
