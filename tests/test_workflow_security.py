@@ -76,13 +76,28 @@ def test_jobs_that_do_not_push_drop_the_checkout_token():
                 assert dropped, f"{name}: checkout keeps the token in .git/config"
 
 
+def test_scrape_runs_queue_per_role():
+    text = read("scrape.yml")
+    group = re.search(r"^concurrency:\n  group: (.+)$", text, re.M).group(1)
+    assert "inputs.role" in group and "'all'" in group
+    assert re.search(r"^  cancel-in-progress: false$", text, re.M)
+    # Concurrent roles race on the data branch; publish retries on a lease miss.
+    attempts = int(re.search(r"publish\.py .*--attempts (\d+)", text).group(1))
+    assert attempts >= 5
 
+
+def test_every_job_has_a_timeout():
+    for name in ("scrape.yml", "experience-probe.yml"):
+        for job, body in jobs(read(name)).items():
+            assert re.search(r"^    timeout-minutes: \d+$", body, re.M), f"{name}: {job}"
 
 
 def test_run_scripts_never_interpolate_dispatch_inputs():
     for name in ("scrape.yml",):
         for block in run_blocks(read(name)):
             assert not re.search(r"\$\{\{[^}]*\b(inputs|github\.event)\.", block), (name, block)
+
+
 
 
 def test_run_block_helper_finds_interpolation():

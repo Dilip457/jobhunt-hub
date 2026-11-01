@@ -25,13 +25,19 @@ on:
 permissions:
   contents: read
 
+# One queue per role. A shared group keeps at most one pending run, so a third
+# dispatch for another role silently cancelled the second. Runs for different
+# roles may now publish at the same time; publish.py's force-with-lease retry
+# re-reads the data branch and merges again when the other run got there first.
+# The schedule has no inputs, so it shares the "all" queue with manual "all".
 concurrency:
-  group: jobhunt-scrape
+  group: jobhunt-scrape-${{ inputs.role || 'all' }}
   cancel-in-progress: false
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
@@ -221,6 +227,7 @@ jobs:
     needs: [prepare, scrape, warp]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # The only job that writes: publish.py pushes the data branch through the
     # token actions/checkout persists in .git/config (default), so keep it.
     permissions:
@@ -238,4 +245,4 @@ jobs:
           merge-multiple: true
 
       - name: Publish to data branch (merges with existing data)
-        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21 --unseen-days 7
+        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21 --unseen-days 7 --attempts 5
