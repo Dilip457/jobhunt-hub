@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
+import { filterSearch, knownOrAll, parseFilterParams } from "@/lib/filters";
 import {
   REFRESH_TOKEN_HEADER,
   type Job,
@@ -14,10 +15,11 @@ import {
 } from "@/lib/types";
 import {
   cityCounts,
+  compareNewest,
   experienceBandPriority,
   experiencePriority,
-  jobDate,
   matchesExperience,
+  postedWithinDays,
   type ExperienceBucket,
 } from "@/lib/utils";
 import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
@@ -87,18 +89,17 @@ export default function JobDashboard({ role }: Props) {
   }, []);
 
   // ── Initial filter state from the URL ──────────────────────────────────────
+  // Values the menus cannot show fall back to their defaults (lib/filters.ts).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setQuery(params.get("q") ?? "");
-    setCity(params.get("city") ?? "all");
-    setSource(params.get("source") ?? "all");
-    setScore(params.get("score") ?? "all");
-    const exp = params.get("exp");
-    if (exp) setExperience(exp as ExperienceBucket);
-    setDateRange(params.get("days") ?? "all");
-    setSort(params.get("sort") ?? "score");
-    const urlPage = Number.parseInt(params.get("page") ?? "1", 10);
-    setPage(Number.isFinite(urlPage) && urlPage > 1 ? urlPage : 1);
+    const initial = parseFilterParams(new URLSearchParams(window.location.search));
+    setQuery(initial.query);
+    setCity(initial.city);
+    setSource(initial.source);
+    setScore(initial.score);
+    setExperience(initial.experience);
+    setDateRange(initial.dateRange);
+    setSort(initial.sort);
+    setPage(initial.page);
     setHydrated(true);
   }, []);
 
@@ -155,20 +156,18 @@ export default function JobDashboard({ role }: Props) {
   }, [role, reloadKey]);
 
   // ── Keep filters shareable without a role parameter ────────────────────────
+  // Wait until the URL has been read: the first commit runs before Next.js has
+  // patched history, so writing then wipes its state (Back stops working) and,
+  // under StrictMode, clears the query before it is read. Passing the current
+  // state on keeps Next's history entry intact.
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    if (city !== "all") params.set("city", city);
-    if (source !== "all") params.set("source", source);
-    if (score !== "all") params.set("score", score);
-    if (experience !== "all") params.set("exp", experience);
-    if (dateRange !== "all") params.set("days", dateRange);
-    if (sort !== "score") params.set("sort", sort);
-    if (page > 1) params.set("page", String(page));
-    const next = params.toString();
+    if (!hydrated) return;
+    const next = filterSearch({ query, city, source, score, experience, dateRange, sort, page });
     const base = pathname || `/jobs/${role}`;
-    window.history.replaceState(null, "", next ? `${base}?${next}` : base);
-  }, [city, dateRange, experience, page, pathname, query, role, score, sort, source]);
+    const url = next ? `${base}?${next}` : base;
+    if (url === `${window.location.pathname}${window.location.search}`) return;
+    window.history.replaceState(window.history.state, "", url);
+  }, [city, dateRange, experience, hydrated, page, pathname, query, role, score, sort, source]);
 
   // ── Status + polling ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -321,7 +320,21 @@ export default function JobDashboard({ role }: Props) {
   // ── Derived list ───────────────────────────────────────────────────────────
   const jobs = useMemo<Job[]>(() => data?.jobs ?? [], [data]);
   const cities = useMemo(() => cityCounts(jobs), [jobs]);
-  const sources = useMemo(() => Object.keys(data?.sources ?? {}).sort(), [data]);
+  // The totals can miss a source that still has jobs; list every source a job uses.
+  const sources = useMemo(
+    () => [...new Set([...Object.keys(data?.sources ?? {}), ...jobs.map((job) => job.source)])].sort(),
+    [data, jobs],
+  );
+
+  // City and source options come from the data, so a shared link's value is
+  // checked once this role's jobs are in; one no job has falls back to "all".
+  useEffect(() => {
+    if (!hydrated || !data || data.role !== role) return;
+    const nextCity = knownOrAll(city, cities.map((item) => item.city));
+    if (nextCity !== city) setCity(nextCity);
+    const nextSource = knownOrAll(source, sources);
+    if (nextSource !== source) setSource(nextSource);
+  }, [cities, city, data, hydrated, role, source, sources]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -337,19 +350,14 @@ export default function JobDashboard({ role }: Props) {
       if (source !== "all" && job.source !== source) return false;
       if (score !== "all" && job.score < Number(score)) return false;
       if (!matchesExperience(job, experience)) return false;
-      if (dateRange !== "all") {
-        // Some boards publish no date; fall back to when we first saw the job
-        // instead of hiding it from every date filter.
-        const day = jobDate(job);
-        if (!day) return false;
-        const days = (now - new Date(`${day}T00:00:00`).getTime()) / 86_400_000;
-        if (days > Number(dateRange)) return false;
-      }
+      // Some boards publish no date; fall back to when we first saw the job
+      // instead of hiding it from every date filter.
+      if (dateRange !== "all" && !postedWithinDays(job, Number(dateRange), now)) return false;
       return true;
     });
 
     return list.sort((a, b) => {
-      if (sort === "date") return (jobDate(b) ?? "").localeCompare(jobDate(a) ?? "");
+      if (sort === "date") return compareNewest(a, b);
       if (sort === "company") return a.company.localeCompare(b.company);
       // Business Analyst is an entry/1–3 year track: keep those roles first
       // even when a senior listing has a slightly higher raw match score.

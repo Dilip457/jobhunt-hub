@@ -69,6 +69,40 @@ export function jobDate(job: Pick<Job, "posted_date" | "first_seen">): string | 
   return value ? value.slice(0, 10) : null;
 }
 
+/**
+ * The "Posted" filter. Many boards publish no date (posted_date is null), so
+ * the first-seen date stands in; a job with neither date matches no range.
+ */
+export function postedWithinDays(
+  job: Pick<Job, "posted_date" | "first_seen">,
+  days: number,
+  now: number = Date.now(),
+): boolean {
+  const day = jobDate(job);
+  if (!day) return false;
+  const age = (now - new Date(`${day}T00:00:00`).getTime()) / 86_400_000;
+  return age <= days;
+}
+
+/** "Newest first" order, on the same posted-else-first-seen date; undated jobs last. */
+export function compareNewest(
+  a: Pick<Job, "posted_date" | "first_seen">,
+  b: Pick<Job, "posted_date" | "first_seen">,
+): number {
+  return (jobDate(b) ?? "").localeCompare(jobDate(a) ?? "");
+}
+
+/** The card's date line: "Posted …" when the board gave a date, else "First seen …". */
+export function jobDateLabels(job: Pick<Job, "posted_date" | "first_seen">): {
+  posted: string | null;
+  seen: string | null;
+} {
+  return {
+    posted: job.posted_date ? `Posted ${dateAgo(job.posted_date)}` : null,
+    seen: job.first_seen ? `First seen ${dateAgo(job.first_seen)}` : null,
+  };
+}
+
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-IN").format(value);
 }

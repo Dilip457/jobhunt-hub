@@ -1,5 +1,6 @@
 "use client";
 
+import { DATE_OPTIONS, EXPERIENCE_OPTIONS, SCORE_OPTIONS, SORT_OPTIONS, type FilterOption } from "@/lib/filters";
 import type { CityCount, ExperienceBucket } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { CloseIcon, FilterIcon, SearchIcon } from "./Icons";
@@ -26,6 +27,14 @@ interface Props {
   onReset: () => void;
   shown: number;
   total: number;
+}
+
+function renderOptions(options: FilterOption[]) {
+  return options.map((option) => (
+    <option key={option.value} value={option.value}>
+      {option.label}
+    </option>
+  ));
 }
 
 export default function Filters({
@@ -95,11 +104,7 @@ export default function Filters({
             value={experience}
             onChange={(event) => setExperience(event.target.value as ExperienceBucket)}
           >
-            <option value="all">Any level</option>
-            <option value="fresher">Fresher (0–1 yr)</option>
-            <option value="mid">Mid (2–5 yrs)</option>
-            <option value="senior">Senior (3–8 yrs)</option>
-            <option value="lead">Lead / Principal</option>
+            {renderOptions(EXPERIENCE_OPTIONS)}
           </select>
         </label>
 
@@ -118,31 +123,21 @@ export default function Filters({
         <label className="select-wrap">
           <span className="select-label">Match</span>
           <select value={score} onChange={(event) => setScore(event.target.value)}>
-            <option value="all">Any score</option>
-            <option value="60">60%+</option>
-            <option value="70">70%+</option>
-            <option value="80">80%+</option>
-            <option value="90">90%+</option>
+            {renderOptions(SCORE_OPTIONS)}
           </select>
         </label>
 
         <label className="select-wrap">
           <span className="select-label">Posted</span>
           <select value={dateRange} onChange={(event) => setDateRange(event.target.value)}>
-            <option value="all">Any time</option>
-            <option value="1">Today</option>
-            <option value="3">Last 3 days</option>
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
+            {renderOptions(DATE_OPTIONS)}
           </select>
         </label>
 
         <label className="select-wrap">
           <span className="select-label">Sort</span>
           <select value={sort} onChange={(event) => setSort(event.target.value)}>
-            <option value="score">Best match</option>
-            <option value="date">Newest first</option>
-            <option value="company">Company A–Z</option>
+            {renderOptions(SORT_OPTIONS)}
           </select>
         </label>
 

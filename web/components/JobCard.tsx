@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import type { Job } from "@/lib/types";
-import { dateAgo, experienceLabel, initials, scoreTier, sourceColor } from "@/lib/utils";
+import { experienceLabel, initials, jobDateLabels, scoreTier, sourceColor } from "@/lib/utils";
 import { BuildingIcon, ExternalIcon, MapPinIcon } from "./Icons";
 import ScoreRing from "./ScoreRing";
 
@@ -22,8 +22,7 @@ export default function JobCard({ job, showScore, index = 0 }: Props) {
   const tier = scoreTier(job.score);
   const hue = avatarHue(job.company || job.title);
   const sourceTone = sourceColor(job.source);
-  const posted = job.posted_date ? `Posted ${dateAgo(job.posted_date)}` : null;
-  const seen = job.first_seen ? `First seen ${dateAgo(job.first_seen)}` : null;
+  const { posted, seen } = jobDateLabels(job);
 
   return (
     <article
