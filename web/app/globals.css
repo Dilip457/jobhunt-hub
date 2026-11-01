@@ -395,22 +395,25 @@ button:disabled {
   max-width: 760px;
   max-height: 760px;
   border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.16;
+  /* A soft gradient instead of filter: blur(): the blur was re-rendered by
+     the compositor every frame on top of the canvas, which also redraws
+     every frame. */
+  opacity: 0.2;
   pointer-events: none;
+  will-change: transform;
   animation: ambient-float 12s ease-in-out infinite alternate;
 }
 
 .intro-ambient-red {
   left: -18vw;
   top: 18vh;
-  background: var(--red);
+  background: radial-gradient(circle, rgba(255, 48, 79, 0.9) 0%, rgba(255, 48, 79, 0.45) 32%, rgba(255, 48, 79, 0.12) 56%, transparent 72%);
 }
 
 .intro-ambient-blue {
   right: -18vw;
   bottom: 2vh;
-  background: var(--blue);
+  background: radial-gradient(circle, rgba(40, 123, 255, 0.9) 0%, rgba(40, 123, 255, 0.45) 32%, rgba(40, 123, 255, 0.12) 56%, transparent 72%);
   animation-delay: -4s;
 }
 
@@ -455,12 +458,11 @@ button:disabled {
   padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(8, 9, 13, 0.52);
+  background: rgba(8, 9, 13, 0.78);
   color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  backdrop-filter: blur(12px);
 }
 
 .skip-intro {
@@ -470,12 +472,11 @@ button:disabled {
   padding: 8px 12px;
   border-radius: 9px;
   border: 1px solid var(--border);
-  background: rgba(8, 9, 13, 0.44);
+  background: rgba(8, 9, 13, 0.74);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-  backdrop-filter: blur(12px);
 }
 
 .skip-intro:hover {
@@ -571,8 +572,7 @@ button:disabled {
   max-width: 680px;
   max-height: 680px;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.14;
+  opacity: 0.18;
   pointer-events: none;
 }
 
@@ -722,7 +722,6 @@ button:disabled {
   background:
     linear-gradient(180deg, rgba(21, 24, 33, 0.9), rgba(8, 9, 13, 0.86));
   box-shadow: var(--shadow);
-  backdrop-filter: blur(22px);
   animation: dock-in var(--duration-panel) var(--ease-out) both;
 }
 
@@ -1068,14 +1067,13 @@ button:disabled {
   max-width: 700px;
   max-height: 700px;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.26;
+  opacity: 0.3;
 }
 
 .static-orb-red {
   left: -16vw;
   top: 26vh;
-  background: var(--red);
+  background: radial-gradient(circle, rgba(255, 48, 79, 0.9) 0%, rgba(255, 48, 79, 0.45) 32%, rgba(255, 48, 79, 0.12) 56%, transparent 72%);
 }
 
 .static-orb-blue {
@@ -1297,7 +1295,7 @@ button:disabled {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(10, 12, 18, 0.62);
+  background: rgba(10, 12, 18, 0.82);
   color: var(--white);
   text-align: left;
   transition:
@@ -1305,7 +1303,6 @@ button:disabled {
     border-color 0.2s ease,
     background 0.2s ease,
     box-shadow 0.2s ease;
-  backdrop-filter: blur(14px);
 }
 
 .destination-card::before {
@@ -1424,20 +1421,21 @@ button:disabled {
   max-width: 900px;
   max-height: 900px;
   border-radius: 50%;
-  filter: blur(110px);
-  opacity: 0.13;
+  /* Gradient, not filter: blur(): these are fixed layers behind a scrolling
+     page, and the compositor re-ran the 110px blur on every scroll frame. */
+  opacity: 0.16;
 }
 
 .dashboard-glow-red {
   left: -24vw;
   top: -18vw;
-  background: var(--red);
+  background: radial-gradient(circle, rgba(255, 48, 79, 0.9) 0%, rgba(255, 48, 79, 0.45) 32%, rgba(255, 48, 79, 0.12) 56%, transparent 72%);
 }
 
 .dashboard-glow-blue {
   right: -22vw;
   top: 18vh;
-  background: var(--blue);
+  background: radial-gradient(circle, rgba(40, 123, 255, 0.9) 0%, rgba(40, 123, 255, 0.45) 32%, rgba(40, 123, 255, 0.12) 56%, transparent 72%);
 }
 
 .dashboard-grid {
@@ -1456,8 +1454,9 @@ button:disabled {
   top: 0;
   z-index: 40;
   border-bottom: 1px solid var(--border);
-  background: rgba(8, 9, 13, 0.72);
-  backdrop-filter: blur(18px);
+  /* No backdrop-filter on the sticky bars: the page behind them changes on
+     every scroll frame, so the blur had to be recomputed every frame. */
+  background: rgba(8, 9, 13, 0.92);
 }
 
 .dashboard-header-inner {
@@ -1742,8 +1741,7 @@ button:disabled {
   padding: 14px 15px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(21, 24, 33, 0.72), rgba(10, 12, 18, 0.58));
-  backdrop-filter: blur(12px);
+  background: linear-gradient(180deg, rgba(21, 24, 33, 0.86), rgba(10, 12, 18, 0.8));
 }
 
 .stat-icon {
@@ -1786,9 +1784,8 @@ button:disabled {
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: rgba(10, 12, 18, 0.78);
+  background: rgba(10, 12, 18, 0.94);
   box-shadow: 0 20px 60px -38px rgba(0, 0, 0, 0.9);
-  backdrop-filter: blur(20px);
 }
 
 .filters-top {
@@ -1956,11 +1953,11 @@ button:disabled {
   background:
     linear-gradient(180deg, rgba(21, 24, 33, 0.82), rgba(10, 12, 18, 0.76));
   box-shadow: var(--shadow);
+  /* Only transform and border animate on hover; shadow and background
+     changes repaint the card on every frame of the transition. */
   transition:
     transform 0.22s ease,
-    border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    background 0.22s ease;
+    border-color 0.22s ease;
   animation: card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: var(--card-delay, 0ms);
 }
@@ -1988,7 +1985,6 @@ button:disabled {
   border-color: var(--border-strong);
   background:
     linear-gradient(180deg, rgba(28, 32, 44, 0.88), rgba(12, 14, 21, 0.84));
-  box-shadow: 0 30px 70px -38px rgba(0, 0, 0, 0.95);
 }
 
 @keyframes card-in {
@@ -2347,6 +2343,8 @@ button:disabled {
 /* Info cards */
 
 .dashboard-info {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 520px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;

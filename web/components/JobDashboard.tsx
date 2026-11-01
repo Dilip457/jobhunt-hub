@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
@@ -469,8 +469,12 @@ export default function JobDashboard({ role }: Props) {
     if (nextSource !== source) setSource(nextSource);
   }, [cities, city, data, hydrated, role, source, sources]);
 
+  // Typing updates the search box at once; the list of a few thousand jobs
+  // is re-filtered when React has a free moment, so keystrokes never wait
+  // for it.
+  const deferredQuery = useDeferredValue(query);
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
     const now = Date.now();
 
     const list = jobs.filter((job) => {
@@ -505,7 +509,7 @@ export default function JobDashboard({ role }: Props) {
       }
       return b.score - a.score;
     });
-  }, [jobs, query, city, source, score, experience, dateRange, sort, role]);
+  }, [jobs, deferredQuery, city, source, score, experience, dateRange, sort, role]);
 
   // Any filter, sort or role change starts again from page 1.
   const filterKey = [role, query, city, source, score, experience, dateRange, sort].join("\u0000");
