@@ -327,7 +327,7 @@ full modification record ships at
    | `GITHUB_WORKFLOW` | `scrape.yml` |
    | `GITHUB_DATA_BRANCH` | `data` |
    | `GITHUB_DISPATCH_REF` | `main` |
-   | `REFRESH_TOKEN` | Recommended: a long random secret the refresh dialog asks for |
+   | `REFRESH_TOKEN` | Required for refresh: a long random secret the refresh dialog asks for. Without it a production deployment refuses every refresh |
    | `NEXT_PUBLIC_SITE_URL` | `https://your-project.vercel.app` |
 
 4. **Deploy.** The free `*.vercel.app` domain is enough. Add a custom domain later if you want.
@@ -366,9 +366,9 @@ To run a manual scrape, open the main site and press **`Alt` + `Shift` + `R`**. 
 1. Open any dashboard, e.g. `https://jobhunt-hub-web.vercel.app/jobs/data`.
 2. Press **`Alt` + `Shift` + `R`**.
 3. Confirm in the dialog.
-4. `POST /api/refresh` checks the origin and refresh key, an active run, and a 25-minute cooldown after the last successful run, then calls the GitHub `workflow_dispatch` API.
-5. The UI polls `/api/status` every 8 seconds.
-6. When the run succeeds, the page re-fetches `/api/jobs?fresh=1` and shows the new `generated_at`.
+4. `POST /api/refresh` checks the origin and refresh key, an active run, and a 25-minute cooldown after the last successful run, then calls the GitHub `workflow_dispatch` API and returns the dispatch time (`dispatchedAt`).
+5. The UI polls `/api/status?since=<dispatchedAt>` every 8 seconds. Runs created before the dispatch count as still queued, so the previous run is never reported as the new one.
+6. When the run succeeds, the page re-fetches `/api/jobs?fresh=…` with the refresh key (which skips the caches) and shows the new `generated_at`.
 
 Protections:
 
@@ -376,8 +376,9 @@ Protections:
 - Hidden keyboard shortcut (`Alt+Shift+R`) plus a confirmation dialog.
 - GitHub Actions `concurrency: jobhunt-scrape-<role>` serialises runs for the same role; different roles run side by side and their publishes merge.
 - 25-minute cooldown per role (`lib/github.ts`).
-- Same-origin check on the POST route: only this deployment's own hosts are accepted, and requests without an `Origin` header (scripts) are refused.
-- **Refresh key:** set `REFRESH_TOKEN` on Vercel and the dialog asks for it (it is remembered in that browser). Without it, anyone who finds the shortcut can start a scrape.
+- Same-origin (CSRF) check on the POST route: only this deployment's own hosts are accepted, and requests without an `Origin` header are refused. `localhost` origins are accepted in development only.
+- **Refresh key:** set `REFRESH_TOKEN` on Vercel and the dialog asks for it (it is remembered in that browser). Without it, a production deployment refuses every refresh with "Refresh is disabled: REFRESH_TOKEN is not configured." Only `next dev` allows refresh without a key.
+- A per-role lock stops two near-simultaneous confirmations from both dispatching.
 - Seeded data remains visible if GitHub is unreachable.
 - Refresh triggers the **cloud** pass (scrapers + official APIs). Everything runs on
   GitHub's servers; no PC is involved.
@@ -389,8 +390,9 @@ Each destination has a real route: `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
 browser history work normally. Filter parameters such as `?q=python&city=Bangalore` are
 written to the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 
-Hiding the control is a UX guard, not an authentication boundary. Set `REFRESH_TOKEN` for
-real access control; the cooldown and one-run-per-role concurrency limit only bound repeated use.
+Hiding the control is a UX guard, not an authentication boundary. `REFRESH_TOKEN` is the
+real access control (production refuses refresh without it); the cooldown and one-run-per-role
+concurrency limit only bound repeated use.
 
 ---
 

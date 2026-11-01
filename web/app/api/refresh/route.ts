@@ -1,10 +1,27 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { dispatchWorkflow, getRunStatus, isConfigured, REFRESH_COOLDOWN_MINUTES } from "@/lib/github";
-import { isRoleSlug, REFRESH_TOKEN_HEADER, type RoleSlug } from "@/lib/types";
+import { checkRefreshKey } from "@/lib/refreshAuth";
+import { createKeyedLock } from "@/lib/ttlCache";
+import {
+  isRoleSlug,
+  REFRESH_DISABLED_MESSAGE,
+  REFRESH_TOKEN_HEADER,
+  type RefreshAccepted,
+  type RoleSlug,
+  type StatusResponse,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * GitHub's dispatch API returns before the new run is listed, so for a short
+ * while a second POST would see no active run and dispatch again. Hold a
+ * per-role lock across that window. It lives in this instance's memory, so it
+ * is best effort; the run-status check still covers the slower case.
+ */
+const DISPATCH_LOCK_MS = 60_000;
+const dispatchLock = createKeyedLock(DISPATCH_LOCK_MS);
 
 function hostOf(value: string | undefined | null): string | null {
   if (!value) return null;
@@ -16,15 +33,19 @@ function hostOf(value: string | undefined | null): string | null {
 }
 
 /**
- * Same-origin check. A browser always sends Origin on a cross-site POST, so a
- * missing Origin means a script (curl), not the dashboard, and is refused.
- * Only this deployment's own hosts are accepted; the old blanket
- * `*.vercel.app` rule let any Vercel-hosted page trigger a scrape.
+ * Same-origin (CSRF) check. A browser always sends Origin on a cross-site
+ * POST and a page cannot forge it, so a page on another site cannot use the
+ * owner's remembered key. Only this deployment's own hosts are accepted; the
+ * old blanket `*.vercel.app` rule let any Vercel-hosted page trigger a scrape.
+ * A script can set Origin and Host to anything, so this is not access control:
+ * the refresh key is (see checkRefreshKey).
  */
 function originAllowed(request: NextRequest): boolean {
   const host = hostOf(request.headers.get("origin"));
   if (!host) return false;
-  if (host === "localhost" || host === "127.0.0.1") return true;
+  if (process.env.NODE_ENV !== "production" && (host === "localhost" || host === "127.0.0.1")) {
+    return true;
+  }
 
   const allowed = [
     hostOf(request.headers.get("x-forwarded-host") ?? request.headers.get("host")),
@@ -36,25 +57,18 @@ function originAllowed(request: NextRequest): boolean {
   return allowed.includes(host);
 }
 
-/**
- * When REFRESH_TOKEN is set on the deployment, a refresh must carry it. Hiding
- * the button was only a UX guard; this is the actual access control.
- */
-function tokenAllowed(request: NextRequest): boolean {
-  const expected = process.env.REFRESH_TOKEN ?? "";
-  if (!expected) return true;
-  const given = request.headers.get(REFRESH_TOKEN_HEADER) ?? "";
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(request: NextRequest) {
   if (!originAllowed(request)) {
     return Response.json({ error: "Blocked origin" }, { status: 403 });
   }
 
-  if (!tokenAllowed(request)) {
+  // The refresh key is the access control; hiding the control is only a UX
+  // guard. A production build without REFRESH_TOKEN refuses every refresh.
+  const access = checkRefreshKey(request.headers.get(REFRESH_TOKEN_HEADER));
+  if (access === "disabled") {
+    return Response.json({ error: REFRESH_DISABLED_MESSAGE, code: "refresh_disabled" }, { status: 503 });
+  }
+  if (access === "invalid") {
     return Response.json({ error: "A valid refresh key is required." }, { status: 401 });
   }
 
@@ -77,41 +91,52 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const status = await getRunStatus(role === "all" ? null : role);
+  const target: RoleSlug | "all" = role === "all" ? "all" : (role as RoleSlug);
+  if (!dispatchLock.tryAcquire(target)) {
+    return Response.json({ error: "A scrape was just started." }, { status: 409 });
+  }
+
+  // Release the lock on every path that did not dispatch, so a retry is not
+  // blocked; after a dispatch it expires on its own once GitHub lists the run.
+  const refuse = (body: Record<string, unknown>, status: number) => {
+    dispatchLock.release(target);
+    return Response.json(body, { status });
+  };
+
+  let status: StatusResponse;
+  try {
+    status = await getRunStatus(role === "all" ? null : (role as RoleSlug), { fresh: true });
+  } catch {
+    return refuse({ error: "Could not reach GitHub to check the current run." }, 502);
+  }
 
   if (status.state === "queued" || status.state === "running") {
-    return Response.json(
-      { error: "A scrape is already running.", runUrl: status.runUrl },
-      { status: 409 },
-    );
+    return refuse({ error: "A scrape is already running.", runUrl: status.runUrl }, 409);
   }
 
   if (status.canRefresh === false && !status.cooldownMinutesLeft) {
     // Not a cooldown: the status check itself failed (e.g. a bad token).
-    return Response.json(
-      { error: status.message ?? "Could not check the current run.", status: 502 },
-      { status: 502 },
-    );
+    return refuse({ error: status.message ?? "Could not check the current run.", status: 502 }, 502);
   }
 
   if (status.canRefresh === false) {
-    return Response.json(
+    return refuse(
       {
         error: `Recently refreshed. Try again in ${status.cooldownMinutesLeft ?? REFRESH_COOLDOWN_MINUTES} minutes.`,
         cooldownMinutesLeft: status.cooldownMinutesLeft,
       },
-      { status: 429 },
+      429,
     );
   }
 
-  const target: RoleSlug | "all" = role === "all" ? "all" : (role as RoleSlug);
+  // Taken before the call: GitHub creates the run after this moment, and
+  // /api/status?since= uses it to tell the new run from the previous one.
+  const dispatchedAt = new Date().toISOString();
   const result = await dispatchWorkflow(target);
   if (!result.ok) {
-    return Response.json(
-      { error: "Could not start the scrape.", status: result.status, detail: result.detail },
-      { status: 502 },
-    );
+    return refuse({ error: "Could not start the scrape.", status: result.status, detail: result.detail }, 502);
   }
 
-  return Response.json({ ok: true, role, state: "queued" }, { status: 202 });
+  const body: RefreshAccepted = { ok: true, role: target, state: "queued", dispatchedAt };
+  return Response.json(body, { status: 202 });
 }

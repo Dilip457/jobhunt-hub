@@ -4,9 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getRole } from "@/lib/roles";
+import { filterSearch, knownOrAll, parseFilterParams } from "@/lib/filters";
 import {
+  REFRESH_DISABLED_MESSAGE,
   REFRESH_TOKEN_HEADER,
   type Job,
+  type RefreshAccepted,
   type RoleData,
   type RoleSlug,
   type RunState,
@@ -14,10 +17,11 @@ import {
 } from "@/lib/types";
 import {
   cityCounts,
+  compareNewest,
   experienceBandPriority,
   experiencePriority,
-  jobDate,
   matchesExperience,
+  postedWithinDays,
   type ExperienceBucket,
 } from "@/lib/utils";
 import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
@@ -33,6 +37,25 @@ import StatsBar from "./StatsBar";
 
 const PAGE_SIZE = 8;
 const REFRESH_KEY_STORAGE = "jobhunt.refreshKey";
+/** Give up waiting if GitHub has not listed the dispatched run after this long. */
+const AWAIT_RUN_TIMEOUT_MS = 5 * 60_000;
+
+/** A dispatch this browser is waiting on: GitHub accepted it but may not list it yet. */
+interface PendingRun {
+  role: RoleSlug;
+  /** Server time of the dispatch (dispatchedAt from POST /api/refresh). */
+  since: string;
+  requestedAt: number;
+}
+
+/**
+ * While a dispatch is pending, ask for runs created after it, or the poll
+ * would report the previous run as if it were the one just started.
+ */
+function statusUrl(role: RoleSlug, pending: PendingRun | null): string {
+  const since = pending && pending.role === role ? `&since=${encodeURIComponent(pending.since)}` : "";
+  return `/api/status?role=${role}${since}`;
+}
 
 interface Toast {
   id: number;
@@ -77,6 +100,9 @@ export default function JobDashboard({ role }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const refreshStartRef = useRef<number | null>(null);
+  const pendingRunRef = useRef<PendingRun | null>(null);
+  // Read by the jobs loader, which only re-runs on a role or reload change.
+  const refreshKeyRef = useRef("");
 
   const pushToast = useCallback((kind: Toast["kind"], text: string) => {
     const id = Date.now() + Math.random();
@@ -87,18 +113,17 @@ export default function JobDashboard({ role }: Props) {
   }, []);
 
   // ── Initial filter state from the URL ──────────────────────────────────────
+  // Values the menus cannot show fall back to their defaults (lib/filters.ts).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setQuery(params.get("q") ?? "");
-    setCity(params.get("city") ?? "all");
-    setSource(params.get("source") ?? "all");
-    setScore(params.get("score") ?? "all");
-    const exp = params.get("exp");
-    if (exp) setExperience(exp as ExperienceBucket);
-    setDateRange(params.get("days") ?? "all");
-    setSort(params.get("sort") ?? "score");
-    const urlPage = Number.parseInt(params.get("page") ?? "1", 10);
-    setPage(Number.isFinite(urlPage) && urlPage > 1 ? urlPage : 1);
+    const initial = parseFilterParams(new URLSearchParams(window.location.search));
+    setQuery(initial.query);
+    setCity(initial.city);
+    setSource(initial.source);
+    setScore(initial.score);
+    setExperience(initial.experience);
+    setDateRange(initial.dateRange);
+    setSort(initial.sort);
+    setPage(initial.page);
     setHydrated(true);
   }, []);
 
@@ -109,6 +134,10 @@ export default function JobDashboard({ role }: Props) {
       const target = event.target as HTMLElement | null;
       if (target && target.closest("input, textarea, select, [contenteditable='true']")) return;
       event.preventDefault();
+      if (status?.refreshDisabled) {
+        pushToast("error", REFRESH_DISABLED_MESSAGE);
+        return;
+      }
       if (status?.state === "queued" || status?.state === "running") {
         pushToast("info", "A scrape is already running.");
         return;
@@ -126,12 +155,16 @@ export default function JobDashboard({ role }: Props) {
     setError(null);
     setData((current) => (current?.role === role ? current : null));
 
-    const fresh = freshRef.current ? "&fresh=1" : "";
+    // After a refresh, skip every cache. The server only honours `fresh` with
+    // the refresh key, and the unique value keeps the CDN out of the way.
+    const fresh = freshRef.current ? `&fresh=${Date.now()}` : "";
     freshRef.current = false;
     const warm = fresh ? null : takePrefetchedRole(role);
+    const headers: Record<string, string> = {};
+    if (fresh && refreshKeyRef.current) headers[REFRESH_TOKEN_HEADER] = refreshKeyRef.current;
     const request =
       warm ??
-      fetch(`/api/jobs?role=${role}${fresh}`).then((response) => {
+      fetch(`/api/jobs?role=${role}${fresh}`, { headers }).then((response) => {
         if (!response.ok) throw new Error("Could not load jobs");
         return response.json() as Promise<RoleData>;
       });
@@ -155,25 +188,23 @@ export default function JobDashboard({ role }: Props) {
   }, [role, reloadKey]);
 
   // ── Keep filters shareable without a role parameter ────────────────────────
+  // Wait until the URL has been read: the first commit runs before Next.js has
+  // patched history, so writing then wipes its state (Back stops working) and,
+  // under StrictMode, clears the query before it is read. Passing the current
+  // state on keeps Next's history entry intact.
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    if (city !== "all") params.set("city", city);
-    if (source !== "all") params.set("source", source);
-    if (score !== "all") params.set("score", score);
-    if (experience !== "all") params.set("exp", experience);
-    if (dateRange !== "all") params.set("days", dateRange);
-    if (sort !== "score") params.set("sort", sort);
-    if (page > 1) params.set("page", String(page));
-    const next = params.toString();
+    if (!hydrated) return;
+    const next = filterSearch({ query, city, source, score, experience, dateRange, sort, page });
     const base = pathname || `/jobs/${role}`;
-    window.history.replaceState(null, "", next ? `${base}?${next}` : base);
-  }, [city, dateRange, experience, page, pathname, query, role, score, sort, source]);
+    const url = next ? `${base}?${next}` : base;
+    if (url === `${window.location.pathname}${window.location.search}`) return;
+    window.history.replaceState(window.history.state, "", url);
+  }, [city, dateRange, experience, hydrated, page, pathname, query, role, score, sort, source]);
 
   // ── Status + polling ───────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
-    fetch(`/api/status?role=${role}`)
+    fetch(statusUrl(role, pendingRunRef.current))
       .then((response) => response.json() as Promise<StatusResponse>)
       .then((payload) => {
         if (active) setStatus(payload);
@@ -190,19 +221,35 @@ export default function JobDashboard({ role }: Props) {
     if (!status || (status.state !== "queued" && status.state !== "running")) return;
     const timer = window.setInterval(async () => {
       try {
-        const response = await fetch(`/api/status?role=${role}`);
-        setStatus((await response.json()) as StatusResponse);
+        const pending = pendingRunRef.current;
+        const response = await fetch(statusUrl(role, pending));
+        const next = (await response.json()) as StatusResponse;
+        if (pending && (next.awaitingRun || next.state === "idle")) {
+          if (Date.now() - pending.requestedAt > AWAIT_RUN_TIMEOUT_MS) {
+            pendingRunRef.current = null;
+            setRefreshOpen(false);
+            pushToast("error", "GitHub has not started the run yet. Check the Actions tab.");
+            setStatus({ ...next, state: "idle", awaitingRun: false });
+            return;
+          }
+          // "idle" while waiting means the check itself failed; keep waiting.
+          if (next.state === "idle") return;
+        }
+        setStatus(next);
       } catch {
         /* keep the last known state */
       }
     }, 8000);
     return () => window.clearInterval(timer);
-  }, [status, role]);
+  }, [status, role, pushToast]);
 
   const previousState = useRef<RunState | null>(null);
   useEffect(() => {
     if (!status) return;
     const before = previousState.current;
+    if (status.state === "success" || status.state === "failed" || status.state === "cancelled") {
+      pendingRunRef.current = null;
+    }
     if (before && before !== status.state) {
       if (status.state === "success") {
         freshRef.current = true;
@@ -241,13 +288,16 @@ export default function JobDashboard({ role }: Props) {
   // The refresh key is remembered on this browser only, so the owner types it once.
   useEffect(() => {
     try {
-      setRefreshKey(window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "");
+      const stored = window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "";
+      refreshKeyRef.current = stored;
+      setRefreshKey(stored);
     } catch {
       /* storage can be unavailable (private mode) */
     }
   }, []);
 
   function rememberRefreshKey(value: string) {
+    refreshKeyRef.current = value;
     setRefreshKey(value);
     try {
       if (value) window.localStorage.setItem(REFRESH_KEY_STORAGE, value);
@@ -272,14 +322,37 @@ export default function JobDashboard({ role }: Props) {
       if (response.status === 401) {
         setRefreshOpen(false);
         rememberRefreshKey("");
-        pushToast("error", "That refresh key was not accepted.");
+        pushToast(
+          "error",
+          key
+            ? "That refresh key was not accepted."
+            : "This deployment needs a refresh key. Press the shortcut again to enter it.",
+        );
+        // The dialog asks for a key only when status says so; make sure it does next time.
+        setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshProtected: true }));
         return;
       }
       if (key) rememberRefreshKey(key);
 
       if (response.status === 202) {
+        const payload = (await response.json().catch(() => ({}))) as Partial<RefreshAccepted>;
+        pendingRunRef.current = {
+          role,
+          since: payload.dispatchedAt ?? new Date(refreshStartRef.current ?? Date.now()).toISOString(),
+          requestedAt: Date.now(),
+        };
         pushToast("info", "Scrape queued. This usually takes 10–15 minutes.");
-        setStatus((current) => (current ? { ...current, state: "queued" } : current));
+        // Until GitHub lists the new run, the link and times belong to the
+        // previous one, so drop them. A missing status still starts polling.
+        setStatus((current) => ({
+          configured: true,
+          role,
+          ...current,
+          state: "queued",
+          awaitingRun: true,
+          runUrl: undefined,
+          startedAt: undefined,
+        }));
       } else if (response.status === 409) {
         setRefreshOpen(false);
         pushToast("info", "A scrape is already running.");
@@ -289,7 +362,11 @@ export default function JobDashboard({ role }: Props) {
         pushToast("info", payload.error ?? "Please wait before refreshing again.");
       } else if (response.status === 503) {
         setRefreshOpen(false);
-        pushToast("error", "Refresh is not configured on this deployment yet.");
+        const payload = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+        if (payload.code === "refresh_disabled") {
+          setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshDisabled: true }));
+        }
+        pushToast("error", payload.error ?? "Refresh is not configured on this deployment yet.");
       } else {
         setRefreshOpen(false);
         const payload = (await response.json().catch(() => ({}))) as {
@@ -310,6 +387,8 @@ export default function JobDashboard({ role }: Props) {
 
   useEffect(() => {
     setConfirmOpen(false);
+    // A pending dispatch belongs to the role it was started from.
+    if (pendingRunRef.current && pendingRunRef.current.role !== role) pendingRunRef.current = null;
   }, [role]);
 
   function switchRole(next: RoleSlug) {
@@ -321,7 +400,21 @@ export default function JobDashboard({ role }: Props) {
   // ── Derived list ───────────────────────────────────────────────────────────
   const jobs = useMemo<Job[]>(() => data?.jobs ?? [], [data]);
   const cities = useMemo(() => cityCounts(jobs), [jobs]);
-  const sources = useMemo(() => Object.keys(data?.sources ?? {}).sort(), [data]);
+  // The totals can miss a source that still has jobs; list every source a job uses.
+  const sources = useMemo(
+    () => [...new Set([...Object.keys(data?.sources ?? {}), ...jobs.map((job) => job.source)])].sort(),
+    [data, jobs],
+  );
+
+  // City and source options come from the data, so a shared link's value is
+  // checked once this role's jobs are in; one no job has falls back to "all".
+  useEffect(() => {
+    if (!hydrated || !data || data.role !== role) return;
+    const nextCity = knownOrAll(city, cities.map((item) => item.city));
+    if (nextCity !== city) setCity(nextCity);
+    const nextSource = knownOrAll(source, sources);
+    if (nextSource !== source) setSource(nextSource);
+  }, [cities, city, data, hydrated, role, source, sources]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -337,19 +430,14 @@ export default function JobDashboard({ role }: Props) {
       if (source !== "all" && job.source !== source) return false;
       if (score !== "all" && job.score < Number(score)) return false;
       if (!matchesExperience(job, experience)) return false;
-      if (dateRange !== "all") {
-        // Some boards publish no date; fall back to when we first saw the job
-        // instead of hiding it from every date filter.
-        const day = jobDate(job);
-        if (!day) return false;
-        const days = (now - new Date(`${day}T00:00:00`).getTime()) / 86_400_000;
-        if (days > Number(dateRange)) return false;
-      }
+      // Some boards publish no date; fall back to when we first saw the job
+      // instead of hiding it from every date filter.
+      if (dateRange !== "all" && !postedWithinDays(job, Number(dateRange), now)) return false;
       return true;
     });
 
     return list.sort((a, b) => {
-      if (sort === "date") return (jobDate(b) ?? "").localeCompare(jobDate(a) ?? "");
+      if (sort === "date") return compareNewest(a, b);
       if (sort === "company") return a.company.localeCompare(b.company);
       // Business Analyst is an entry/1–3 year track: keep those roles first
       // even when a senior listing has a slightly higher raw match score.

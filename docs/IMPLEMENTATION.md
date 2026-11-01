@@ -618,16 +618,17 @@ python automation/publish.py \
 | `/jobs/sde` | GET | Software Development Engineer dashboard (pre-rendered) |
 | `/jobs/<unknown>` | GET | Redirect to `/` |
 | `/api/jobs?role=<role>` | GET | Return `RoleData` JSON |
-| `/api/jobs?role=<role>&fresh=1` | GET | Same, bypassing caches |
+| `/api/jobs?role=<role>&fresh=1` | GET | Same, bypassing caches (only with a valid `x-refresh-token`) |
 | `/api/refresh` | POST | Dispatch the GitHub Actions workflow |
-| `/api/status?role=<role>` | GET | Latest workflow run status |
+| `/api/status?role=<role>[&since=<iso>]` | GET | Latest workflow run status |
 
 ### 6.3 Data loading
 
 `web/lib/service.ts`:
 
 ```ts
-getRoleData(role, fresh)
+getRoleData(role, { fresh })
+  → in-memory cache (60 s; 15 s for seed data) unless fresh
   → readJsonFromDataBranch(`${role}.json`, ...)
   → if valid, return it
   → otherwise return web/data/<role>.json (seed, demo: true)
@@ -659,10 +660,10 @@ This makes the app work even before the first scrape.
 
 | Layer | Setting |
 |---|---|
-| `getRoleData` | `no-store` (fresh read on every API cache miss) |
+| `getRoleData` | In memory per server instance for 60 s (15 s after a seed fallback); the GitHub fetch itself is `no-store` |
 | `/api/jobs` response | `public, s-maxage=60, stale-while-revalidate=300` |
-| `/api/jobs?fresh=1` | `no-store` (bypasses CDN cache) |
-| `/api/status` | `no-store` |
+| `/api/jobs?fresh=…` | `private, no-store`; skips the in-memory cache only with a valid `x-refresh-token` |
+| `/api/status` | `no-store`; the runs listing is cached in memory for 5 s (`RUNS_CACHE_SECONDS`) |
 | `/api/refresh` | `force-dynamic` |
 
 ### 6.5 Refresh/status state machine
@@ -684,26 +685,27 @@ type RunState = "idle" | "queued" | "running" | "success" | "failed" | "cancelle
 | any other conclusion | `failed` |
 | no run | `idle` |
 
-`getRunStatus(role)`:
+`getRunStatus(role, { since, fresh })`:
 
-- Fetches the latest 12 runs.
+- Fetches the latest 12 runs (cached for 5 s across roles; `fresh` skips the cache).
+- With `since` (the `dispatchedAt` of a refresh), a latest run created more than 10 s before it is the previous run, so the status is `queued` with `awaitingRun: true`.
 - Parses `display_title` (“Scrape <role>”, from `run-name`) and matches the exact role or `all`.
 - Computes `canRefresh = !active && !onCooldown`.
 - `cooldownMinutesLeft` applies only after a **successful** run, from its `updated_at` (fallback `created_at`) and `REFRESH_COOLDOWN_MINUTES = 25`; a failed or cancelled run can be retried straight away.
-- `refreshProtected` tells the dialog whether to ask for the refresh key.
+- `refreshProtected` tells the dialog whether to ask for the refresh key; `refreshDisabled` means a production build without `REFRESH_TOKEN`.
 
 `POST /api/refresh`:
 
-1. Reject a missing `Origin` header and any origin other than localhost, the request host, `NEXT_PUBLIC_SITE_URL`, `VERCEL_URL`, `VERCEL_BRANCH_URL` or `VERCEL_PROJECT_PRODUCTION_URL` (`403`).
-2. When `REFRESH_TOKEN` is set, require a matching `x-refresh-token` header (`401`). The dialog asks for it and remembers it in `localStorage`.
+1. Reject a missing `Origin` header and any origin other than the request host, `NEXT_PUBLIC_SITE_URL`, `VERCEL_URL`, `VERCEL_BRANCH_URL` or `VERCEL_PROJECT_PRODUCTION_URL` (`403`; localhost is also accepted in development).
+2. Require a matching `x-refresh-token` header (`401`). The dialog asks for it and remembers it in `localStorage`. A production build without `REFRESH_TOKEN` refuses every refresh (`503`, "Refresh is disabled: REFRESH_TOKEN is not configured."); only `next dev` runs without a key.
 3. Validate the role.
 4. Require GitHub configuration.
-5. Return `409` if a run is active.
+5. Take a per-role lock for 60 s (`409` if another request holds it), then return `409` if a run is active. Every path that does not dispatch releases the lock.
 6. Return `502` if the run status could not be read, `429` if the 25-minute cooldown is active.
 7. Dispatch `workflow_dispatch` with `{ ref: "main", inputs: { role } }`.
-8. Return `202`.
+8. Return `202` with `dispatchedAt`, the server time just before the dispatch.
 
-`JobDashboard.tsx` polls `/api/status` every 8 seconds while queued/running. On `success`, it reloads jobs with `fresh=1` and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
+`JobDashboard.tsx` polls `/api/status` every 8 seconds while queued/running, passing `since=<dispatchedAt>` until the dispatched run finishes (it gives up after 5 minutes if GitHub never lists the run). On `success`, it reloads jobs with `fresh` and the refresh key and shows “Fresh jobs loaded.” On `cancelled`, it shows “The scrape was cancelled before it finished.”
 
 The public UI does **not** render a refresh button, and there is no admin URL. On any dashboard, press **`Alt` + `Shift` + `R`** to open the confirmation dialog (`ConfirmRefresh.tsx`); only **Confirm refresh** dispatches the workflow. The shortcut is ignored while typing in an input, textarea, select or contenteditable element, and `Escape` cancels.
 

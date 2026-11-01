@@ -1,3 +1,5 @@
+import { refreshMode } from "./refreshAuth";
+import { createTtlCache } from "./ttlCache";
 import type { RoleSlug, StatusResponse } from "./types";
 
 const GITHUB_API = "https://api.github.com";
@@ -15,7 +17,11 @@ export function isConfigured(): boolean {
 }
 
 export function isRefreshProtected(): boolean {
-  return Boolean(process.env.REFRESH_TOKEN);
+  return refreshMode() === "token";
+}
+
+export function isRefreshDisabled(): boolean {
+  return refreshMode() === "disabled";
 }
 
 export function hasRepo(): boolean {
@@ -100,7 +106,20 @@ export interface ActionsRun {
   html_url: string;
 }
 
-async function fetchRuns(perPage = 12): Promise<{ runs: ActionsRun[]; error?: string }> {
+interface RunsResult {
+  runs: ActionsRun[];
+  error?: string;
+}
+
+/**
+ * How long one runs listing answers status polls. Every open dashboard polls
+ * every 8 seconds while a run is active; the listing covers every role, so
+ * one GitHub call per few seconds serves all of them.
+ */
+export const RUNS_CACHE_SECONDS = 5;
+const runsCache = createTtlCache<string, RunsResult>(RUNS_CACHE_SECONDS * 1000);
+
+async function fetchRuns(perPage = 12): Promise<RunsResult> {
   const response = await ghFetch(
     `/repos/${REPO}/actions/workflows/${WORKFLOW}/runs?per_page=${perPage}`,
     cacheInit({ noStore: true }),
@@ -133,6 +152,19 @@ export function runMatchesRole(run: Pick<ActionsRun, "display_title">, role: Rol
   return target === "all" || target === role;
 }
 
+/**
+ * GitHub stamps created_at to the second, and the server and GitHub clocks are
+ * not exactly in step, so a run created right after a dispatch can read a few
+ * seconds earlier than the dispatch time.
+ */
+export const SINCE_TOLERANCE_MS = 10_000;
+
+/** True when the run was created at or after `since` (epoch ms), within tolerance. */
+export function createdSince(run: Pick<ActionsRun, "created_at">, since: number): boolean {
+  const created = new Date(run.created_at).getTime();
+  return Number.isFinite(created) && created >= since - SINCE_TOLERANCE_MS;
+}
+
 function toState(run: ActionsRun): StatusResponse["state"] {
   if (run.status === "queued" || run.status === "requested" || run.status === "waiting") return "queued";
   if (run.status === "in_progress") return "running";
@@ -158,7 +190,21 @@ export function cooldownRemaining(
   return Math.ceil(REFRESH_COOLDOWN_MINUTES - ageMinutes);
 }
 
-export async function getRunStatus(role: RoleSlug | null): Promise<StatusResponse> {
+export interface RunStatusOptions {
+  /**
+   * Epoch ms of a dispatch the caller is waiting on. The dispatch API returns
+   * before the new run exists, so until GitHub lists a run created after it,
+   * the latest run is the previous one; report "queued" instead of that run.
+   */
+  since?: number | null;
+  /** Skip the short runs cache (the refresh route checks before dispatching). */
+  fresh?: boolean;
+}
+
+export async function getRunStatus(
+  role: RoleSlug | null,
+  options: RunStatusOptions = {},
+): Promise<StatusResponse> {
   if (!isConfigured()) {
     return {
       configured: false,
@@ -168,14 +214,17 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
     };
   }
 
-  const { runs: allRuns, error } = await fetchRuns();
+  const { runs: allRuns, error } = await runsCache.get("runs", () => fetchRuns(), {
+    fresh: options.fresh,
+  });
+  const guard = { refreshProtected: isRefreshProtected(), refreshDisabled: isRefreshDisabled() };
 
   if (error) {
     return {
       configured: true,
       state: "idle",
       role,
-      refreshProtected: isRefreshProtected(),
+      ...guard,
       canRefresh: false,
       message: `GitHub is not reachable with the configured token (${error}).`,
     };
@@ -183,12 +232,25 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
 
   const runs = allRuns.filter((run) => runMatchesRole(run, role));
 
+  const since = options.since;
+  if (typeof since === "number" && Number.isFinite(since) && !(runs[0] && createdSince(runs[0], since))) {
+    return {
+      configured: true,
+      state: "queued",
+      role,
+      ...guard,
+      canRefresh: false,
+      awaitingRun: true,
+      message: "Waiting for GitHub to start the run.",
+    };
+  }
+
   if (runs.length === 0) {
     return {
       configured: true,
       state: "idle",
       role,
-      refreshProtected: isRefreshProtected(),
+      ...guard,
       canRefresh: true,
       cooldownMinutesLeft: 0,
       message: "No scrape has run yet.",
@@ -206,7 +268,7 @@ export async function getRunStatus(role: RoleSlug | null): Promise<StatusRespons
     configured: true,
     state,
     role,
-    refreshProtected: isRefreshProtected(),
+    ...guard,
     startedAt: latest.run_started_at ?? latest.created_at,
     updatedAt: latest.updated_at,
     lastRunAt,
