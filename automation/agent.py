@@ -19,6 +19,7 @@ Usage (normally via automation\\run-agent.ps1 from Task Scheduler):
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import subprocess
@@ -126,6 +127,21 @@ def published_age_hours(portal: str) -> Optional[float]:
         return None
 
     return oldest_role_age_hours(manifest) if isinstance(manifest, dict) else None
+
+
+def clear_role_artifacts(artifacts: str, role: str) -> List[str]:
+    """Delete artifacts/<role>.* left by an earlier run; returns what was removed.
+
+    publish.py publishes every artifacts/<role>*.json it finds and stamps it
+    as seen today, so a leftover file from a role that crashed or was not
+    run this time would be republished as fresh data.
+    """
+    removed = []
+    for path in sorted(glob.glob(os.path.join(artifacts, f"{role}.*"))):
+        if os.path.isfile(path):
+            os.remove(path)
+            removed.append(path)
+    return removed
 
 
 def venv_python(venv_dir: str, role: str) -> str:
@@ -245,6 +261,16 @@ def main() -> int:
 
     try:
         os.makedirs(artifacts, exist_ok=True)
+
+        # Clear every role, not only the ones scraped now: publish would pick
+        # up any leftover artifact and present it as today's data.
+        try:
+            for role in ROLES:
+                for path in clear_role_artifacts(artifacts, role):
+                    log(f"removed stale artifact {os.path.relpath(path, portal)}")
+        except OSError as exc:
+            log(f"could not clear old artifacts ({exc}); not scraping or publishing")
+            return 1
 
         for role in roles:
             profile = read_profile(portal, role)

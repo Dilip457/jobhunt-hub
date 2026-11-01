@@ -619,7 +619,7 @@ data/
 
 | File | Responsibility |
 |---|---|
-| `automation/agent.py` | Staleness check (oldest role's `generated_at`, compared as UTC times), lock/state, per-role run, optional publish |
+| `automation/agent.py` | Staleness check (oldest role's `generated_at`, compared as UTC times), lock/state, clears every `artifacts/<role>.*` before scraping (so a crashed or skipped role is not republished as fresh), per-role run, optional publish |
 | `automation/install-agent.ps1` | Clone vendor repos, create venvs, register Windows task |
 | `automation/run-agent.ps1` | Task Scheduler entry point |
 
