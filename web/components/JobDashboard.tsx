@@ -25,6 +25,7 @@ import {
   type ExperienceBucket,
 } from "@/lib/utils";
 import { prefetchRole, takePrefetchedRole } from "@/lib/prefetch";
+import { passwordError, type RefreshRejection } from "@/lib/refreshPrompt";
 import Filters from "./Filters";
 import BrandMark from "./BrandMark";
 import { AlertIcon, MailIcon, RouteIcon, SparkIcon } from "./Icons";
@@ -96,6 +97,9 @@ export default function JobDashboard({ role }: Props) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState("");
+  const [rememberKey, setRememberKey] = useState(true);
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [keyChecking, setKeyChecking] = useState(false);
   const [refreshOpen, setRefreshOpen] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -103,6 +107,8 @@ export default function JobDashboard({ role }: Props) {
   const pendingRunRef = useRef<PendingRun | null>(null);
   // Read by the jobs loader, which only re-runs on a role or reload change.
   const refreshKeyRef = useRef("");
+  // Set when the dialog is cancelled while the password is being checked.
+  const keyCheckCancelledRef = useRef(false);
 
   const pushToast = useCallback((kind: Toast["kind"], text: string) => {
     const id = Date.now() + Math.random();
@@ -142,6 +148,7 @@ export default function JobDashboard({ role }: Props) {
         pushToast("info", "A scrape is already running.");
         return;
       }
+      setKeyError(null);
       setConfirmOpen(true);
     }
     window.addEventListener("keydown", onKeyDown);
@@ -285,7 +292,8 @@ export default function JobDashboard({ role }: Props) {
     return () => window.clearInterval(timer);
   }, [refreshOpen, status?.startedAt]);
 
-  // The refresh key is remembered on this browser only, so the owner types it once.
+  // The refresh password is remembered on this browser only (if the owner
+  // ticks "Remember on this device"), so it is typed once per device.
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "";
@@ -296,49 +304,75 @@ export default function JobDashboard({ role }: Props) {
     }
   }, []);
 
-  function rememberRefreshKey(value: string) {
+  /**
+   * Keep the accepted password for this page (the jobs reload after a refresh
+   * sends it) and store it only when the owner asked to be remembered.
+   */
+  function rememberRefreshKey(value: string, remember: boolean) {
     refreshKeyRef.current = value;
-    setRefreshKey(value);
+    const stored = remember ? value : "";
+    setRefreshKey(stored);
     try {
-      if (value) window.localStorage.setItem(REFRESH_KEY_STORAGE, value);
+      if (stored) window.localStorage.setItem(REFRESH_KEY_STORAGE, stored);
       else window.localStorage.removeItem(REFRESH_KEY_STORAGE);
     } catch {
       /* ignore */
     }
   }
 
-  async function triggerRefresh(key: string) {
-    refreshStartRef.current = Date.now();
-    setRefreshOpen(true);
+  async function triggerRefresh(key: string, remember: boolean) {
+    setRememberKey(remember);
+    setKeyError(null);
+    setKeyChecking(true);
+    keyCheckCancelledRef.current = false;
+    const requestedAt = Date.now();
+    let response: Response;
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (key) headers[REFRESH_TOKEN_HEADER] = key;
-      const response = await fetch("/api/refresh", {
+      response = await fetch("/api/refresh", {
         method: "POST",
         headers,
         body: JSON.stringify({ role }),
       });
+    } catch {
+      setKeyChecking(false);
+      setConfirmOpen(false);
+      pushToast("error", "Could not reach the refresh service.");
+      return;
+    }
+    setKeyChecking(false);
 
-      if (response.status === 401) {
-        setRefreshOpen(false);
-        rememberRefreshKey("");
-        pushToast(
-          "error",
-          key
-            ? "That refresh key was not accepted."
-            : "This deployment needs a refresh key. Press the shortcut again to enter it.",
-        );
-        // The dialog asks for a key only when status says so; make sure it does next time.
-        setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshProtected: true }));
+    try {
+      // A wrong password or a lockout keeps the dialog open with the reason.
+      const payload = (await response.json().catch(() => ({}))) as RefreshRejection & {
+        detail?: string;
+        status?: number;
+      } & Partial<RefreshAccepted>;
+      const inline = passwordError(response.status, payload, Boolean(key));
+      if (inline) {
+        if (response.status === 401) {
+          rememberRefreshKey("", remember);
+          // The dialog asks for a password only when status says so; make sure it does now.
+          setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshProtected: true }));
+        }
+        // Do not bring back a dialog the owner has already cancelled.
+        if (!keyCheckCancelledRef.current) {
+          setKeyError(inline);
+          setConfirmOpen(true);
+        }
         return;
       }
-      if (key) rememberRefreshKey(key);
+
+      setConfirmOpen(false);
+      if (key) rememberRefreshKey(key, remember);
 
       if (response.status === 202) {
-        const payload = (await response.json().catch(() => ({}))) as Partial<RefreshAccepted>;
+        refreshStartRef.current = requestedAt;
+        setRefreshOpen(true);
         pendingRunRef.current = {
           role,
-          since: payload.dispatchedAt ?? new Date(refreshStartRef.current ?? Date.now()).toISOString(),
+          since: payload.dispatchedAt ?? new Date(requestedAt).toISOString(),
           requestedAt: Date.now(),
         };
         pushToast("info", "Scrape queued. This usually takes 10–15 minutes.");
@@ -354,32 +388,22 @@ export default function JobDashboard({ role }: Props) {
           startedAt: undefined,
         }));
       } else if (response.status === 409) {
-        setRefreshOpen(false);
         pushToast("info", "A scrape is already running.");
       } else if (response.status === 429) {
-        setRefreshOpen(false);
-        const payload = (await response.json()) as { error?: string };
         pushToast("info", payload.error ?? "Please wait before refreshing again.");
       } else if (response.status === 503) {
-        setRefreshOpen(false);
-        const payload = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
         if (payload.code === "refresh_disabled") {
           setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshDisabled: true }));
         }
         pushToast("error", payload.error ?? "Refresh is not configured on this deployment yet.");
       } else {
-        setRefreshOpen(false);
-        const payload = (await response.json().catch(() => ({}))) as {
-          error?: string;
-          detail?: string;
-          status?: number;
-        };
         const reason = payload.detail
           ? ` — ${payload.status ?? "GitHub"}: ${payload.detail.slice(0, 140)}`
           : "";
         pushToast("error", `${payload.error ?? "Could not start the scrape."}${reason}`);
       }
     } catch {
+      setConfirmOpen(false);
       setRefreshOpen(false);
       pushToast("error", "Could not reach the refresh service.");
     }
@@ -387,6 +411,7 @@ export default function JobDashboard({ role }: Props) {
 
   useEffect(() => {
     setConfirmOpen(false);
+    setKeyError(null);
     // A pending dispatch belongs to the role it was started from.
     if (pendingRunRef.current && pendingRunRef.current.role !== role) pendingRunRef.current = null;
   }, [role]);
@@ -686,11 +711,15 @@ export default function JobDashboard({ role }: Props) {
         roleLabel={roleMeta.label}
         needsKey={Boolean(status?.refreshProtected)}
         initialKey={refreshKey}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={(key) => {
+        initialRemember={rememberKey}
+        error={keyError}
+        busy={keyChecking}
+        onCancel={() => {
+          keyCheckCancelledRef.current = true;
           setConfirmOpen(false);
-          void triggerRefresh(key);
+          setKeyError(null);
         }}
+        onConfirm={(key, remember) => void triggerRefresh(key, remember)}
       />
 
       <RefreshPanel

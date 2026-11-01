@@ -1,16 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CloseIcon, RefreshIcon } from "./Icons";
+
+/**
+ * Fixed account name for the hidden username field. Password managers save a
+ * password against a username, so this lets the browser offer to save the
+ * refresh password and sync it to the owner's other devices.
+ */
+const PASSWORD_ACCOUNT = "jobhunt-refresh";
 
 interface Props {
   open: boolean;
   roleLabel: string;
-  /** Ask for the refresh key (the deployment sets REFRESH_TOKEN). */
+  /** Ask for the refresh password (the deployment sets REFRESH_TOKEN). */
   needsKey?: boolean;
   initialKey?: string;
+  initialRemember?: boolean;
+  /** Inline error for the password field, e.g. "Wrong password". */
+  error?: string | null;
+  /** The server is checking the password; the dialog stays open meanwhile. */
+  busy?: boolean;
   onCancel: () => void;
-  onConfirm: (key: string) => void;
+  onConfirm: (key: string, remember: boolean) => void;
 }
 
 export default function ConfirmRefresh({
@@ -18,14 +30,30 @@ export default function ConfirmRefresh({
   roleLabel,
   needsKey = false,
   initialKey = "",
+  initialRemember = true,
+  error = null,
+  busy = false,
   onCancel,
   onConfirm,
 }: Props) {
   const [key, setKey] = useState(initialKey);
+  const [remember, setRemember] = useState(initialRemember);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) setKey(initialKey);
-  }, [open, initialKey]);
+    if (open) {
+      setKey(initialKey);
+      setRemember(initialRemember);
+    }
+  }, [open, initialKey, initialRemember]);
+
+  // A rejected password leaves the dialog open: empty the field and put the
+  // cursor back in it.
+  useEffect(() => {
+    if (!open || !error) return;
+    setKey("");
+    inputRef.current?.focus();
+  }, [open, error]);
 
   useEffect(() => {
     if (!open) return;
@@ -37,6 +65,8 @@ export default function ConfirmRefresh({
   }, [open, onCancel]);
 
   if (!open) return null;
+
+  const canConfirm = !busy && (!needsKey || Boolean(key.trim()));
 
   return (
     <div
@@ -73,35 +103,63 @@ export default function ConfirmRefresh({
           <li>New results appear automatically when publishing finishes.</li>
         </ul>
 
-        {needsKey ? (
-          <label className="refresh-key">
-            <span>Refresh key</span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={key}
-              onChange={(event) => setKey(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && key.trim()) onConfirm(key.trim());
-              }}
-              autoFocus
-            />
-          </label>
-        ) : null}
+        {/* A real form, so Enter submits and password managers recognise it. */}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canConfirm) onConfirm(key.trim(), remember);
+          }}
+        >
+          {needsKey ? (
+            <>
+              <input
+                className="sr-only"
+                type="text"
+                name="username"
+                autoComplete="username"
+                value={PASSWORD_ACCOUNT}
+                readOnly
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+              <label className="refresh-key">
+                <span>Password</span>
+                <input
+                  ref={inputRef}
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  value={key}
+                  onChange={(event) => setKey(event.target.value)}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby="refresh-key-error"
+                  autoFocus
+                />
+              </label>
+              {/* Always rendered, so a new error is announced as it appears. */}
+              <p id="refresh-key-error" className="refresh-key-error" aria-live="assertive">
+                {error}
+              </p>
+              <label className="refresh-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(event) => setRemember(event.target.checked)}
+                />
+                <span>Remember on this device</span>
+              </label>
+            </>
+          ) : null}
 
-        <div className="modal-actions">
-          <button type="button" className="ghost-btn" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={() => onConfirm(key.trim())}
-            disabled={needsKey && !key.trim()}
-          >
-            Confirm refresh
-          </button>
-        </div>
+          <div className="modal-actions">
+            <button type="button" className="ghost-btn" onClick={onCancel}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-btn" disabled={!canConfirm}>
+              {busy ? "Checking…" : "Confirm refresh"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

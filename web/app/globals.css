@@ -2557,6 +2557,44 @@ button:disabled {
   outline-offset: 2px;
 }
 
+.refresh-key input[aria-invalid="true"] {
+  border-color: var(--red);
+}
+
+/* Holds the live "Wrong password" message. Empty it takes no space, but it
+   stays in the accessibility tree (no display: none) so updates are announced. */
+.refresh-key-error {
+  margin: -10px 0 14px;
+  color: var(--red);
+  font-size: 13px;
+}
+
+.refresh-key-error:empty {
+  margin: 0;
+}
+
+.refresh-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.refresh-remember input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--red);
+}
+
+.refresh-remember input:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
