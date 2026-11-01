@@ -183,8 +183,9 @@ senior, lead, principal, manager, director and head titles are pushed down. The 
 and the sort is `score`.
 
 BA-only portal scrapers live in `portal_scrapers.py` (`iiba`, `wellfound`) and run inside the
-normal `scrape` job. The workflow adds a BA-specific `api_sources.py` step that writes
-`artifacts/ba.apis.json`; `publish.py` merges every `ba*.json` artifact.
+normal `scrape` job. The workflow adds an `api_sources.py` step (for `ba` and `sde`) that
+writes `artifacts/ba.apis.json` and passes the optional job-API keys from repository secrets;
+`publish.py` merges every `ba*.json` artifact.
 
 ### 4.2.2 Software Development Engineer track
 
@@ -221,7 +222,7 @@ architect/director/VP down, fresher/intern/junior down. `web/lib/utils.ts`
 role is `sde`, the way `experiencePriority` does for `ba`.
 
 `api_sources.py` carries `sde` entries in `ROLE_SEARCH_TERMS`, `ROLE_TITLE_TOKENS`,
-`ROLE_TITLE_EXCLUDE` and `ROLE_SKILLS`, and the workflow's keyless-sources step runs for both
+`ROLE_TITLE_EXCLUDE` and `ROLE_SKILLS`, and the workflow's API-sources step runs for both
 `ba` and `sde`, writing `artifacts/sde.apis.json`. `publish.py` merges every `sde*.json`
 artifact. `profiles/sde.json` asks for the whole vendor registry — `company_pages`, `linkedin`,
 `naukri`, `indeed`, `foundit`, `shine`, `timesjobs`, `wellfound`, `instahyre`, `glassdoor` —

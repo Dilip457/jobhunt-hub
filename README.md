@@ -204,9 +204,11 @@ applies the same priority when sorting by score, so fresher and 1–3 year roles
 
 ### Optional: keyless ATS boards and job APIs
 
-`automation/api_sources.py` still contains keyless company ATS boards and optional official
-APIs. They are **off in the cloud workflow** (`--no-apis`) because the direct scrapers are the
-primary source; remove the flag to re-enable them.
+`automation/api_sources.py` adds keyless company ATS boards, remote boards and optional
+official APIs. The main scrape runs with `--no-apis` because the direct scrapers are the
+primary source; the workflow's **Fetch extra API sources** step then runs this module for the
+`ba` and `sde` roles and passes the keys below from repository secrets, so adding a secret
+is all it takes to turn a source on. Other roles do not run that step.
 
 | Source | What it adds | Key needed |
 |---|---|---|
@@ -518,8 +520,8 @@ git show origin/data:manifest.json
 python automation/agent.py --dry-run --force
 
 # checks (CI runs the same on every pull request)
-pip install pytest requests beautifulsoup4 lxml && python -m pytest -q tests
-cd web && npm run lint && npm run typecheck && npm run build
+pip install -r automation/requirements.txt pytest && python -m pytest -q tests
+cd web && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
 ---

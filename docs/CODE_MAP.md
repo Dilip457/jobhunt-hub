@@ -97,7 +97,7 @@ jobhunt-hub/
 ├─ .github/workflows/
 │  ├─ scrape.yml                 # daily scrape, WARP, publish
 │  ├─ experience-probe.yml       # manual: show what cards will say for live postings
-│  └─ ci.yml                     # pytest, lint, typecheck, build on PRs
+│  └─ ci.yml                     # pytest, lint, typecheck, web tests, build on PRs
 ├─ automation/
 │  ├─ run_source.py              # vendor wrapper: config patches, pipeline, export
 │  ├─ export.py                  # vendor SQLite → public job JSON
@@ -631,7 +631,7 @@ This is optional; GitHub Actions is the primary scheduler.
 
 ### 9.9 CI
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: `python -m pytest -q tests`, then `npm run lint`, `npm run typecheck` and `npm run build` in `web/`. (The one-off Indeed/WARP probe scripts and workflows were removed; they are in git history.)
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: `python -m pytest -q tests` with `automation/requirements.txt` installed (the packages the scrape job uses), then `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` in `web/`. (The one-off Indeed/WARP probe scripts and workflows were removed; they are in git history.)
 
 ---
 

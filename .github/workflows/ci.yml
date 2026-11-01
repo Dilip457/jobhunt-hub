@@ -23,9 +23,11 @@ jobs:
           cache-dependency-path: automation/requirements.txt
 
       - name: Install dependencies
+        # The same packages the scrape job installs, so an import the tests
+        # reach fails here rather than in the nightly run.
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml pytest
+          pip install -r automation/requirements.txt pytest
 
       - name: Compile scripts
         run: python -m compileall -q automation
@@ -52,4 +54,5 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
