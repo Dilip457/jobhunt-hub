@@ -171,7 +171,8 @@ Steps:
 2. Checkout the vendor repo for `matrix.role` into `vendor/<role>/`.
 3. Install Python 3.11 and the vendor `requirements.txt`.
 4. Install `automation/requirements.txt` and Playwright Chromium.
-5. Run:
+5. Fetch the previously published `<role>.json` from the public `data` branch into `previous/` (`git fetch --depth=1 origin data`, anonymous; missing on a first run, and the step is `continue-on-error`). See 4.6.1.
+6. Run:
 
 ```bash
 python automation/run_source.py \
@@ -183,10 +184,11 @@ python automation/run_source.py \
   --no-apis \
   --no-validate \
   --parallel-sources 4 \
-  --parallel-portals 4
+  --parallel-portals 4 \
+  --previous "previous/<role>.json"
 ```
 
-6. Upload the artifact (always, even on failure):
+7. Upload the artifact (always, even on failure):
 
 ```text
 portal/artifacts/<role>.json
@@ -210,12 +212,13 @@ Steps:
 
 1. Checkout the portal.
 2. Install lightweight dependencies: `requests`, `beautifulsoup4`, `lxml`, `curl_cffi`.
-3. Install and connect Cloudflare WARP:
+3. Fetch the previously published `<role>.json` into `previous/`, as in the `scrape` job.
+4. Install and connect Cloudflare WARP:
    - add the Cloudflare apt repository
    - `warp-cli registration new`
    - `warp-cli mode warp`
    - `warp-cli connect`
-4. Run:
+5. Run:
 
 ```bash
 WARP_SYSTEM=1 python automation/portal_scrapers.py \
@@ -223,11 +226,13 @@ WARP_SYSTEM=1 python automation/portal_scrapers.py \
   --profile "profiles/<role>.json" \
   --out "artifacts/<role>.warp.json" \
   --sites indeed simplyhired \
-  --max-days 14
+  --max-days 14 \
+  --max-page-fetches 200 \
+  --previous "previous/<role>.json"
 ```
 
-5. Disconnect WARP (always).
-6. Upload `jobs-<role>-warp` (always, if present).
+6. Disconnect WARP (always).
+7. Upload `jobs-<role>-warp` (always, if present).
 
 WARP is best-effort. If it fails to connect, the main scrape still publishes.
 
@@ -452,7 +457,7 @@ Cards show only what the posting states. The lookup order, recorded in `experien
 4. `level`: LinkedIn's seniority label (`experience_level`) when the posting states a level but no years. Shown as the label; never converted to years.
 5. `title`: only intern/trainee/fresher/entry-level words.
 
-Nothing found: the job keeps no years, is stamped `experience_checked`, and is looked at again after 7 days. Naukri (card already has it) and Indeed (blocks server fetches) are never fetched. Budget: 300 fetches per role per run (200 in the WARP job), best-scored jobs first, 4 in parallel, one request per host every 0.5 s. `publish.merge_payloads()` keeps a `page`/`level` answer when a later scrape of the same job has none, so each posting is read once. The `Experience probe` workflow fetches a few live postings per source and writes what the card will say to the run summary.
+Nothing found: the job keeps no years, is stamped `experience_checked`, and is looked at again after 7 days. Naukri (card already has it) and Indeed (blocks server fetches) are never fetched. Budget: 300 fetches per role per run (200 in the WARP job), best-scored jobs first, 4 in parallel, one request per host every 0.5 s. A fresh scrape carries none of these results, so the `scrape` and `warp` jobs first fetch the published `<role>.json` from the `data` branch and pass it as `--previous`: `reuse_previous()` copies `experience_min/max/source/level` onto the same posting (matched by `canonical_url`) when the fresh card states no years (`board`/`text`), and keeps the newer `experience_checked`, before `needs_lookup()` picks what to fetch. This is the same rule `publish.merge_payloads()` applies, which keeps a `page`/`level` answer when a later scrape of the same job has none, so each posting is read once and an unresolved one once per 7 days. Without `--previous` (or with a missing/unreadable file) every unresolved job is looked up, as before. The `Experience probe` workflow fetches a few live postings per source and writes what the card will say to the run summary.
 
 ### 4.7 `first_seen` and `is_new`
 

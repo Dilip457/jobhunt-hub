@@ -925,6 +925,11 @@ def main() -> None:
     )
     parser.add_argument("--no-enrich", action="store_true", help="Skip posting-page experience lookup")
     parser.add_argument("--max-page-fetches", type=int, default=300)
+    parser.add_argument(
+        "--previous",
+        default=None,
+        help="Previously published <role>.json; its experience lookups are reused (missing file is fine)",
+    )
     args = parser.parse_args()
 
     profile: Dict[str, Any] = {}
@@ -944,9 +949,9 @@ def main() -> None:
 
     if not args.no_enrich:
         try:
-            from enrich_experience import enrich_payload
+            from enrich_experience import enrich_payload, load_previous
 
-            enrich_payload(payload, args.max_page_fetches)
+            enrich_payload(payload, args.max_page_fetches, previous=load_previous(args.previous))
         except Exception as exc:
             print(f"[portal] experience lookup skipped: {exc}", file=sys.stderr)
 

@@ -105,6 +105,23 @@ jobs:
           pip install -r automation/requirements.txt
           python -m playwright install --with-deps chromium
 
+      - name: Fetch previously published data
+        # Experience already read from posting pages (enrich_experience.py) is
+        # reused instead of fetched again. The data branch of this public repo
+        # is fetched anonymously; on a first run it is missing and every
+        # unresolved job is looked up as before.
+        continue-on-error: true
+        timeout-minutes: 2
+        working-directory: portal
+        env:
+          ROLE: ${{ matrix.role }}
+        run: |
+          mkdir -p previous
+          if git fetch --quiet --depth=1 origin data; then
+            git show "FETCH_HEAD:${ROLE}.json" > "previous/${ROLE}.json" || rm -f "previous/${ROLE}.json"
+          fi
+          ls -l previous
+
       - name: Run pipeline and export JSON
         working-directory: portal
         env:
@@ -123,7 +140,8 @@ jobs:
             --no-apis \
             --no-validate \
             --parallel-sources 4 \
-            --parallel-portals 4
+            --parallel-portals 4 \
+            --previous "previous/${{ matrix.role }}.json"
 
       - name: Fetch extra keyless sources (BA, SDE)
         if: matrix.role == 'ba' || matrix.role == 'sde'
@@ -179,6 +197,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml curl_cffi
 
+      - name: Fetch previously published data
+        # Same as in the scrape job: reuse earlier posting-page lookups.
+        continue-on-error: true
+        timeout-minutes: 2
+        working-directory: portal
+        env:
+          ROLE: ${{ matrix.role }}
+        run: |
+          mkdir -p previous
+          if git fetch --quiet --depth=1 origin data; then
+            git show "FETCH_HEAD:${ROLE}.json" > "previous/${ROLE}.json" || rm -f "previous/${ROLE}.json"
+          fi
+          ls -l previous
+
       - name: Connect Cloudflare WARP
         run: |
           curl -fsSL --max-time 60 https://pkg.cloudflareclient.com/pubkey.gpg \
@@ -205,7 +237,8 @@ jobs:
             --out "artifacts/${{ matrix.role }}.warp.json" \
             --sites indeed simplyhired \
             --max-days 14 \
-            --max-page-fetches 200
+            --max-page-fetches 200 \
+            --previous "previous/${{ matrix.role }}.json"
 
       - name: Disconnect WARP
         if: always()

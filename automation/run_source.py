@@ -758,9 +758,12 @@ def run(args) -> int:
     # Read the posting page for jobs whose card and text state no experience.
     if not getattr(args, "no_enrich", False):
         try:
-            from enrich_experience import enrich_payload
+            from enrich_experience import enrich_payload, load_previous
 
-            enrich_payload(payload, getattr(args, "max_page_fetches", 300))
+            # The published JSON holds earlier lookups; reuse them instead of
+            # fetching the same posting pages again. Absent on a first run.
+            previous = load_previous(getattr(args, "previous", None))
+            enrich_payload(payload, getattr(args, "max_page_fetches", 300), previous=previous)
         except Exception as exc:
             print(f"[run_source] experience lookup skipped: {exc}")
             problems.append(f"experience: {exc}")
@@ -829,6 +832,11 @@ def main() -> None:
     parser.add_argument("--no-validate", action="store_true")
     parser.add_argument("--no-enrich", action="store_true", help="Skip posting-page experience lookup")
     parser.add_argument("--max-page-fetches", type=int, default=300)
+    parser.add_argument(
+        "--previous",
+        default=None,
+        help="Previously published <role>.json; its experience lookups are reused (missing file is fine)",
+    )
     args = parser.parse_args()
 
     args.keywords = None

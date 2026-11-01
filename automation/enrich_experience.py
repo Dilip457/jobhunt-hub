@@ -24,9 +24,14 @@ Results are recorded with their origin in `experience_source`:
 A job whose posting states nothing keeps experience_min/max = None and is
 stamped `experience_checked`, so it is not fetched again for RECHECK_DAYS.
 
+A fresh scrape never carries those results: only the published JSON on the
+data branch does. Pass the previously published payload as `previous` and its
+answers are copied onto the same postings (matched by canonical URL) before
+any fetch, so each posting page is read once, not once per run.
+
 Usage inside the pipeline:
-    from enrich_experience import enrich_payload
-    enrich_payload(payload)
+    from enrich_experience import enrich_payload, load_previous
+    enrich_payload(payload, previous=load_previous("previous/ba.json"))
 
 Probe (prints what the card will say for live jobs; run it on GitHub Actions,
 where the boards are reachable):
@@ -50,7 +55,7 @@ from urllib.parse import urlsplit
 import requests
 from bs4 import BeautifulSoup
 
-from export import extract_experience_with_source
+from export import canonical_url, extract_experience_with_source
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -72,6 +77,9 @@ HOST_GAP = 0.5
 RECHECK_DAYS = 7
 
 RESOLVED_SOURCES = {"board", "text", "page", "level"}
+# Copied from the previous publish when the fresh card states nothing. Matches
+# publish.EXPERIENCE_FIELDS, so the artifact and the published merge agree.
+REUSED_FIELDS = ("experience_min", "experience_max", "experience_source", "experience_level")
 # Boards whose posting page cannot be read with plain HTTP from a runner.
 # Naukri's card already carries the years; Indeed blocks server fetches.
 SKIP_SOURCES = {"naukri", "indeed"}
@@ -209,18 +217,87 @@ def linkedin_posting_url(url: str) -> Optional[str]:
     return LINKEDIN_POSTING.format(id=m.group(1)) if m else None
 
 
+def _checked_day(value: Any) -> Optional[str]:
+    """The ISO day of an experience_checked stamp, or None if it is not a date."""
+    try:
+        return datetime.fromisoformat(str(value or "")[:10]).date().isoformat()
+    except ValueError:
+        return None
+
+
 def needs_lookup(job: Dict[str, Any], today: Optional[str] = None) -> bool:
     if job.get("experience_source") in RESOLVED_SOURCES:
         return False
     if (job.get("source") or "").strip().lower() in SKIP_SOURCES:
         return False
-    checked = (job.get("experience_checked") or "")[:10]
+    # A garbled stamp counts as never checked rather than as checked forever.
+    checked = _checked_day(job.get("experience_checked"))
     if checked:
         today = today or _today()
         recheck = (datetime.fromisoformat(today) - timedelta(days=RECHECK_DAYS)).date().isoformat()
         if checked >= recheck:
             return False
     return bool(job.get("url"))
+
+
+def load_previous(path: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The previously published role JSON, or None if absent or unreadable.
+
+    The first run of a role, or a data branch that was never published, has
+    no file; that is normal and must not stop the scrape.
+    """
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        print(f"[experience] previous data ignored ({path}): {exc}", file=sys.stderr)
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+        print(f"[experience] previous data ignored ({path}): no jobs list", file=sys.stderr)
+        return None
+    return payload
+
+
+def reuse_previous(payload: Dict[str, Any], previous: Optional[Dict[str, Any]]) -> Dict[str, int]:
+    """Copy earlier lookups from the published payload onto fresh jobs. Mutates payload.
+
+    Mirrors publish.merge_payloads(): a fresh job that states experience on its
+    own card (board/text) keeps it; otherwise a resolved previous answer
+    (board/text/page/level) is copied, and experience_checked keeps the newer
+    stamp so needs_lookup() honours the recheck window.
+    """
+    stats = {"resolved": 0, "checked": 0}
+    if not previous:
+        return stats
+    earlier: Dict[str, Dict[str, Any]] = {}
+    for job in previous.get("jobs") or []:
+        if not isinstance(job, dict):
+            continue
+        key = canonical_url(job.get("url") or "")
+        if key:
+            earlier.setdefault(key, job)
+
+    for job in payload.get("jobs") or []:
+        old = earlier.get(canonical_url(job.get("url") or ""))
+        if old is None:
+            continue
+        if (
+            job.get("experience_source") not in RESOLVED_SOURCES
+            and old.get("experience_source") in RESOLVED_SOURCES
+        ):
+            for field in REUSED_FIELDS:
+                job[field] = old.get(field)
+            stats["resolved"] += 1
+        stamps = [d for d in (_checked_day(old.get("experience_checked")),
+                              _checked_day(job.get("experience_checked"))) if d]
+        if stamps and job.get("experience_checked") != max(stamps):
+            job["experience_checked"] = max(stamps)
+            stats["checked"] += 1
+    return stats
 
 
 def resolve_from_page(job: Dict[str, Any], html: str) -> Dict[str, Any]:
@@ -267,14 +344,23 @@ def enrich_payload(
     payload: Dict[str, Any],
     max_fetches: int = DEFAULT_MAX_FETCHES,
     workers: int = DEFAULT_WORKERS,
+    previous: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, int]:
-    """Fill experience from posting pages for unresolved jobs. Mutates payload."""
+    """Fill experience from posting pages for unresolved jobs. Mutates payload.
+
+    `previous` is the last published payload for the role (see load_previous);
+    its answers are reused first so only new or stale postings are fetched.
+    """
+    reused = reuse_previous(payload, previous)
+    if previous is not None:
+        print(f"[experience] reused from previous publish: {json.dumps(reused)}", file=sys.stderr)
     jobs = payload.get("jobs") or []
     candidates = [job for job in jobs if needs_lookup(job)]
     # Best-scored jobs first: they are the ones users see first.
     candidates.sort(key=lambda j: -(j.get("score") or 0))
     candidates = candidates[:max_fetches]
-    stats = {"candidates": len(candidates), "page": 0, "level": 0, "none": 0, "failed": 0}
+    stats = {"reused": reused["resolved"], "candidates": len(candidates),
+             "page": 0, "level": 0, "none": 0, "failed": 0}
     if not candidates:
         return stats
 
