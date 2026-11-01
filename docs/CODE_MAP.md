@@ -207,7 +207,7 @@ jobhunt-hub/
 | Score ring | `web/components/ScoreRing.tsx` | `ScoreRing` | Overall score as a ring, tier and accessible label |
 | Stats | `web/components/StatsBar.tsx` | `StatsBar` | Open jobs, companies, sources, last updated |
 | Role switcher | `web/components/RoleSwitcher.tsx` | `RoleSwitcher` | In-dashboard role tabs |
-| Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh`, `PASSWORD_ACCOUNT` | “Refresh … jobs?” dialog; password form (hidden `username` + `current-password` field, so browsers offer to save it), “Remember on this device”, inline “Wrong password” / lockout error (`aria-live`); Escape/backdrop cancel |
+| Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh` | “Refresh … jobs?” dialog; password form (hidden `username` + `current-password` field, so browsers offer to save it), “Remember on this device”, inline “Wrong password” / lockout error (`aria-live`); Escape/backdrop cancel |
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
 | Brand mark | `web/components/BrandMark.tsx` | `BrandMark` | CSS 3D cube with the spark on front/back faces; rocks ±28° and floats, 42px desktop / 36px phone, frozen under `prefers-reduced-motion` |
 | Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `drawArm`, `drawLeg`, `paint` | Draws the guide climbing two enlarged steps on a 64×64 transparent canvas at ~12 fps, updates every icon link, pauses when hidden, and defers to the static files under `prefers-reduced-motion` |
@@ -222,7 +222,7 @@ jobhunt-hub/
 | `web/lib/service.ts` | `getRoleData` | Reads the `data` branch, falls back to seed JSON |
 | `web/lib/github.ts` | `readJsonFromDataBranch` (raw media type, works above 1 MB), `getRunStatus`, `runRole`, `cooldownRemaining`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured`, `isRefreshProtected` | All server-side GitHub access |
 | `web/lib/refreshAuth.ts` | `refreshMode`, `checkRefreshKey`, `checkRefreshAttempt`, `createAttemptLimiter`, `refreshLimiter`, `clientIp`, `wrongKeyDelay` | Refresh password check and the in-memory wrong-password lockout (5 per IP / over 30 overall in 15 min → 15 min lock) |
-| `web/lib/refreshPrompt.ts` | `passwordError`, `tooManyAttemptsMessage`, `TOO_MANY_ATTEMPTS_CODE` | Password dialog copy shared by the dashboard and `/api/refresh` |
+| `web/lib/refreshPrompt.ts` | `passwordError`, `tooManyAttemptsMessage`, `TOO_MANY_ATTEMPTS_CODE`, `WRONG_PASSWORD_MESSAGE` | Password dialog copy shared by the dashboard and `/api/refresh` |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
 | `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
 | `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |

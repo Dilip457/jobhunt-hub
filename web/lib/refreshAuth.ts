@@ -168,7 +168,9 @@ export type GuardedAccess =
 /**
  * This instance's limiter, used by /api/refresh and /api/jobs?fresh. Next can
  * bundle each route with its own copy of this module, so it is kept on
- * globalThis to make both routes count into one limiter within a process.
+ * globalThis to make both routes count into one limiter within a process. On
+ * Vercel the two routes may still run as separate functions, each counting on
+ * its own, which loosens the bound but does not remove it.
  */
 const limiterHolder = globalThis as typeof globalThis & { __jobhuntRefreshLimiter?: AttemptLimiter };
 export const refreshLimiter = (limiterHolder.__jobhuntRefreshLimiter ??= createAttemptLimiter());

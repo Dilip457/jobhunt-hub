@@ -98,7 +98,7 @@ export default function ConfirmRefresh({
         </div>
 
         <ul className="confirm-list">
-          <li>Runs for about 10–15 minutes in the background.</li>
+          <li>Usually runs for 5–25 minutes in the background.</li>
           <li>Uses one workflow run and is limited to once every 25 minutes.</li>
           <li>New results appear automatically when publishing finishes.</li>
         </ul>

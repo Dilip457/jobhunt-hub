@@ -149,6 +149,9 @@ export default function JobDashboard({ role }: Props) {
         return;
       }
       setKeyError(null);
+      // Reopening clears an earlier cancel, so a password check still in
+      // flight can report its result in this dialog.
+      keyCheckCancelledRef.current = false;
       setConfirmOpen(true);
     }
     window.addEventListener("keydown", onKeyDown);
@@ -320,9 +323,31 @@ export default function JobDashboard({ role }: Props) {
     }
   }
 
+  /**
+   * Report a failure that happened before the password was checked. With a
+   * typed password the dialog stays open: closing it would make browsers treat
+   * the unchecked password as a successful sign-in and offer to save it.
+   */
+  function failBeforePasswordCheck(key: string, message: string) {
+    if (key && !keyCheckCancelledRef.current) {
+      setKeyError(message);
+      setConfirmOpen(true);
+      return;
+    }
+    setConfirmOpen(false);
+    pushToast("error", message);
+  }
+
   async function triggerRefresh(key: string, remember: boolean) {
     setRememberKey(remember);
     setKeyError(null);
+    // Request headers only carry Latin-1, so fetch would throw on such a
+    // password; REFRESH_TOKEN cannot contain those characters either.
+    if (/[^\u0000-ÿ]/.test(key)) {
+      setKeyError("Wrong password. It can only contain standard keyboard characters.");
+      setConfirmOpen(true);
+      return;
+    }
     setKeyChecking(true);
     keyCheckCancelledRef.current = false;
     const requestedAt = Date.now();
@@ -337,8 +362,7 @@ export default function JobDashboard({ role }: Props) {
       });
     } catch {
       setKeyChecking(false);
-      setConfirmOpen(false);
-      pushToast("error", "Could not reach the refresh service.");
+      failBeforePasswordCheck(key, "Could not reach the refresh service. Try again.");
       return;
     }
     setKeyChecking(false);
@@ -364,6 +388,13 @@ export default function JobDashboard({ role }: Props) {
         return;
       }
 
+      // Refresh switched off is answered before the password is looked at.
+      if (response.status === 503 && payload.code === "refresh_disabled") {
+        setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshDisabled: true }));
+        failBeforePasswordCheck(key, payload.error ?? REFRESH_DISABLED_MESSAGE);
+        return;
+      }
+
       setConfirmOpen(false);
       if (key) rememberRefreshKey(key, remember);
 
@@ -375,7 +406,7 @@ export default function JobDashboard({ role }: Props) {
           since: payload.dispatchedAt ?? new Date(requestedAt).toISOString(),
           requestedAt: Date.now(),
         };
-        pushToast("info", "Scrape queued. This usually takes 10–15 minutes.");
+        pushToast("info", "Scrape queued. This usually takes 5–25 minutes.");
         // Until GitHub lists the new run, the link and times belong to the
         // previous one, so drop them. A missing status still starts polling.
         setStatus((current) => ({
@@ -392,9 +423,6 @@ export default function JobDashboard({ role }: Props) {
       } else if (response.status === 429) {
         pushToast("info", payload.error ?? "Please wait before refreshing again.");
       } else if (response.status === 503) {
-        if (payload.code === "refresh_disabled") {
-          setStatus((current) => ({ configured: true, state: "idle", role, ...current, refreshDisabled: true }));
-        }
         pushToast("error", payload.error ?? "Refresh is not configured on this deployment yet.");
       } else {
         const reason = payload.detail
