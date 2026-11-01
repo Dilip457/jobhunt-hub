@@ -207,7 +207,7 @@ jobhunt-hub/
 | Score ring | `web/components/ScoreRing.tsx` | `ScoreRing` | Overall score as a ring, tier and accessible label |
 | Stats | `web/components/StatsBar.tsx` | `StatsBar` | Open jobs, companies, sources, last updated |
 | Role switcher | `web/components/RoleSwitcher.tsx` | `RoleSwitcher` | In-dashboard role tabs |
-| Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh` | “Refresh … jobs?” dialog; Escape/backdrop cancel |
+| Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh`, `PASSWORD_ACCOUNT` | “Refresh … jobs?” dialog; password form (hidden `username` + `current-password` field, so browsers offer to save it), “Remember on this device”, inline “Wrong password” / lockout error (`aria-live`); Escape/backdrop cancel |
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
 | Brand mark | `web/components/BrandMark.tsx` | `BrandMark` | CSS 3D cube with the spark on front/back faces; rocks ±28° and floats, 42px desktop / 36px phone, frozen under `prefers-reduced-motion` |
 | Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `drawArm`, `drawLeg`, `paint` | Draws the guide climbing two enlarged steps on a 64×64 transparent canvas at ~12 fps, updates every icon link, pauses when hidden, and defers to the static files under `prefers-reduced-motion` |
@@ -221,6 +221,8 @@ jobhunt-hub/
 | `web/lib/roles.ts` | `ROLES`, `DEFAULT_ROLE`, `getRole` | Labels, short labels, descriptions, accents and blurbs |
 | `web/lib/service.ts` | `getRoleData` | Reads the `data` branch, falls back to seed JSON |
 | `web/lib/github.ts` | `readJsonFromDataBranch` (raw media type, works above 1 MB), `getRunStatus`, `runRole`, `cooldownRemaining`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured`, `isRefreshProtected` | All server-side GitHub access |
+| `web/lib/refreshAuth.ts` | `refreshMode`, `checkRefreshKey`, `checkRefreshAttempt`, `createAttemptLimiter`, `refreshLimiter`, `clientIp`, `wrongKeyDelay` | Refresh password check and the in-memory wrong-password lockout (5 per IP / over 30 overall in 15 min → 15 min lock) |
+| `web/lib/refreshPrompt.ts` | `passwordError`, `tooManyAttemptsMessage`, `TOO_MANY_ATTEMPTS_CODE` | Password dialog copy shared by the dashboard and `/api/refresh` |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
 | `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
 | `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
@@ -317,9 +319,9 @@ Read with `parseFilterParams()` and written with `filterSearch()` (`web/lib/filt
 |---|---|---|---|---|
 | `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data`, `uiux` or `ba`; optional `fresh` (honoured only with a valid `x-refresh-token`) | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` is present (`private, no-store`) |
 | `GET /api/status` | `web/app/api/status/route.ts` | optional `role`; optional `since` (ISO time) | `StatusResponse` | Always `no-store`; returns idle message if GitHub is unreachable; with `since`, reports `queued` + `awaitingRun` until a run created after it is listed |
-| `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued", dispatchedAt }` | `403` blocked origin; `401` missing/wrong refresh key; `503` refresh disabled (`code: "refresh_disabled"`, production without `REFRESH_TOKEN`) or unconfigured; `400` bad body/role; `409` already running or just dispatched; `429` cooldown; `502` dispatch failed |
+| `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued", dispatchedAt }` | `403` blocked origin; `401` missing/wrong password (wrong ones answered after ~750 ms); `429` `code: "too_many_attempts"` with `minutesLeft` while that IP (5 wrong in 15 min) or everyone (over 30 wrong in 15 min) is locked out; `503` refresh disabled (`code: "refresh_disabled"`, production without `REFRESH_TOKEN`) or unconfigured; `400` bad body/role; `409` already running or just dispatched; `429` cooldown; `502` dispatch failed |
 
-Origin check (CSRF): the `Origin` header is required and must be the request host, the `NEXT_PUBLIC_SITE_URL` host, or one of `VERCEL_URL` / `VERCEL_BRANCH_URL` / `VERCEL_PROJECT_PRODUCTION_URL` (localhost too in development). The `x-refresh-token` header must match `REFRESH_TOKEN` (`web/lib/refreshAuth.ts`); a production build without `REFRESH_TOKEN` refuses every refresh.
+Origin check (CSRF): the `Origin` header is required and must be the request host, the `NEXT_PUBLIC_SITE_URL` host, or one of `VERCEL_URL` / `VERCEL_BRANCH_URL` / `VERCEL_PROJECT_PRODUCTION_URL` (localhost too in development). The `x-refresh-token` header must match `REFRESH_TOKEN` (`web/lib/refreshAuth.ts`), the password or PIN the owner chose and set only in Vercel (a change needs a redeploy); a production build without `REFRESH_TOKEN` refuses every refresh. The lockout is checked before the password, so a locked IP is refused even with the right one; wrong passwords sent to `/api/jobs?fresh` count towards it too. It never applies in local development without a token.
 
 Underlying GitHub calls: `web/lib/github.ts`
 

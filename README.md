@@ -330,7 +330,7 @@ full modification record ships at
    | `GITHUB_WORKFLOW` | `scrape.yml` |
    | `GITHUB_DATA_BRANCH` | `data` |
    | `GITHUB_DISPATCH_REF` | `main` |
-   | `REFRESH_TOKEN` | Required for refresh: a long random secret the refresh dialog asks for. Without it a production deployment refuses every refresh |
+   | `REFRESH_TOKEN` | Required for refresh: the password the refresh dialog asks for. Pick any password or PIN you can remember (8+ characters, or at least 6 digits). Without it a production deployment refuses every refresh |
    | `NEXT_PUBLIC_SITE_URL` | `https://your-project.vercel.app` |
 
 4. **Deploy.** The free `*.vercel.app` domain is enough. Add a custom domain later if you want.
@@ -368,10 +368,10 @@ To run a manual scrape, open the main site and press **`Alt` + `Shift` + `R`**. 
 
 1. Open any dashboard, e.g. `https://jobhunt-hub-web.vercel.app/jobs/data`.
 2. Press **`Alt` + `Shift` + `R`**.
-3. Confirm in the dialog.
-4. `POST /api/refresh` checks the origin and refresh key, an active run, and a 25-minute cooldown after the last successful run, then calls the GitHub `workflow_dispatch` API and returns the dispatch time (`dispatchedAt`).
+3. Enter the refresh password and confirm.
+4. `POST /api/refresh` checks the origin and the password (the `x-refresh-token` header), an active run, and a 25-minute cooldown after the last successful run, then calls the GitHub `workflow_dispatch` API and returns the dispatch time (`dispatchedAt`).
 5. The UI polls `/api/status?since=<dispatchedAt>` every 8 seconds. Runs created before the dispatch count as still queued, so the previous run is never reported as the new one.
-6. When the run succeeds, the page re-fetches `/api/jobs?fresh=…` with the refresh key (which skips the caches) and shows the new `generated_at`.
+6. When the run succeeds, the page re-fetches `/api/jobs?fresh=…` with the password (which skips the caches) and shows the new `generated_at`.
 
 Protections:
 
@@ -380,7 +380,9 @@ Protections:
 - GitHub Actions `concurrency: jobhunt-scrape-<role>` serialises runs for the same role; different roles run side by side and their publishes merge.
 - 25-minute cooldown per role (`lib/github.ts`).
 - Same-origin (CSRF) check on the POST route: only this deployment's own hosts are accepted, and requests without an `Origin` header are refused. `localhost` origins are accepted in development only.
-- **Refresh key:** set `REFRESH_TOKEN` on Vercel and the dialog asks for it (it is remembered in that browser). Without it, a production deployment refuses every refresh with "Refresh is disabled: REFRESH_TOKEN is not configured." Only `next dev` allows refresh without a key.
+- **Refresh password:** `REFRESH_TOKEN` is a password or PIN you choose; it is never in the codebase. Set it in Vercel → Settings → Environment Variables (Production) and **redeploy**: Vercel reads environment variables at deploy time, so a new value only takes effect after a redeploy (browsers holding the old one are then refused and asked again). Use 8+ characters, or at least 6 digits for a PIN. Without it, a production deployment refuses every refresh with "Refresh is disabled: REFRESH_TOKEN is not configured." Only `next dev` allows refresh without a password.
+- **Wrong-password lockout** (`web/lib/refreshAuth.ts`): every wrong password is answered after a ~750 ms delay. 5 wrong passwords from one IP within 15 minutes lock that IP for 15 minutes, and more than 30 from all IPs together lock refresh for everyone for 15 minutes (a backstop against rotating IPs; the owner waits it out too). While locked, even the right password gets `429` with `code: "too_many_attempts"` and the minutes left. The right password clears that IP's count. Wrong passwords sent to `/api/jobs?fresh` count as well. The counters live in the server instance's memory, so they are best effort (a cold start resets them), but they turn unlimited guessing into a handful of tries per quarter hour. The IP comes from `x-vercel-forwarded-for` / `x-real-ip` / `x-forwarded-for`, which Vercel overwrites with the real client address.
+- **Saving the password:** the dialog is a real sign-in form (a hidden username `jobhunt-refresh` plus the password field), so Chrome, Edge and Safari offer to save it and sync it to your other devices; on a new laptop signed in to the same browser account it can be filled in for you. "Remember on this device" (on by default) also keeps it in this browser's `localStorage`; untick it on a shared computer. A wrong password shows "Wrong password" in the dialog and clears the remembered copy.
 - A per-role lock stops two near-simultaneous confirmations from both dispatching.
 - Seeded data remains visible if GitHub is unreachable.
 - Refresh triggers the **cloud** pass (scrapers + official APIs). Everything runs on
@@ -394,8 +396,9 @@ browser history work normally. Filter parameters such as `?q=python&city=Bangalo
 written to the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 
 Hiding the control is a UX guard, not an authentication boundary. `REFRESH_TOKEN` is the
-real access control (production refuses refresh without it); the cooldown and one-run-per-role
-concurrency limit only bound repeated use.
+real access control (production refuses refresh without it) and the wrong-password lockout
+stops it being guessed; the cooldown and one-run-per-role concurrency limit only bound
+repeated use.
 
 ---
 

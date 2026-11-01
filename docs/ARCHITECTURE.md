@@ -492,6 +492,12 @@ and no visible refresh button. On any dashboard, press **`Alt` + `Shift` + `R`**
 to open a confirmation dialog; only **Confirm refresh** dispatches the workflow. The
 shortcut is ignored while focus is inside a form field, and `Escape` closes the dialog.
 
+The dialog asks for the refresh password: `REFRESH_TOKEN`, any password or PIN the owner
+chooses (8+ characters, or at least 6 digits), set only in Vercel's environment variables;
+changing it needs a redeploy. The dialog is a real sign-in form, so the browser can save the
+password and sync it to the owner's other devices; "Remember on this device" also keeps it in
+`localStorage`. A wrong password keeps the dialog open with "Wrong password".
+
 ```mermaid
 sequenceDiagram
     participant Admin
@@ -525,6 +531,8 @@ to the role URL so a filtered view can be shared. Unknown role slugs redirect to
 | Guard | Result |
 |---|---|
 | Origin not allowed | `403 Blocked origin` |
+| Missing or wrong password | `401` (wrong ones answered after ~750 ms) |
+| 5 wrong passwords from one IP in 15 min, or over 30 from all IPs | `429 too_many_attempts` for 15 minutes, even with the right password |
 | Unknown role | `400 Unknown role` |
 | GitHub not configured | `503 Refresh is not configured` |
 | A run is queued/running | `409 A scrape is already running` |
@@ -534,9 +542,10 @@ to the role URL so a filtered view can be shared. Unknown role slugs redirect to
 
 A **cancelled** run is reported as `cancelled`, not `failed`.
 
-Hiding the button is a UX guard, not authentication. The endpoint remains reachable and is
-bounded by the cooldown and one-run-per-role concurrency; add a server-side token if hard access
-control is required.
+Hiding the button is a UX guard, not authentication. `REFRESH_TOKEN` is the access control
+(a production build without it refuses every refresh), and the wrong-password lockout keeps a
+short password from being brute-forced. The lockout counters live in the server instance's
+memory, so they are best effort; the cooldown and one-run-per-role concurrency still bound use.
 
 ---
 
@@ -564,7 +573,7 @@ control is required.
 ### Security
 
 - GitHub PAT is server-side only.
-- Refresh endpoint checks the request origin.
+- Refresh endpoint checks the request origin and the owner's refresh password, with a wrong-password lockout.
 - No user accounts, passwords, or personal data.
 - No database, so no SQL injection or database credentials.
 - Job URLs are opened in a new tab with `rel="noopener noreferrer"`.
