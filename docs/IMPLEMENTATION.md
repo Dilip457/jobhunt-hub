@@ -39,11 +39,12 @@ jobhunt-hub/
 ├─ automation/
 │  ├─ run_source.py              # run a vendor repo with portal overrides, then export
 │  ├─ portal_scrapers.py         # direct Naukri/Foundit/Indeed/Shine/SimplyHired scrapers
-│  ├─ api_sources.py             # optional APIs + company ATS boards
+│  ├─ api_sources.py             # company career boards + keyless feeds
 │  ├─ export.py                  # SQLite → compact public JSON
 │  ├─ publish.py                 # merge artifacts + force-push the `data` branch
 │  ├─ matrix.py                  # role → vendor repo matrix for Actions
-│  ├─ companies.json             # optional ATS company tokens
+│  ├─ companies.json             # company career boards
+│  ├─ validate_companies.py      # check companies.json against the live feeds
 │  ├─ requirements.txt           # portal scraper dependencies
 │  ├─ agent.py                   # optional local residential-IP agent
 │  ├─ install-agent.ps1          # optional Windows scheduled task setup
@@ -382,23 +383,23 @@ Direct, account-free scrapers. Each fetcher returns a list of normalized job dic
 
 Naukri, Shine and Foundit use the portal's posted date. Indeed and SimplyHired read the card's age stamp (`_card_posted_date()`: “Just posted”, “Today”, “Posted 3 days ago”, “Active 5 days ago”, “30+ days ago”, “a day ago”, SimplyHired's “3d” / “30d+”; dates are UTC days, like `first_seen`); a card without one gets `posted_date: null`, never the scrape date. `publish.py` keeps the earliest known `posted_date` for a job, caps it at `first_seen` (a job cannot be posted after we first collected it, which also retires the scrape dates published before this change), and ages undated jobs out from `first_seen`.
 
-### 4.4 `api_sources.py` (keyless extra sources)
+### 4.4 `api_sources.py` (company career boards and keyless extra sources)
 
-The main scrape disables this module with `--no-apis`. The workflow's "Fetch extra keyless sources" step runs it afterwards for `ba` and `sde`. No source needs a key. It can be run locally for any role.
+The main scrape disables this module with `--no-apis`. The workflow's "Fetch company career boards and keyless sources" step runs it afterwards: `--sources ats` for `genai`, `data` and `uiux`, every source for `ba` and `sde`. No source needs a key. It can be run locally for any role.
 
 | Source | Notes |
 |---|---|
-| Company ATS boards | Greenhouse, Lever, Ashby, SmartRecruiters; tokens in `automation/companies.json` |
-| Remotive | Remote roles |
-| Himalayas | Remote roles |
-| Remote OK | Public remote jobs API |
-| We Work Remotely | Public RSS feed |
+| Company ATS boards | Workday, Greenhouse, Lever, Ashby, SmartRecruiters; boards in `automation/companies.json` |
+| Remotive | Remote roles (BA, SDE) |
+| Himalayas | Remote roles (BA, SDE) |
+| Remote OK | Public remote jobs API (BA, SDE) |
+| We Work Remotely | Public RSS feed (BA, SDE) |
 
 All results go through `build_job()` with the strict location rule (every source lists jobs worldwide) and are merged by canonical URL.
 
-For `ba` and `sde`, the workflow runs this module separately after the main scrape and writes
-`artifacts/<role>.apis.json`, so those tracks get remote-board and ATS results even though the
-main scrape uses `--no-apis`.
+The workflow writes `artifacts/<role>.apis.json`, which `publish.py` merges with the role's other artifacts, so every track gets company-board results even though the main scrape uses `--no-apis`.
+
+Company boards (`fetch_ats`): each ATS has a postings reader (`ATS_POSTINGS`) that returns a board's jobs once, independent of role; `_board_jobs` turns them into one role's jobs. Readers that would otherwise return thousands of worldwide openings filter in the request: SmartRecruiters with `country=in` (paged, up to 1000), Workday by first reading the site's location facets and applying the one that means India (`_workday_india_facets`), then paging up to 600 postings, newest first. Lever, Ashby and Workday feeds carry no company name, so `companies.json` gives one. Because a feed returns every opening rather than a keyword search's results, `ats_title_ok` adds a stricter title rule for SDE (a software role), Data (a data engineering role) and UI/UX (a UX/product designer, not silicon, building or identity design). `automation/validate_companies.py` checks every board against the live feeds and `--write` drops boards with no India postings.
 
 ### 4.5 `export.py`
 
@@ -937,10 +938,15 @@ python automation/portal_scrapers.py \
   --out artifacts/ba.portal.json \
   --sites iiba wellfound --max-days 21 --min-score 18
 
-# BA keyless API sources (Remote OK, We Work Remotely, ATS)
+# BA keyless sources (company career boards, Remote OK, We Work Remotely, ...)
 python automation/api_sources.py \
   --role ba --profile profiles/ba.json \
   --out artifacts/ba.apis.json --max-days 21 --min-score 18
+
+# Company career boards only, as the workflow runs them for genai/data/uiux
+python automation/api_sources.py \
+  --role data --profile profiles/data.json \
+  --out artifacts/data.apis.json --max-days 21 --min-score 18 --sources ats
 ```
 
 ### 8.3 Run only the direct portal scrapers
