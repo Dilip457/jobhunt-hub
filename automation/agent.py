@@ -32,8 +32,9 @@ from roles import ROLES
 
 LOCK_STALE_MINUTES = 240
 # Seconds before a git call is abandoned, so a stalled fetch or a credential
-# prompt cannot hold the agent lock forever.
-GIT_TIMEOUT = 300
+# prompt cannot hold the agent lock forever. Generous because a first vendor
+# clone includes its jobs.db.
+GIT_TIMEOUT = 600
 
 
 def iso_now() -> str:
@@ -203,7 +204,7 @@ def main() -> int:
         last_run_age = (datetime.now(timezone.utc) - last_run_at).total_seconds() / 3600.0
 
     log(
-        f"published data age: "
+        f"oldest published role: "
         f"{'unknown' if age_hours is None else f'{age_hours:.1f}h'}; "
         f"last local run: {'never' if last_run_age is None else f'{last_run_age:.1f}h ago'}"
     )
