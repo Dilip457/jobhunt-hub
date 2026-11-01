@@ -202,43 +202,29 @@ BA is an **entry-level-first** track: `api_sources.py` and `export.py` boost fre
 graduate, junior and 1–3 year titles and push senior/lead/manager titles down. The dashboard
 applies the same priority when sorting by score, so fresher and 1–3 year roles appear first.
 
-### Optional: keyless ATS boards and job APIs
+### Keyless extra sources: ATS boards and remote boards
 
-`automation/api_sources.py` adds keyless company ATS boards, remote boards and optional
-official APIs. The main scrape runs with `--no-apis` because the direct scrapers are the
-primary source; the workflow's **Fetch extra API sources** step then runs this module for the
-`ba` and `sde` roles and passes the keys below from repository secrets, so adding a secret
-is all it takes to turn a source on. Other roles do not run that step.
+`automation/api_sources.py` adds company ATS boards and remote job boards. The main scrape
+runs with `--no-apis` because the direct scrapers are the primary source; the workflow's
+**Fetch extra keyless sources** step then runs this module for the `ba` and `sde` roles.
+Other roles do not run that step. None of these sources needs a key, an account or a card.
 
-| Source | What it adds | Key needed |
-|---|---|---|
-| **Company ATS boards** | Real openings pulled straight from companies' own hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters) | **none** — public JSON |
-| **Adzuna** | Aggregated India listings across many boards | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (free) |
-| **Jooble** | Aggregated India listings | `JOOBLE_API_KEY` (free) |
-| **Google Jobs** (JSearch) | Google-for-Jobs index | `JSEARCH_API_KEY` (free tier) |
-| **Remotive** | Remote roles | none |
-| **Himalayas** | Remote roles | none |
+| Source | What it adds |
+|---|---|
+| **Company ATS boards** | Real openings pulled straight from companies' own hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters), public JSON |
+| **Remotive** | Remote roles |
+| **Himalayas** | Remote roles |
+| **Remote OK** | Remote roles |
+| **We Work Remotely** | Remote roles (RSS feed) |
 
 The ATS board list lives in `automation/companies.json` — add any company token you
-like; invalid ones are skipped automatically. No signup, no card, no key.
+like; invalid ones are skipped automatically.
 
-**Missing keys are simply skipped**, so the site keeps working with whatever you configure.
-Results are filtered to India + Remote and de-duplicated against the scraper output.
-
-### Add the keys (GitHub → Settings → Secrets and variables → Actions)
-
-| Secret | Where to get it |
-|---|---|
-| `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` | free signup at <https://developer.adzuna.com/signup> |
-| `JOOBLE_API_KEY` | free key at <https://jooble.org/api/about> |
-| `JSEARCH_API_KEY` | free RapidAPI key at <https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch> |
-
-Test any of them locally:
+Results are filtered to India + India-eligible remote and de-duplicated against the scraper
+output. Run it locally:
 
 ```bash
-ADZUNA_APP_ID=... ADZUNA_APP_KEY=... \
-  python automation/api_sources.py --role data --profile profiles/data.json \
-    --out /tmp/apis.json
+python automation/api_sources.py --role ba --profile profiles/ba.json   --out /tmp/apis.json
 ```
 
 **Merging:** `publish.py` unions each run with the previously published file, so a lighter
@@ -427,13 +413,13 @@ repeated use.
 - **India + Remote only:** foreign listings are dropped during export.
 - **`noindex` at launch:** set in `web/app/layout.tsx`. Remove it only after reviewing the legal model.
 - **Respectful scraping:** rate limits, retries, no login walls, public pages only.
-- **Job board terms:** LinkedIn/Naukri/Indeed restrict automated access. For a commercial or high-traffic public product, switch to official feeds (Adzuna, Jooble, Indeed Publisher) rather than scraping.
+- **Job board terms:** LinkedIn/Naukri/Indeed restrict automated access. For a commercial or high-traffic public product, switch to official, licensed job feeds rather than scraping.
 
 ---
 
 ## Source reliability
 
-Scrapers and optional APIs fail in different ways, so the pipeline can use both:
+Scrapers and keyless feeds fail in different ways, so the pipeline uses both:
 
 | Source | Cloud (GitHub Actions) | Notes |
 |---|---|---|
@@ -444,7 +430,6 @@ Scrapers and optional APIs fail in different ways, so the pipeline can use both:
 | **Indeed** | ⚠️ IP-blocked | Cloudflare `403 Security Check - Indeed.com` from Azure runner IPs, on every path |
 | **SimplyHired** (Indeed inventory) | ✅ via WARP (optional) | Indeed's sister site; same Indian listings |
 | Company ATS boards | ✅ works (optional) | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
-| Adzuna / Jooble / Google Jobs | ✅ works (optional, with keys) | official APIs, no PC |
 | **IIBA Career Center** | ✅ works (BA only) | plain HTTP; the BA-specific board |
 | **Wellfound** | ✅ works (BA only) | India + unrestricted remote only |
 | **Remote OK / We Work Remotely** | ✅ works (BA only) | keyless remote feeds |

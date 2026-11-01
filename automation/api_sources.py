@@ -7,14 +7,13 @@ scraper-based pipeline only ever sees LinkedIn and company pages from GitHub
 Actions. These sources talk to *official / public* job APIs instead, which work
 from any IP and need no machine of your own:
 
-    Adzuna        needs ADZUNA_APP_ID + ADZUNA_APP_KEY   (free, India supported)
-    Jooble        needs JOOBLE_API_KEY                    (free, India)
-    Google Jobs   needs JSEARCH_API_KEY (RapidAPI)        (free tier, India)
-    Remotive      no key needed                           (remote roles)
-    Himalayas     no key needed                           (remote roles)
+    Remotive          remote roles
+    Himalayas         remote roles
+    Remote OK         remote roles
+    We Work Remotely  remote roles (RSS)
+    Company ATS       Greenhouse, Lever, Ashby, SmartRecruiters boards
 
-Missing keys are simply skipped, so the portal keeps working with whatever is
-configured.
+None of them needs a key or an account.
 
 Usage (usually called by run_source.py):
     python automation/api_sources.py --role uiux --out artifacts/uiux.apis.json
@@ -261,14 +260,6 @@ def get_text(url: str, headers: Optional[Dict[str, str]] = None) -> str:
     req = urllib.request.Request(url, headers=merged)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
         return response.read().decode("utf-8", "replace")
-
-
-def post_json(url: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None):
-    body = json.dumps(payload).encode("utf-8")
-    merged = {"Content-Type": "application/json"}
-    if headers:
-        merged.update(headers)
-    return _request(url, data=body, headers=merged)
 
 
 # ── Normalisation ─────────────────────────────────────────────────────────────
@@ -649,102 +640,8 @@ def build_job(
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 #
-# Adzuna, Jooble and JSearch are queried for India only, so their locations are
-# Indian unless they say otherwise and get the lenient location rule. The
-# remote boards and company ATS boards list jobs worldwide and pass
-# strict_location=True.
-
-def fetch_adzuna(role: str, max_days: int) -> List[Dict[str, Any]]:
-    app_id = os.environ.get("ADZUNA_APP_ID")
-    app_key = os.environ.get("ADZUNA_APP_KEY")
-    if not app_id or not app_key:
-        return []
-    jobs: List[Dict[str, Any]] = []
-    for keyword in search_terms(role)[:3]:
-        data = get_json(
-            "https://api.adzuna.com/v1/api/jobs/in/search/1",
-            params={
-                "app_id": app_id,
-                "app_key": app_key,
-                "results_per_page": 50,
-                "what": keyword,
-                "where": "india",
-                "max_days_old": max_days,
-                "sort_by": "date",
-                "content-type": "application/json",
-            },
-        )
-        for item in data.get("results", []):
-            job = build_job(
-                role, "Adzuna",
-                item.get("title", ""),
-                (item.get("company") or {}).get("display_name", ""),
-                (item.get("location") or {}).get("display_name", ""),
-                item.get("redirect_url", ""),
-                item.get("description", ""),
-                to_date(item.get("created")),
-                item.get("id"),
-            )
-            if job:
-                jobs.append(job)
-    return jobs
-
-
-def fetch_jooble(role: str, max_days: int) -> List[Dict[str, Any]]:
-    key = os.environ.get("JOOBLE_API_KEY")
-    if not key:
-        return []
-    jobs: List[Dict[str, Any]] = []
-    for keyword in search_terms(role)[:3]:
-        data = post_json(f"https://jooble.org/api/{key}", {"keywords": keyword, "location": "India", "page": 1})
-        for item in data.get("jobs", []):
-            job = build_job(
-                role, "Jooble",
-                item.get("title", ""),
-                item.get("company", ""),
-                item.get("location", ""),
-                item.get("link", ""),
-                item.get("snippet", ""),
-                to_date(item.get("updated")),
-                item.get("id"),
-            )
-            if job:
-                jobs.append(job)
-    return jobs
-
-
-def fetch_jsearch(role: str, max_days: int) -> List[Dict[str, Any]]:
-    key = os.environ.get("JSEARCH_API_KEY") or os.environ.get("RAPIDAPI_KEY")
-    if not key:
-        return []
-    data = get_json(
-        "https://jsearch.p.rapidapi.com/search",
-        params={
-            "query": f"{search_terms(role)[0]} in India",
-            "page": "1",
-            "num_pages": "1",
-            "country": "in",
-            "date_posted": "week" if max_days <= 7 else "month",
-        },
-        headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"},
-    )
-    jobs: List[Dict[str, Any]] = []
-    for item in data.get("data", []):
-        city = ", ".join(p for p in [item.get("job_city"), item.get("job_state")] if p)
-        job = build_job(
-            role, "Google Jobs",
-            item.get("job_title", ""),
-            item.get("employer_name", ""),
-            city or item.get("job_country", ""),
-            item.get("job_apply_link") or item.get("job_google_link") or "",
-            item.get("job_description", ""),
-            to_date(item.get("job_posted_at_datetime_utc")),
-            item.get("job_id"),
-        )
-        if job:
-            jobs.append(job)
-    return jobs
-
+# Every source here lists jobs worldwide, so each passes strict_location=True:
+# a location that does not name India or an India-eligible remote is dropped.
 
 def fetch_remotive(role: str, max_days: int) -> List[Dict[str, Any]]:
     jobs: List[Dict[str, Any]] = []
@@ -1013,9 +910,6 @@ def fetch_ats(role: str, max_days: int) -> List[Dict[str, Any]]:
 
 
 SOURCES = (
-    ("adzuna", fetch_adzuna),
-    ("jooble", fetch_jooble),
-    ("jsearch", fetch_jsearch),
     ("remotive", fetch_remotive),
     ("himalayas", fetch_himalayas),
     ("remoteok", fetch_remoteok),
