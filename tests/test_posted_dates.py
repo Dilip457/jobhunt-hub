@@ -32,13 +32,17 @@ def day(offset: int) -> str:
         ("5h", 0),
         ("2 hours ago", 0),
         ("1 week ago", 7),
+        ("an hour ago", 0),
+        ("Posted a day ago", 1),
+        ("Active a week ago", 7),
+        ("Posted a month ago", 30),
     ],
 )
 def test_card_stamps_are_parsed(stamp, offset):
     assert portal_scrapers._card_posted_date(stamp) == day(offset)
 
 
-@pytest.mark.parametrize("stamp", ["", "   ", "Hiring ongoing", "Urgently hiring", "Easily apply"])
+@pytest.mark.parametrize("stamp", ["", "   ", "Hiring ongoing", "Urgently hiring", "Easily apply", "Hiring a team", "Apply daily"])
 def test_cards_without_an_age_have_no_date(stamp):
     assert portal_scrapers._card_posted_date(stamp) is None
 

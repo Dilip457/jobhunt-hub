@@ -371,7 +371,7 @@ Direct, account-free scrapers. Each fetcher returns a list of normalized job dic
 
 #### Posted-date caveat
 
-Naukri, Shine and Foundit use the portal's posted date. Indeed and SimplyHired read the card's age stamp (`_card_posted_date()`: “Just posted”, “Today”, “Posted 3 days ago”, “Active 5 days ago”, “30+ days ago”, SimplyHired's “3d” / “30d+”); a card without one gets `posted_date: null`, never the scrape date. `publish.py` keeps the earliest known `posted_date` for a job, caps it at `first_seen` (a job cannot be posted after we first collected it, which also retires the scrape dates published before this change), and ages undated jobs out from `first_seen`.
+Naukri, Shine and Foundit use the portal's posted date. Indeed and SimplyHired read the card's age stamp (`_card_posted_date()`: “Just posted”, “Today”, “Posted 3 days ago”, “Active 5 days ago”, “30+ days ago”, “a day ago”, SimplyHired's “3d” / “30d+”; dates are UTC days, like `first_seen`); a card without one gets `posted_date: null`, never the scrape date. `publish.py` keeps the earliest known `posted_date` for a job, caps it at `first_seen` (a job cannot be posted after we first collected it, which also retires the scrape dates published before this change), and ages undated jobs out from `first_seen`.
 
 ### 4.4 `api_sources.py` (optional)
 

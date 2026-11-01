@@ -379,6 +379,8 @@ def _indeed_variants(query: str, city: str) -> List[str]:
 
 
 _CARD_AGE = re.compile(r"(\d+)\s*\+?\s*(minute|min|hour|hr|day|week|month|[hdw])s?\b")
+# "an hour ago", "a day ago", "Posted a month ago": whole-word units only.
+_CARD_AGE_ONE = re.compile(r"\ban?\s+(minute|hour|day|week|month)\b")
 _CARD_AGE_DAYS = {"minute": 0, "min": 0, "hour": 0, "hr": 0, "h": 0, "day": 1, "d": 1, "week": 7, "w": 7, "month": 30}
 
 
@@ -386,7 +388,8 @@ def _card_posted_date(text: str) -> Optional[str]:
     """Posted date from an Indeed/SimplyHired card's age stamp, or None.
 
     Understands "Just posted", "Today", "Posted 3 days ago", "Active 5 days
-    ago", "30+ days ago" and SimplyHired's compact "3d", "30d+" and "5h".
+    ago", "30+ days ago", "a day ago" and SimplyHired's compact "3d", "30d+"
+    and "5h". Dates are UTC days, like first_seen, so the two compare cleanly.
     "30+" counts as 30 days: the listing is at least that old, which is all
     retention needs. A card without a stamp gets None, not today's date: a
     scrape-date stand-in was refreshed on every run, so those jobs never
@@ -402,9 +405,13 @@ def _card_posted_date(text: str) -> Optional[str]:
         days = 1
     else:
         match = _CARD_AGE.search(low)
-        if not match:
+        one = None if match else _CARD_AGE_ONE.search(low)
+        if match:
+            days = int(match.group(1)) * _CARD_AGE_DAYS[match.group(2)]
+        elif one:
+            days = _CARD_AGE_DAYS[one.group(1)]
+        else:
             return None
-        days = int(match.group(1)) * _CARD_AGE_DAYS[match.group(2)]
     return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
 
 
