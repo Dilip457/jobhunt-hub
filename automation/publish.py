@@ -18,7 +18,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
