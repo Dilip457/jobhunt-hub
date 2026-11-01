@@ -92,8 +92,9 @@ def test_undecodable_previous_file_aborts(tmp_path):
 def test_corrupt_previous_json_aborts(tmp_path):
     repo = init_repo(tmp_path / "repo")
     head = publish_data_branch(repo, {"ba.json": b'{"role": "ba", "jobs": ['})
-    with pytest.raises(publish.PublishError, match="not valid JSON"):
+    with pytest.raises(publish.PublishError, match="not valid JSON") as raised:
         publish.read_previous(head, str(repo))
+    assert "delete it on the data branch" in str(raised.value)
 
 
 def test_git_failure_is_not_treated_as_first_publish(tmp_path):

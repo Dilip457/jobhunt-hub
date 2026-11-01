@@ -43,6 +43,9 @@ MIN_FRESH_SHARE_FOR_PRUNE = 0.3
 GIT_TIMEOUT = 300
 
 
+RECOVERY_HINT = " (fix or delete it on the data branch; see docs/IMPLEMENTATION.md 5.4)"
+
+
 class PublishError(RuntimeError):
     """A git step failed in a way that would publish incomplete data."""
 
@@ -332,7 +335,7 @@ def file_at(commit: str, filename: str, cwd: Optional[str] = None) -> Optional[s
     try:
         return shown.stdout.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise PublishError(f"{filename} on {commit[:12]} is not valid UTF-8: {exc}") from exc
+        raise PublishError(f"{filename} on {commit[:12]} is not valid UTF-8: {exc}{RECOVERY_HINT}") from exc
 
 
 def previous_file(branch: str, filename: str, cwd: Optional[str] = None) -> Optional[str]:
@@ -369,12 +372,14 @@ def read_previous(head: str, cwd: str) -> Dict[str, str]:
         content = file_at(head, f"{role}.json", cwd)
         if content is None:
             continue
+        # Recovery (fix or delete the file on the data branch) is described
+        # in docs/IMPLEMENTATION.md 5.4.
         try:
             parsed = json.loads(content)
         except ValueError as exc:
-            raise PublishError(f"published {role}.json is not valid JSON: {exc}") from exc
+            raise PublishError(f"published {role}.json is not valid JSON: {exc}{RECOVERY_HINT}") from exc
         if not isinstance(parsed, dict):
-            raise PublishError(f"published {role}.json is not a JSON object")
+            raise PublishError(f"published {role}.json is not a JSON object{RECOVERY_HINT}")
         previous[role] = content
     return previous
 

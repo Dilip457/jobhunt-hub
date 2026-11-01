@@ -553,10 +553,21 @@ The `status` value is one of `merged`, `fresh`, `kept-previous`, `missing`.
 5. Remove tracked files.
 6. Write `<role>.json`, `manifest.json`, and `vercel.json`.
 7. `git add -A` and commit once.
-8. `git push --force origin HEAD:data`.
+8. `git push --force-with-lease=data:<sha from step 2> origin HEAD:data`; if the branch moved meanwhile, start again from step 1.
 9. Remove the worktree and temporary branch.
 
 The branch always has one commit.
+
+**Recovering from an unreadable role file.** If a publish stops with `Publish aborted: published <role>.json is not valid JSON` (or `is not valid UTF-8`), every publish will stop until that file is fixed, because carrying on would silently drop the role's carried-over jobs. Remove (or replace) the file on the data branch; the next publish then treats the role as having no previous data and rebuilds it from the fresh scrape:
+
+```bash
+git fetch origin data
+git worktree add --detach ../data-fix origin/data
+git -C ../data-fix rm <role>.json
+git -C ../data-fix commit -m "data: remove unreadable <role>.json"
+git -C ../data-fix push origin HEAD:data
+git worktree remove ../data-fix
+```
 
 ### 5.5 Vercel skip
 
