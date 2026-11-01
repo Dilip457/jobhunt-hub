@@ -431,7 +431,7 @@ Browser
 - **Identity:** canonical URL, falling back to `title|company|location`.
 - **Winner:** the version with the higher `score`.
 - **First seen / posted date:** the earliest non-null value across both versions; `posted_date` is capped at `first_seen`.
-- **Retention:** drop when `posted_date` (or `first_seen` fallback) is older than 21 days.
+- **Retention:** drop when `posted_date` (or `first_seen` fallback) is older than 21 days; `posted_date` is capped at `first_seen` before this check. A job the fresh scrape lists with no posted date is not aged out by `first_seen` (that is only our first sighting; dropping it would bring it straight back as NEW); it leaves once the board stops listing it.
 - **Sort:** score descending, then posted date.
 - **Counts:** recomputed from the final job list.
 

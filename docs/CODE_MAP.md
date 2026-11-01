@@ -596,7 +596,7 @@ The export deliberately excludes full descriptions, resumes and PII.
 | Symbol | Responsibility |
 |---|---|
 | `_job_key()` | Canonical URL, fallback title/company/location |
-| `merge_payloads()` | Union previous + fresh, fresh copy wins, oldest `first_seen` / `posted_date`, newest `last_seen`, retention + unseen filter, cross-board dedupe |
+| `merge_payloads()` | Union previous + fresh, fresh copy wins, oldest `first_seen` / `posted_date` (capped at `first_seen`), newest `last_seen`, retention (undated jobs still listed are exempt) + unseen filter, cross-board dedupe |
 | `finalize_job()` | Cap `posted_date` at `first_seen`, recompute `is_new` from `first_seen`, drop `score_parts` and redundant `apply_url` |
 | `build_payloads()` | Per-role merge / fresh / kept-previous / missing decision |
 | `previous_file()` / `read_previous()` | Read previous JSON from `origin/data` as UTF-8; `None` only when the file is absent, `PublishError` (publish aborts) on any other failure |

@@ -517,7 +517,7 @@ for each role in (genai, data, uiux, ba, sde):
 1. Index every job by canonical URL (fallback `title|company|location`).
 2. If the same job appears twice, keep the version with the higher `score`.
 3. Set `first_seen` and `posted_date` to the earliest non-null value.
-4. Drop jobs older than `retention_days` (default 21), using `posted_date` or, when it is null, `first_seen`.
+4. Cap `posted_date` at `first_seen`, then drop jobs older than `retention_days` (default 21), using `posted_date` or, when it is null, `first_seen`. A job the fresh scrape lists without a `posted_date` is not aged out by `first_seen`: it stays while the board lists it and is aged as usual once it stops (otherwise it would return next run with a new `first_seen` and the NEW badge).
 5. Sort by score descending, then posted date ascending/empty.
 6. Recompute `sources` counts.
 7. Set `generated_at` to the later of the two payload timestamps, compared as times (not strings) and written in UTC; `publish.py` writes every timestamp it produces in UTC.

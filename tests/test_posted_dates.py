@@ -1,6 +1,7 @@
 """Indeed/SimplyHired posted dates come from the card, never the scrape date,
 and publish keeps the earliest known date so undated jobs still expire."""
 
+import json
 import sys
 import types
 from datetime import datetime, timedelta, timezone
@@ -114,18 +115,61 @@ def payload(jobs):
 
 
 def test_merge_keeps_the_earliest_posted_date():
-    prev = payload([job("a", posted_date=day(6)), job("b", posted_date=day(2))])
+    prev = payload([job("a", posted_date=day(6)), job("b", posted_date=day(5))])
     fresh = payload([job("a", posted_date=day(0)), job("b", posted_date=None)])
     out = {j["url"]: j for j in publish.merge_payloads(prev, fresh, 21)["jobs"]}
     assert out["https://x.test/a"]["posted_date"] == day(6)  # re-dated by the board
-    assert out["https://x.test/b"]["posted_date"] == day(2)  # fresh copy had no date
+    assert out["https://x.test/b"]["posted_date"] == day(5)  # fresh copy had no date
 
 
-def test_undated_jobs_age_out_from_first_seen():
-    prev = payload([job("old", first_seen=day(25)), job("new", first_seen=day(3))])
-    fresh = payload([job("old", first_seen=day(0)), job("new", first_seen=day(0))])
+def test_undated_jobs_age_out_from_first_seen_once_no_longer_listed():
+    prev = payload([job("gone", first_seen=day(25)), job("recent", first_seen=day(3))])
+    fresh = payload([job("other", first_seen=day(0))])
     urls = {j["url"] for j in publish.merge_payloads(prev, fresh, 21)["jobs"]}
-    assert urls == {"https://x.test/new"}
+    assert urls == {"https://x.test/recent", "https://x.test/other"}
+
+
+def test_listed_undated_jobs_are_not_expired_by_first_seen():
+    # first_seen is our own first sighting, not the job's age: while the board
+    # still lists the job, expiring it would only bring it back as NEW.
+    prev = payload([job("old", first_seen=day(25))])
+    fresh = payload([job("old", first_seen=day(0))])
+    out = publish.merge_payloads(prev, fresh, 21)["jobs"]
+    assert [(j["url"], j["first_seen"]) for j in out] == [("https://x.test/old", day(25))]
+
+
+def test_listed_dated_jobs_still_expire():
+    prev = payload([job("old", first_seen=day(25), posted_date=day(26))])
+    fresh = payload([job("old", first_seen=day(0), posted_date=day(30))])
+    assert publish.merge_payloads(prev, fresh, 21)["jobs"] == []
+
+
+def test_undated_listed_job_does_not_churn_back_as_new(tmp_path):
+    # Reviewer's repro: run 1 used to drop it, run 2 republished it as NEW.
+    listed = {k: v for k, v in job("abc").items() if k not in ("first_seen", "last_seen")}
+    previous = payload([job("abc", first_seen=day(22), last_seen=day(1))])
+    for _ in range(2):
+        (tmp_path / "ba.json").write_text(json.dumps(payload([dict(listed)])), encoding="utf-8")
+        payloads, statuses = publish.build_payloads(str(tmp_path), {"ba": json.dumps(previous)}, 21, 7, False)
+        assert statuses["ba"] == "merged"
+        assert [(j["first_seen"], j["is_new"]) for j in payloads["ba"]["jobs"]] == [(day(22), False)]
+        previous = payloads["ba"]
+
+
+def test_fake_dates_are_capped_before_retention(tmp_path):
+    # Published before the fix: today's scrape date as posted_date on a job
+    # first collected 25 days ago. It must age out in this run, not the next.
+    fake = job("fake", posted_date=day(0), first_seen=day(25), last_seen=day(1))
+    kept = publish.merge_payloads(payload([fake]), {"role": "ba"}, 21)
+    assert kept["jobs"] == []
+    merged = publish.merge_payloads(payload([dict(fake)]), payload([job("other")]), 21)
+    assert [j["url"] for j in merged["jobs"]] == ["https://x.test/other"]
+    # Same through build_payloads' kept-previous path.
+    payloads, statuses = publish.build_payloads(
+        str(tmp_path), {"ba": json.dumps(payload([dict(fake)]))}, 21, 7, False
+    )
+    assert statuses["ba"] == "kept-previous"
+    assert payloads["ba"]["count"] == 0 and payloads["ba"]["sources"] == {}
 
 
 def test_fake_posted_dates_are_capped_at_first_seen():

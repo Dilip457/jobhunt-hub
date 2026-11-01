@@ -171,15 +171,22 @@ def _backfill_last_seen(payload: Dict[str, Any]) -> None:
             job["last_seen"] = fallback
 
 
-def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any]:
-    """Fields derived at publish time, plus trimming of unused fields."""
+def cap_posted_date(job: Dict[str, Any]) -> None:
+    """A listing was posted no later than we first collected it.
+
+    Indeed and SimplyHired used to stamp the scrape date as posted_date,
+    refreshed every run; capping at first_seen retires those fake dates.
+    """
     first_seen = (job.get("first_seen") or "")[:10]
-    # A listing was posted no later than we first collected it. Indeed and
-    # SimplyHired used to stamp the scrape date as posted_date, refreshed every
-    # run; capping at first_seen retires those fake dates.
     posted = (job.get("posted_date") or "")[:10]
     if posted and first_seen and posted > first_seen:
         job["posted_date"] = first_seen
+
+
+def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any]:
+    """Fields derived at publish time, plus trimming of unused fields."""
+    first_seen = (job.get("first_seen") or "")[:10]
+    cap_posted_date(job)
     # NEW means "first collected in the last couple of days". The vendor
     # is_new flag stuck for weeks after merges, so it is recomputed here.
     job["is_new"] = bool(first_seen and first_seen >= _days_ago(new_days))
@@ -210,11 +217,15 @@ def merge_payloads(
     The fresh copy of a job wins (it carries the current title, snippet and
     scoring rules); first_seen and posted_date keep the oldest value and
     last_seen the newest. Jobs older than retention_days (by posted_date, or
-    first_seen when the board gave no date) are dropped. With unseen_days set,
-    jobs that no scrape has returned for that many days are treated as closed
-    and dropped.
+    first_seen when the board gave no date) are dropped, except undated jobs
+    the fresh scrape still lists. With unseen_days set, jobs that no scrape
+    has returned for that many days are treated as closed and dropped.
     """
     merged: Dict[str, Dict[str, Any]] = {}
+    # Jobs the fresh scrape lists without a posted date (see the age check).
+    listed_undated = {
+        key for key in (_job_key(job) for job in fresh.get("jobs", []) if not job.get("posted_date")) if key
+    }
 
     for source in (previous, fresh):
         for job in source.get("jobs", []):
@@ -258,8 +269,18 @@ def merge_payloads(
     cutoff = _days_ago(retention_days)
     unseen_cutoff = _days_ago(unseen_days) if unseen_days else None
     jobs = []
-    for job in merged.values():
+    for key, job in merged.items():
+        # Cap before the age check, so a fake date published before the cap
+        # existed cannot keep an old job inside the window for one more run.
+        cap_posted_date(job)
         stamp = (job.get("posted_date") or job.get("first_seen") or "")[:10]
+        # When the board's current listing gives no date, first_seen is only
+        # our own first sighting, not the job's age. Expiring it while still
+        # listed would bring it straight back next run as a NEW job (no
+        # previous copy left to keep first_seen), every retention_days. It
+        # leaves once the board stops listing it: then it is aged as usual.
+        if key in listed_undated:
+            stamp = ""
         if stamp and stamp < cutoff:
             continue
         last_seen = (job.get("last_seen") or "")[:10]
