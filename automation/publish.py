@@ -38,11 +38,54 @@ NEW_DAYS = 2
 # Only drop unseen jobs when the fresh scrape is at least this share of the
 # previous size, so a partial or blocked run cannot empty a role.
 MIN_FRESH_SHARE_FOR_PRUNE = 0.3
+# Seconds before a git call is abandoned. Local steps are instant; this only
+# matters when fetch/push stalls on the network or a credential helper.
+GIT_TIMEOUT = 300
 
 
-def run(cmd: list[str], cwd: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
-    print("[publish] $", " ".join(cmd))
-    return subprocess.run(cmd, cwd=cwd, check=check, text=True, capture_output=True)
+class PublishError(RuntimeError):
+    """A git step failed in a way that would publish incomplete data."""
+
+
+def _git_env() -> Dict[str, str]:
+    # Fail instead of waiting for a username/password nobody will type.
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
+
+def git(args: list[str], cwd: Optional[str], check: bool = True, timeout: int = GIT_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run git with UTF-8 output decoding, no terminal prompts and a timeout.
+
+    Without an explicit encoding Python decodes git's output with the Windows
+    ANSI code page, which mangles or silently drops UTF-8 text.
+    """
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=check,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        env=_git_env(),
+    )
+
+
+def git_step(args: list[str], cwd: str) -> subprocess.CompletedProcess:
+    """A git call that must succeed; failures become PublishError with git's message."""
+    try:
+        return git(args, cwd)
+    except subprocess.CalledProcessError as exc:
+        raise PublishError(f"git {args[0]} failed: {(exc.stderr or '').strip()[:300]}") from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublishError(f"git {args[0]} failed: {exc}") from exc
+
+
+def git_quiet(args: list[str], cwd: str) -> None:
+    """Best-effort cleanup; never raises."""
+    try:
+        git(args, cwd, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def read_json(path: str) -> Optional[Dict[str, Any]]:
@@ -194,28 +237,79 @@ def merge_payloads(
     }
 
 
+def file_at(commit: str, filename: str, cwd: Optional[str] = None) -> Optional[str]:
+    """Content of <filename> in <commit>, or None when the commit has no such file.
+
+    Any other failure raises PublishError. Treating a failed read as "no
+    previous file" would publish the role without its carried-over jobs, or
+    drop the role from the data branch entirely.
+    """
+    try:
+        listing = git(["ls-tree", "--name-only", commit, "--", filename], cwd)
+        if listing.stdout.strip() != filename:
+            return None
+        # Read raw bytes and decode here, so a decoding problem raises in this
+        # thread instead of silently emptying stdout.
+        shown = subprocess.run(
+            ["git", "show", f"{commit}:{filename}"],
+            cwd=cwd,
+            capture_output=True,
+            timeout=GIT_TIMEOUT,
+            env=_git_env(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublishError(f"could not read {filename} from {commit[:12]}: {exc}") from exc
+    if shown.returncode != 0:
+        error = shown.stderr.decode("utf-8", "replace").strip()
+        raise PublishError(f"could not read {filename} from {commit[:12]}: {error}")
+    try:
+        return shown.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PublishError(f"{filename} on {commit[:12]} is not valid UTF-8: {exc}") from exc
+
+
 def previous_file(branch: str, filename: str, cwd: Optional[str] = None) -> Optional[str]:
-    """Return the previous file content from origin/<branch>, if it exists."""
-    result = subprocess.run(
-        ["git", "show", f"origin/{branch}:{filename}"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout
+    """Previous content of <filename> on origin/<branch>; None when not published yet."""
+    head = remote_head(branch, cwd)
+    return file_at(head, filename, cwd) if head else None
 
 
-def remote_head(branch: str, cwd: str) -> str:
+def remote_head(branch: str, cwd: Optional[str]) -> str:
     """SHA of origin/<branch> after the last fetch, or "" when it does not exist."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    try:
+        result = git(
+            ["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}^{{commit}}"],
+            cwd,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublishError(f"could not resolve origin/{branch}: {exc}") from exc
+    if result.returncode == 0:
+        return result.stdout.strip()
+    # --quiet exits 1 with no message when the ref is simply missing; anything
+    # else (not a repository, broken git) must not look like a first publish.
+    if result.returncode == 1 and not result.stderr.strip():
+        return ""
+    raise PublishError(f"could not resolve origin/{branch}: {result.stderr.strip()}")
+
+
+def read_previous(head: str, cwd: str) -> Dict[str, str]:
+    """Every published role file at <head>, checked to be a JSON object."""
+    previous: Dict[str, str] = {}
+    if not head:
+        return previous
+    for role in ROLES:
+        content = file_at(head, f"{role}.json", cwd)
+        if content is None:
+            continue
+        try:
+            parsed = json.loads(content)
+        except ValueError as exc:
+            raise PublishError(f"published {role}.json is not valid JSON: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise PublishError(f"published {role}.json is not a JSON object")
+        previous[role] = content
+    return previous
 
 
 def load_candidate(artifacts: str, role: str, retention_days: int) -> Optional[Dict[str, Any]]:
@@ -370,17 +464,12 @@ def push_data_branch(
     if os.path.exists(worktree):
         shutil.rmtree(worktree, ignore_errors=True)
 
-    subprocess.run(["git", "worktree", "prune"], cwd=repo_dir, check=False, capture_output=True)
-    subprocess.run(
-        ["git", "worktree", "add", "--detach", worktree],
-        cwd=repo_dir,
-        check=True,
-        capture_output=True,
-    )
+    git_quiet(["worktree", "prune"], repo_dir)
+    git_step(["worktree", "add", "--detach", worktree], repo_dir)
 
     try:
-        subprocess.run(["git", "checkout", "--orphan", tmp_branch], cwd=worktree, check=True)
-        subprocess.run(["git", "rm", "-rf", "."], cwd=worktree, check=False, capture_output=True)
+        git_step(["checkout", "--orphan", tmp_branch], worktree)
+        git_quiet(["rm", "-rf", "."], worktree)
 
         for role, payload in payloads.items():
             with open(os.path.join(worktree, f"{role}.json"), "w", encoding="utf-8") as handle:
@@ -402,35 +491,23 @@ def push_data_branch(
                 indent=1,
             )
 
-        subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
-        subprocess.run(
-            ["git", "commit", "-m", f"data: publish {', '.join(payloads)} at {now}"],
-            cwd=worktree,
-            check=True,
-        )
-        push = subprocess.run(
-            ["git", "push", f"--force-with-lease={branch}:{expected_head}", "origin", f"HEAD:{branch}"],
-            cwd=worktree,
-            capture_output=True,
-            text=True,
-        )
+        git_step(["add", "-A"], worktree)
+        git_step(["commit", "-m", f"data: publish {', '.join(payloads)} at {now}"], worktree)
+        try:
+            push = git(
+                ["push", f"--force-with-lease={branch}:{expected_head}", "origin", f"HEAD:{branch}"],
+                worktree,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise PublishError(f"git push failed: {exc}") from exc
         if push.returncode != 0:
             print(f"[publish] push rejected: {push.stderr.strip()[:300]}")
             return False
         return True
     finally:
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", worktree],
-            cwd=repo_dir,
-            check=False,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "branch", "-D", tmp_branch],
-            cwd=repo_dir,
-            check=False,
-            capture_output=True,
-        )
+        git_quiet(["worktree", "remove", "--force", worktree], repo_dir)
+        git_quiet(["branch", "-D", tmp_branch], repo_dir)
 
 
 def main() -> int:
@@ -452,28 +529,36 @@ def main() -> int:
     repo_dir = os.path.abspath(args.repo_dir)
     artifacts = os.path.abspath(args.artifacts)
 
-    subprocess.run(["git", "config", "user.name", "jobhunt-bot"], cwd=repo_dir, check=False)
-    subprocess.run(
-        ["git", "config", "user.email", "jobhunt-bot@users.noreply.github.com"],
-        cwd=repo_dir,
-        check=False,
-    )
+    git_quiet(["config", "user.name", "jobhunt-bot"], repo_dir)
+    git_quiet(["config", "user.email", "jobhunt-bot@users.noreply.github.com"], repo_dir)
 
+    try:
+        return publish(args, repo_dir, artifacts)
+    except PublishError as exc:
+        # Publishing with a role's previous data unreadable would silently
+        # discard its carried-over jobs, so stop and leave the branch as it is.
+        print(f"::error title=Publish aborted::{exc}")
+        print(f"[publish] aborted, nothing was pushed: {exc}")
+        return 1
+
+
+def publish(args: argparse.Namespace, repo_dir: str, artifacts: str) -> int:
     for attempt in range(1, max(1, args.attempts) + 1):
         # Read the previous published state (may not exist on the first run).
-        subprocess.run(
-            ["git", "fetch", "origin", f"+refs/heads/{args.branch}:refs/remotes/origin/{args.branch}"],
-            cwd=repo_dir,
-            check=False,
-            capture_output=True,
-        )
+        try:
+            fetch = git(
+                ["fetch", "origin", f"+refs/heads/{args.branch}:refs/remotes/origin/{args.branch}"],
+                repo_dir,
+                check=False,
+            )
+            if fetch.returncode != 0:
+                # Also the normal first-run message. The push lease below still
+                # refuses to overwrite a remote branch we could not read.
+                print(f"[publish] fetch of '{args.branch}' failed: {fetch.stderr.strip()[:300]}")
+        except subprocess.TimeoutExpired:
+            print(f"[publish] fetch of '{args.branch}' timed out")
         expected_head = remote_head(args.branch, repo_dir)
-
-        previous: Dict[str, str] = {}
-        for role in ROLES:
-            content = previous_file(args.branch, f"{role}.json", repo_dir)
-            if content:
-                previous[role] = content
+        previous = read_previous(expected_head, repo_dir)
 
         payloads, statuses = build_payloads(
             artifacts, previous, args.retention_days, args.unseen_days, args.no_merge

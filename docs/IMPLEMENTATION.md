@@ -547,7 +547,7 @@ The `status` value is one of `merged`, `fresh`, `kept-previous`, `missing`.
 ### 5.4 Orphan `data` branch mechanics
 
 1. Fetch `origin/data` (ignore failure on the first run).
-2. Read previous `<role>.json` files with `git show origin/data:<file>`.
+2. Read previous `<role>.json` files from that commit with `git show <sha>:<file>`, decoded as UTF-8 in Python (never the Windows code page). Only "the branch or file does not exist" counts as no previous data; any other failure (git error, invalid UTF-8, invalid JSON) aborts the publish with exit code 1 and nothing is pushed. Every git call runs with `GIT_TERMINAL_PROMPT=0` and a 300-second timeout.
 3. Create a temporary git worktree.
 4. `git checkout --orphan portal-data-<pid>`.
 5. Remove tracked files.

@@ -599,7 +599,7 @@ The export deliberately excludes full descriptions, resumes and PII.
 | `merge_payloads()` | Union previous + fresh, fresh copy wins, oldest `first_seen` / newest `last_seen`, retention + unseen filter, cross-board dedupe |
 | `finalize_job()` | Recompute `is_new` from `first_seen`, drop `score_parts` and redundant `apply_url` |
 | `build_payloads()` | Per-role merge / fresh / kept-previous / missing decision |
-| `previous_file()` | Read previous JSON from `origin/data` |
+| `previous_file()` / `read_previous()` | Read previous JSON from `origin/data` as UTF-8; `None` only when the file is absent, `PublishError` (publish aborts) on any other failure |
 | `push_data_branch()` | Write `<role>.json`, `manifest.json`, branch-level `vercel.json`; push with `--force-with-lease` |
 | `main()` | Fetch, build, push; retry when another publisher moved the branch; warn on kept-previous roles |
 

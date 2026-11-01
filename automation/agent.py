@@ -30,6 +30,9 @@ from typing import Dict, List, Optional
 from roles import ROLES
 
 LOCK_STALE_MINUTES = 240
+# Seconds before a git call is abandoned, so a stalled fetch or a credential
+# prompt cannot hold the agent lock forever.
+GIT_TIMEOUT = 300
 
 
 def iso_now() -> str:
@@ -40,14 +43,28 @@ def log(message: str) -> None:
     print(f"[{iso_now()}] {message}", flush=True)
 
 
+def git_env() -> Dict[str, str]:
+    # Fail instead of waiting for a username/password nobody will type.
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
+
 def run(cmd: List[str], cwd: str, check: bool = False) -> int:
     log("$ " + " ".join(cmd))
+    is_git = bool(cmd) and cmd[0] == "git"
     try:
-        result = subprocess.run(cmd, cwd=cwd)
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            timeout=GIT_TIMEOUT if is_git else None,
+            env=git_env() if is_git else None,
+        )
         return result.returncode
     except FileNotFoundError as exc:
         log(f"command not found: {exc}")
         return 127
+    except subprocess.TimeoutExpired:
+        log(f"timed out after {GIT_TIMEOUT}s")
+        return 124
 
 
 def read_profile(portal: str, role: str) -> Dict:
@@ -59,13 +76,21 @@ def read_profile(portal: str, role: str) -> Dict:
 def published_age_hours(portal: str) -> Optional[float]:
     """Age in hours of the newest published role data, read from origin/data."""
     run(["git", "fetch", "origin", "data"], cwd=portal)
-    result = subprocess.run(
-        ["git", "show", "origin/data:manifest.json"],
-        cwd=portal,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    try:
+        # Explicit UTF-8: the Windows default code page mangles or drops it.
+        result = subprocess.run(
+            ["git", "show", "origin/data:manifest.json"],
+            cwd=portal,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=GIT_TIMEOUT,
+            env=git_env(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log(f"could not read the published manifest: {exc}")
+        return None
+    if result.returncode != 0 or not result.stdout:
         return None
     try:
         manifest = json.loads(result.stdout)
@@ -204,6 +229,8 @@ def main() -> int:
     with open(lock_path, "w", encoding="utf-8") as handle:
         handle.write(iso_now())
 
+    publish_code = 0
+
     try:
         os.makedirs(artifacts, exist_ok=True)
 
@@ -228,7 +255,7 @@ def main() -> int:
             run(role_command(role), cwd=portal)
 
         if not args.no_publish:
-            run(
+            publish_code = run(
                 [
                     sys.executable,
                     os.path.join("automation", "publish.py"),
@@ -238,6 +265,8 @@ def main() -> int:
                 ],
                 cwd=portal,
             )
+            if publish_code != 0:
+                log(f"publish failed (exit {publish_code}); the published data was not changed")
     finally:
         if os.path.exists(lock_path):
             os.remove(lock_path)
@@ -246,7 +275,7 @@ def main() -> int:
             json.dump({"last_run": iso_now(), "roles": roles}, handle, indent=2)
 
     log("done")
-    return 0
+    return 1 if publish_code else 0
 
 
 if __name__ == "__main__":
