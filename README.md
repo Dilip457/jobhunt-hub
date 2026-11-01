@@ -257,7 +257,9 @@ powershell -ExecutionPolicy Bypass -File .\automation\install-agent.ps1
 It registers a Windows Scheduled Task (every 15 min, at logon, at startup, *start when
 available*) that runs the full pipeline from your PC only when the data is stale (the
 oldest role's `generated_at` is over 18 hours old) — so it catches up whenever the PC is
-next on. See `automation/agent.py` (`--dry-run`, `--force`).
+next on. A role published as `kept-previous` keeps its old `generated_at`, so while one
+role's scrape keeps failing the agent re-runs all roles at most every 4 hours
+(`--min-gap-hours`). See `automation/agent.py` (`--dry-run`, `--force`).
 
 ---
 
