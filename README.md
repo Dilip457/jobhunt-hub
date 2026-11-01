@@ -77,7 +77,7 @@ jobhunt-hub/
 │  ├─ uiux.json
 │  ├─ ba.json
 │  └─ sde.json
-└─ web/                           # Next.js 15 app (Vercel root)
+└─ web/                           # Next.js 16 app (Vercel root)
    ├─ app/
    │  ├─ page.tsx                 # cinematic intro
    │  ├─ jobs/[role]/page.tsx     # /jobs/genai · /jobs/data · /jobs/uiux · /jobs/ba · /jobs/sde

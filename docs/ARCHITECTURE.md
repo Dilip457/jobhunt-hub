@@ -244,7 +244,7 @@ The publisher is deliberately conservative:
 
 ### 4.4 Vercel — Next.js app
 
-The `web/` directory is a Next.js 15 app deployed with **Root Directory = `web`**.
+The `web/` directory is a Next.js 16 app deployed with **Root Directory = `web`**.
 
 - `/` is the cinematic entry point: a Three.js close-up greeting, pullback, illuminated path and role selection.
 - `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde` are static, shareable dashboards.
