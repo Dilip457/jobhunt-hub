@@ -348,10 +348,11 @@ the pointer lands (a separate layer, opacity only) and after 1.2 s `JobCard` add
 (the listing's words, the score's parts as bars that grow once the back shows,
 company · city, Apply); the face that is away is `inert`, so Apply is one tab stop.
 The hover turn runs only on a pointer that can hover with motion not reduced
-(`JobCard` checks the media query once); otherwise a turn-over button in the footer
-flips the card. Under `prefers-reduced-motion: reduce` the ticker stands still and
-scrolls, the gate, radar and edge lights hold, the light is off, and the button turns
-the card with no transition.
+(`JobCard` checks the media query once). On every device a click or tap anywhere on
+the card except a link or button toggles the flip and cancels a pending hover turn;
+the card is focusable and Enter or Space does the same. Under
+`prefers-reduced-motion: reduce` the ticker stands still and scrolls, the gate, radar
+and edge lights hold, the light is off, and a click turns the card with no transition.
 
 ### 4.6 GitHub API
 

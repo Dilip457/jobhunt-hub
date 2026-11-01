@@ -302,8 +302,9 @@ Each role page, in the role's own colour:
 - the filters (they scroll with the page), then 8 job cards per page (four across on wide
   screens, one on phones). A card lights in the role colour where the pointer lands and,
   after 1.2 s, turns over to its back: the listing's own words, the score's parts as bars
-  (role fit, skills, tools, experience, domain), company · city and Apply. Touch and
-  reduced motion get a turn-over button instead;
+  (role fit, skills, tools, experience, domain), company · city and Apply. A click or
+  tap anywhere on the card except Apply turns it over or back (Enter or Space with the
+  card focused), which is also how touch and reduced motion reach the back;
 - the role's colour as a thin breathing light down both edges of the page.
 
 ### The 3D guide is a prototype
