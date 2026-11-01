@@ -64,3 +64,167 @@ def test_dedupe_keeps_best_copy_and_seen_range():
     assert best["source"] == "LinkedIn"
     assert best["first_seen"] == "2026-10-20"
     assert best["last_seen"] == "2026-10-30"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "San Jose, CA", "Mountain View, CA", "Bellevue, WA", "Sofia, Bulgaria", "Bucharest",
+        "Ho Chi Minh City", "Tallinn, Estonia", "Indianapolis, IN", "Santa Clara, California",
+        "Remote (Americas)", "Remote - North America", "Remote, Europe", "EMEA", "LATAM",
+        "APAC (excluding India)", "Remote - EU", "Nashville, TN", "Austin, TX 78701",
+    ],
+)
+def test_more_foreign_locations_are_dropped(raw):
+    # Before, anything unrecognised fell back to ("India", True).
+    assert normalize_location(raw)[1] is False
+    assert normalize_location(raw, strict=True)[1] is False
+
+
+@pytest.mark.parametrize(
+    "raw, city",
+    [
+        ("Chennai, TN", "Chennai"),  # TN is Tamil Nadu here, not Tennessee
+        ("Pune, MH", "Pune"),
+        ("Bangalore, IN", "Bangalore"),
+        ("Gangaikondan, TN", "India"),  # Indian state code, unknown town
+        ("Sanand, GJ", "India"),
+        ("Hosur, Tamil Nadu", "India"),
+        ("Thane", "India"),
+        ("Remote, India", "Remote"),
+        ("Remote - US or India", "Remote"),
+        ("Worldwide", "Remote"),
+        ("Anywhere in the World", "Remote"),
+    ],
+)
+def test_strict_mode_keeps_positive_india_matches(raw, city):
+    assert normalize_location(raw, strict=True) == (city, True)
+
+
+@pytest.mark.parametrize("raw", ["", "Kadugodi", "Springfield", "Debar", "Unknown"])
+def test_strict_mode_drops_unknown_places_but_lenient_mode_keeps_them(raw):
+    assert normalize_location(raw, strict=True)[1] is False
+    assert normalize_location(raw) == ("India", True)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Salem, OR",  # Salem, Tamil Nadu is in INDIA_PLACES; with a US code it is Oregon
+        "Salem, MA",
+        "Split, HR",  # HR is Croatia here, not Haryana
+        "Petaling Jaya, KL",  # KL is Kuala Lumpur, not Kerala
+    ],
+)
+def test_strict_mode_does_not_mistake_foreign_places_for_india(raw):
+    assert normalize_location(raw, strict=True)[1] is False
+
+
+@pytest.mark.parametrize(
+    "raw, city",
+    [
+        ("Salem, TN", "India"),
+        ("Salem, Tamil Nadu", "India"),
+        ("Manesar, HR", "India"),
+        ("Gurgaon, HR", "Gurgaon"),
+        ("Kochi, KL", "Kochi"),
+        ("Kakkanad", "India"),
+    ],
+)
+def test_indian_places_with_shared_codes_still_match(raw, city):
+    assert normalize_location(raw, strict=True) == (city, True)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # Open to India only on site: labelled with the city.
+        ("Bangalore or Remote (US)", ("Bangalore", True)),
+        ("Hyderabad / Remote - Europe", ("Hyderabad", True)),
+        # Open to India as remote work: still "Remote".
+        ("Remote - Bangalore", ("Remote", True)),
+        ("Remote - US or India", ("Remote", True)),
+        ("Remote", ("Remote", True)),
+    ],
+)
+def test_remote_with_an_indian_city_and_a_foreign_restriction(raw, expected):
+    assert normalize_location(raw, strict=True) == expected
+
+
+def test_career_page_title_check_ignores_the_company_name():
+    from export import export_location
+
+    assert export_location("", "Company Career Pages", "Data Engineer | NTT DATA North America",
+                           "https://x.test/careers/Bengaluru-Data-Engineer",
+                           "NTT DATA North America") == ("Bangalore", True)
+
+
+def test_career_page_rows_need_a_positive_india_match():
+    from export import export_location
+
+    deloitte = "https://apply.deloitte.com/en_US/careers/JobDetail/AI-Engineer-II/371700"
+    assert export_location("", "Company Career Pages", "AI Engineer II", deloitte)[1] is False
+    # No location, but the glued title names Bengaluru.
+    sarvam = export_location("", "Company Career Pages",
+                             "ML Engineer (Training Infra), Foundational ModelsBengaluruFull Time",
+                             "https://www.sarvam.ai/careers/jobs/e9fb")
+    assert sarvam == ("Bangalore", True)
+    # A foreign place in the title drops it even when the URL says Bengaluru.
+    ey = export_location("", "Company Career Pages",
+                         "Senior-BC sector-Health-Healthcare Data Architecture-DHEC-Germany-EU",
+                         "https://careers.ey.com/ey/job/Bengaluru-Senior-BC-sector-Health")
+    assert ey[1] is False
+    assert export_location("Katowice", "Company Career Pages", "Data Engineer", "")[1] is False
+    # LinkedIn keeps the lenient rule.
+    assert export_location("", "LinkedIn", "Data Engineer", "") == ("India", True)
+
+
+def test_ats_and_remote_board_jobs_use_the_strict_rule():
+    from api_sources import build_job
+
+    def make(location, source="Company Career Pages", strict=True):
+        return build_job("sde", source, "Software Engineer", "Acme", location,
+                         "https://x.test/1", "", None, strict_location=strict)
+
+    assert make("Santa Clara, California") is None
+    assert make("Linz") is None
+    assert make("Bengaluru, Karnataka")["location"] == "Bangalore"
+    assert make("Remote")["location"] == "Remote"
+    # Indian boards keep unknown localities.
+    assert make("Kakkanad", source="Naukri", strict=False)["location"] == "India"
+
+
+def test_sources_count_only_exported_rows(tmp_path):
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+
+    import export
+
+    today = datetime.now(timezone.utc).date()
+    db = tmp_path / "jobs.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """CREATE TABLE jobs (job_id TEXT, title TEXT, company TEXT, location TEXT, url TEXT,
+           apply_url TEXT, source TEXT, posted_date TEXT, description TEXT, match_score REAL,
+           role_match REAL, skill_match REAL, experience_match REAL, tool_match REAL,
+           domain_match REAL, validation_status TEXT, is_new INTEGER, first_seen TEXT,
+           last_seen TEXT)"""
+    )
+    rows = [
+        ("1", "LinkedIn", today.isoformat()),
+        ("2", "LinkedIn", (today - timedelta(days=60)).isoformat()),  # aged out
+        ("3", "Indeed", (today - timedelta(days=90)).isoformat()),  # aged out
+    ]
+    for job_id, source, posted in rows:
+        conn.execute(
+            "INSERT INTO jobs VALUES (?, 'Data Engineer', 'Acme', 'Pune', ?, NULL, ?, ?, '', 50,"
+            " 0, 0, 0, 0, 0, 'VALID', 0, NULL, NULL)",
+            (job_id, f"https://x.test/{job_id}", source, posted),
+        )
+    conn.commit()
+    conn.close()
+
+    payload = export.export(str(db), "data", 0, 100, max_days=21)
+    assert payload["count"] == 1
+    assert payload["sources"] == {"LinkedIn": 1}
+    assert sum(payload["sources"].values()) == payload["count"]

@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
-from api_sources import ROLE_SEARCH_TERMS, build_job, title_relevant, to_date
+from api_sources import ROLE_SEARCH_TERMS, build_job, to_date
 from export import canonical_url, dedupe_jobs, normalize_location
 
 USER_AGENT = (

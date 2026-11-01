@@ -34,6 +34,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List, Optional
 
 from export import (
@@ -46,6 +47,8 @@ from export import (
     looks_foreign,
     make_snippet,
     normalize_location,
+    normalize_title,
+    strip_company,
     valid_url,
 )
 
@@ -130,7 +133,10 @@ ROLE_TITLE_EXCLUDE = {
              "product manager", "art director", "analog design",
              "semiconductor", "micro-architect", "soc design", "vlsi",
              "rtl design", "physical design", "cubicle", "locomotive",
-             "cab cars", "chip design"],
+             "cab cars", "chip design",
+             # UiPath is an RPA product, not UI work; BI reporting is not
+             # visual design.
+             "ui path", "uipath", "data visualization", "data visualisation"],
     # BA uses an allow-list (BA_TITLE below), so it needs no exclusions.
     "ba": [],
     # `developer`/`engineer` are broad tokens, so drop the non-software families.
@@ -145,7 +151,11 @@ ROLE_TITLE_EXCLUDE = {
             "database", "reporting", "admin", "network engineer",
             "devops engineer",
             "site reliability", "solutions engineer", "salesforce",
-            "servicenow", "sap ", "warehouse", "driver", "technician"],
+            "servicenow", "sap ", "warehouse", "driver", "technician",
+            # Hardware design ("FPGA Design Engineer", "PCB Design Engineer").
+            # Not plain "fpga": "FPGA IP Software Development Engineer" is software.
+            "asic", "pcb", "vlsi", "rtl", "analog", "design engineer",
+            "design engineering", "signal integrity", "board design"],
 }
 
 ROLE_SKILLS = {
@@ -178,10 +188,12 @@ ROLE_SKILLS = {
 # left out, even when the work overlaps. Domain words do not matter:
 # "Business Analyst - Finance" and "Data Analyst, Risk" both stay.
 # Letter lookarounds instead of \b, so ATS titles such as "Business Analyst_3471"
-# or "PG_Business Analyst" still match.
+# or "PG_Business Analyst" still match. Words may be split by any run of
+# spaces, hyphens or underscores ("Business-Analyst", "Business  Analyst").
+_W = r"[\s_-]+"
 BA_TITLE = re.compile(
-    r"(?<![a-z])(business analysts?|business analysis|business systems? analysts?|"
-    r"data analysts?|data analysis)(?![a-z])",
+    rf"(?<![a-z])(business{_W}analysts?|business{_W}analysis|business{_W}systems?{_W}analysts?|"
+    rf"data{_W}analysts?|data{_W}analysis)(?![a-z])",
     re.I,
 )
 
@@ -280,10 +292,11 @@ def to_date(value: Any) -> Optional[str]:
         return None
 
 
-def norm_location(raw: str) -> tuple[str, bool]:
+def norm_location(raw: str, strict: bool = False) -> tuple[str, bool]:
     # normalize_location already understands remote wording and rejects
-    # country-restricted remote roles such as "Remote - US".
-    return normalize_location(raw)
+    # country-restricted remote roles such as "Remote - US". `strict` drops
+    # places it cannot identify as Indian (see build_job).
+    return normalize_location(raw, strict=strict)
 
 
 def search_terms(role: str) -> List[str]:
@@ -306,8 +319,130 @@ def _hit_word(token: str, text: str) -> bool:
     return re.search(rf"(?<![a-z]){re.escape(token)}(?![a-z])", text) is not None
 
 
-def title_relevant(role: str, title: str) -> bool:
-    low = (title or "").lower()
+# ── One track per title ───────────────────────────────────────────────────────
+#
+# The token lists above are broad on purpose ("engineer" for SDE, "data" for
+# Data, "ai" for GenAI), so on their own they accept "Machine Learning
+# Engineer" as both GenAI and SDE, or "UI Developer" as both UI/UX and SDE.
+# When several tracks accept a title, the phrases below decide:
+#
+#   1. A title that names a specialised role outright goes to that track only,
+#      never also to the broad SDE track: "ML Engineer", "Backend AI Engineer"
+#      (GenAI), "Data Engineer", "ETL Developer" (Data), "UX Engineer", "UI
+#      Developer", "Designer" (UI/UX).
+#   2. A strong domain phrase without a named role ("Generative AI", "LLM",
+#      "AI/ML"; "Data & AI"; "Product & Design") picks one specialised track,
+#      but SDE keeps the title too: "Senior Engineer - Generative AI" and
+#      "Full Stack Developer (RAG/LLM)" are both GenAI and SDE jobs.
+#   3. Two phrases of the same strength: the one that comes first wins, as
+#      boards lead with the role ("Data Engineer - AI Hub" is Data,
+#      "AI/ML Engineer (Data Engineering focus)" is GenAI).
+#   4. No phrase at all ("Software Engineer - AI", "Engineer, Data"): the title
+#      stays in every track that accepts it. Plain "AI" or "data" is too weak
+#      to take a job away from either side.
+#
+# GenAI and Data also leave web-stack roles to SDE unless they are named:
+# "Senior Software Engineer - Data & Backend" and "Full Stack developer (AI &
+# SaaS)" are SDE jobs. A Business/Data Analyst title (BA_TITLE) is a BA job
+# only, whatever its domain ("Business Analyst - Generative AI").
+#
+# These rules decide where a newly scraped job goes (build_job and export call
+# title_relevant(..., resolve_overlap=True)). publish.py re-checks the jobs it
+# carries over from earlier runs with each track's own, wider rule
+# (_track_accepts), so a job already published under the "losing" track is not
+# deleted before the winning track has scraped it; it ages out instead.
+
+_AI_QUALIFIER = (
+    r"(?:ai|a\.i\.|ml|aiml|ai\s*[/&+-]\s*ml|ml\s*[/&+-]\s*ai|ai\s+and\s+ml|"
+    r"artificial\s+intelligence|gen\s*ai|generative\s+ai|applied\s+ai|agentic\s+ai|"
+    r"conversational\s+ai|voice\s+ai|machine\s+learning|deep\s+learning|llms?|nlp|"
+    r"computer\s+vision|mlops|rag|prompt|ai\s+agents?)"
+)
+_ROLE_NOUN = (
+    r"(?:engineers?|engineering|developers?|scientists?|researchers?|"
+    r"architects?|programmers?|specialists?|lead)"
+)
+# "AI Engineer", "Backend AI Engineer", "AI Software Engineer", "AI/ML Engineer",
+# "LLM Platform Engineer", "Prompt Engineer".
+GENAI_ROLE_TITLE = re.compile(
+    rf"(?<![a-z]){_AI_QUALIFIER}\s+(?:(?:software|application|applications|solutions?|"
+    rf"platforms?|systems?|product|full[\s-]?stack|backend|infrastructure|infra|"
+    rf"integration|research|senior|sr\.?|lead|principal|staff|junior|jr\.?)\s+)?"
+    rf"{_ROLE_NOUN}(?![a-z])"
+)
+# Plain "AI" is too weak a signal ("Java Full Stack Developer (React + AI)").
+GENAI_DOMAIN_TITLE = re.compile(
+    r"(?<![a-z])(?:generative\s+ai|gen\s*ai|llms?|machine\s+learning|deep\s+learning|"
+    r"nlp|computer\s+vision|mlops|agentic\s+ai|ai\s*/\s*ml|ml\s*/\s*ai|ai\s*&\s*ml|aiml)(?![a-z])"
+)
+# "Data Engineer", "Data and AI Engineer", "Data Platform Engineer", "ETL
+# Developer", "Databricks Engineer", "Spark Developer", "PL/SQL Developer".
+DATA_ROLE_TITLE = re.compile(
+    r"(?<![a-z])(?:data\s+(?!science)(?:[a-z&/+]+\s+){0,2}?(?:engineers?|engineering|developers?)|"
+    r"data\s*(?:&|and|/|\+)\s*(?:ai|ml|analytics)\s+(?:\w+\s+)?(?:engineers?|engineering)|"
+    r"big\s*data|etl|elt|databricks?|data\s?bricks?|snowflake|pyspark|spark|hadoop|"
+    r"informatica|datastage|talend|ab\s+initio|ssis|data\s+warehous\w*|data\s+integrator|"
+    r"analytics\s+engineer\w*|(?:pl\s*/\s*sql|sql)\s+(?:lead\s+)?developers?)(?![a-z])"
+)
+# "Data & AI" / "AI and Data" is a practice name, not a GenAI role.
+DATA_DOMAIN_TITLE = re.compile(
+    r"(?<![a-z])(?:data\s*(?:&|and)\s*ai|ai\s*(?:&|and)\s*data)(?![a-z])"
+)
+# "UX Engineer", "UI Developer", "UI/UX", "Product Designer", "Figma Developer".
+UIUX_ROLE_TITLE = re.compile(
+    r"(?<![a-z])(?:designers?|ux|ui\s*/\s*ux|ux\s*/\s*ui|ui\s+ux|user\s+experience|"
+    r"ui\s+(?:developers?|engineers?)|figma|webflow|interaction\s+design|"
+    r"visual\s+design|product\s+design(?!\s+engineer)|design\s+systems?)(?![a-z])"
+)
+UIUX_DOMAIN_TITLE = re.compile(
+    r"(?<![a-z])(?:product\s*(?:&|and)\s*design|experience\s+design|design\s+lead(?:er)?)(?![a-z])"
+)
+
+# Web-stack roles that GenAI and Data leave to SDE unless they name themselves.
+SDE_WEB_ROLE_TITLE = re.compile(r"(?<![a-z])(?:full[\s-]?stack|front[\s-]?end|back[\s-]?end)(?![a-z])")
+
+# Per track: (named role, strong domain phrase).
+SPECIALISED_TITLE = {
+    "genai": (GENAI_ROLE_TITLE, GENAI_DOMAIN_TITLE),
+    "data": (DATA_ROLE_TITLE, DATA_DOMAIN_TITLE),
+    "uiux": (UIUX_ROLE_TITLE, UIUX_DOMAIN_TITLE),
+}
+OVERLAP_TRACKS = ("genai", "data", "uiux", "sde")
+
+# The Data track is engineering. "Data Analytics Analyst", "SQL Analyst",
+# "ETL Analyst" or "Senior Data Analysts" contain its broad tokens but are
+# analyst jobs (BA keeps the Data Analyst ones). Only an analyst grade on a
+# title that names a data engineering role ("Analyst I Data Engineering",
+# "Sr. Analyst, Data Engineer") still counts.
+DATA_ANALYST_TITLE = re.compile(r"(?<![a-z])analysts?(?![a-z])")
+ENGINEERING_NOUN = re.compile(r"(?<![a-z])(?:engineers?|engineering|developers?)(?![a-z])")
+# "Data Entry Operator", "Data-Entry Executive", "DataEntry".
+DATA_ENTRY_TITLE = re.compile(r"(?<![a-z])data[\s_-]*entry(?![a-z])")
+
+# Hardware design titles ("FPGA Design Engineer", "Product Design Engineer")
+# carry UI/UX's "design" token; they stay out unless a UI/UX role or a UI
+# word is named ("Design Engineer - UI", "Web Design Engineer").
+HARDWARE_DESIGN_TITLE = re.compile(
+    r"(?<![a-z])(?:design\s+engineer\w*|fpga|asic|pcb|vlsi|rtl|analog|"
+    r"signal\s+integrity|board\s+design)(?![a-z])"
+)
+UI_WORD_TITLE = re.compile(r"(?<![a-z])(?:ui|front[\s-]?end|web|interface)(?![a-z])")
+
+
+def _claim(role: str, low: str):
+    """(strength, -position) of the strongest phrase naming this track, or None.
+    Strength 2 is a named role, 1 a domain phrase."""
+    best = None
+    for strength, pattern in zip((2, 1), SPECIALISED_TITLE.get(role, ())):
+        match = pattern.search(low)
+        if match:
+            key = (strength, -match.start())
+            best = key if best is None or key > best else best
+    return best
+
+
+def _track_accepts(role: str, low: str) -> bool:
+    """The track's own rule, before overlaps with other tracks are resolved."""
     if role == "ba":
         return BA_TITLE.search(low) is not None
     # Internships are not full-time openings for the engineering/design tracks.
@@ -319,9 +454,61 @@ def title_relevant(role: str, title: str) -> bool:
         return True
     if role == "sde" and re.fullmatch(r"\s*data engineering\s*", low):
         return False
+    if role == "data" and DATA_ANALYST_TITLE.search(low) and not (
+            DATA_ROLE_TITLE.search(low) and ENGINEERING_NOUN.search(low)):
+        return False
+    if role == "data" and DATA_ENTRY_TITLE.search(low):
+        return False
+    if role == "uiux" and HARDWARE_DESIGN_TITLE.search(low) and not (
+            UIUX_ROLE_TITLE.search(low) or UI_WORD_TITLE.search(low)):
+        return False
     if any(_hit_word(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
         return False
     return any(_hit(token, low) for token in ROLE_TITLE_TOKENS.get(role, []))
+
+
+@lru_cache(maxsize=16384)
+def _title_tracks(low: str) -> frozenset:
+    # Business/Data Analyst titles are BA jobs, whatever their domain
+    # ("Business Analyst - Generative AI", "Associate - Financial Data Analysis").
+    if BA_TITLE.search(low):
+        return frozenset({"ba"})
+    accepted = [role for role in OVERLAP_TRACKS if _track_accepts(role, low)]
+    if "sde" in accepted:
+        accepted = [
+            role for role in accepted
+            if role not in ("genai", "data") or not SDE_WEB_ROLE_TITLE.search(low)
+            or _claim(role, low)
+        ]
+    if len(accepted) > 1:
+        claims = {role: _claim(role, low) for role in accepted if role != "sde"}
+        claims = {role: claim for role, claim in claims.items() if claim}
+        if claims:
+            winner = max(claims, key=claims.get)
+            named_role = claims[winner][0] == 2
+            accepted = [winner] if named_role or "sde" not in accepted else [winner, "sde"]
+    return frozenset(accepted)
+
+
+def title_tracks(title: str) -> frozenset:
+    """The tracks a newly scraped title goes to: BA alone for a BA_TITLE,
+    otherwise usually at most one of GenAI, Data, UI/UX and SDE (see the rules
+    above)."""
+    return _title_tracks(normalize_title(title).lower())
+
+
+def title_relevant(role: str, title: str, resolve_overlap: bool = False) -> bool:
+    """True when title belongs to the role's track.
+
+    Collectors pass ``resolve_overlap=True``: the title must also win the
+    one-track-per-title rules (title_tracks). Without it only the track's own
+    rule applies; publish.py re-checks jobs carried over from earlier runs
+    that way, so it never deletes a job the collectors would keep.
+    """
+    low = normalize_title(title).lower()
+    if resolve_overlap:
+        return role in _title_tracks(low)
+    return _track_accepts(role, low)
 
 
 # SDE targets 3-8 years; titles are the fallback when no range is stated.
@@ -409,32 +596,45 @@ def build_job(
     posted: Optional[str],
     job_id: Optional[str] = None,
     experience: str = "",
+    strict_location: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Build one public job. `experience` is the board's own experience field
-    (e.g. Naukri "5-9 Yrs"); it beats anything guessed from the title."""
+    (e.g. Naukri "5-9 Yrs"); it beats anything guessed from the title.
+
+    `strict_location` is for global sources (company ATS boards and remote
+    boards): their unknown locations are usually abroad, so only a location
+    that names India or an India-eligible remote is kept."""
     if not valid_url(url):
         return None
-    if not title_relevant(role, title):
+    # Gate on the cleaned title that is published, so publish.py re-checking
+    # the stored title reaches the same answer ("Hiring | UX Designer" is
+    # stored and checked as "UX Designer"). The foreign checks still read the
+    # raw title, where "| Berlin" or "- EU" may sit in a dropped segment.
+    public_title = clean_title(title, company)
+    if not title_relevant(role, public_title, resolve_overlap=True):
         return None
-    if looks_foreign(title):
+    # The company name is left out: "NTT DATA North America" in a title names
+    # the employer, not where the job is.
+    place_title = strip_company(title, company)
+    if looks_foreign(place_title):
         return None
-    if TITLE_FOREIGN_REGION.search(title or ""):
+    if TITLE_FOREIGN_REGION.search(place_title):
         return None
-    city, keep = norm_location(location)
+    city, keep = norm_location(location, strict=strict_location)
     if not keep:
         return None
     snippet = make_snippet(description)
     exp_min, exp_max, exp_source = extract_experience_with_source(title, description, experience)
     return {
         "id": str(job_id or canonical_url(url)),
-        "title": clean_title(title),
+        "title": public_title,
         "company": clean_company(company),
         "location": city,
         "url": url.strip(),
         "apply_url": url.strip(),
         "source": source,
         "posted_date": posted,
-        "score": score_job(role, title, snippet),
+        "score": score_job(role, public_title, snippet),
         "score_parts": {"role": 0.0, "skill": 0.0, "experience": 0.0, "tool": 0.0, "domain": 0.0},
         "experience_min": exp_min,
         "experience_max": exp_max,
@@ -448,6 +648,11 @@ def build_job(
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────
+#
+# Adzuna, Jooble and JSearch are queried for India only, so their locations are
+# Indian unless they say otherwise and get the lenient location rule. The
+# remote boards and company ATS boards list jobs worldwide and pass
+# strict_location=True.
 
 def fetch_adzuna(role: str, max_days: int) -> List[Dict[str, Any]]:
     app_id = os.environ.get("ADZUNA_APP_ID")
@@ -555,6 +760,7 @@ def fetch_remotive(role: str, max_days: int) -> List[Dict[str, Any]]:
                 item.get("description", ""),
                 to_date(item.get("publication_date")),
                 item.get("id"),
+                strict_location=True,
             )
             if job:
                 jobs.append(job)
@@ -578,6 +784,7 @@ def fetch_himalayas(role: str, max_days: int) -> List[Dict[str, Any]]:
             item.get("description") or item.get("excerpt", ""),
             to_date(item.get("pubDate")),
             item.get("guid"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -602,6 +809,7 @@ def fetch_remoteok(role: str, max_days: int) -> List[Dict[str, Any]]:
             description,
             to_date(item.get("date") or item.get("epoch")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -645,6 +853,7 @@ def fetch_weworkremotely(role: str, max_days: int) -> List[Dict[str, Any]]:
             item.findtext("description") or "",
             _rss_date(item.findtext("pubDate")),
             link,
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -691,6 +900,7 @@ def _greenhouse(token: str, role: str) -> List[Dict[str, Any]]:
             "",
             to_date(item.get("updated_at") or item.get("first_published")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -713,6 +923,7 @@ def _lever(token: str, role: str) -> List[Dict[str, Any]]:
             item.get("descriptionPlain") or "",
             to_date(item.get("createdAt")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -737,6 +948,7 @@ def _ashby(token: str, role: str) -> List[Dict[str, Any]]:
             item.get("descriptionPlain") or "",
             to_date(item.get("publishedAt")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
@@ -763,6 +975,7 @@ def _smartrecruiters(token: str, role: str) -> List[Dict[str, Any]]:
             "",
             to_date(item.get("releasedDate")),
             item.get("id"),
+            strict_location=True,
         )
         if job:
             jobs.append(job)
