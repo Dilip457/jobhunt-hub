@@ -441,7 +441,7 @@ Browser
 |---|---|
 | `fresh` | Fresh jobs existed and there was no previous file |
 | `merged` | Fresh jobs were merged with previous data |
-| `kept-previous` | No usable fresh jobs; previous JSON was kept |
+| `kept-previous` | No usable fresh jobs; previous JSON was kept, minus jobs past the retention window (unseen-days pruning is skipped because a failed scrape says nothing about which jobs closed) |
 | `missing` | No fresh or previous data for this role |
 
 The status is written to `manifest.json` for diagnostics.

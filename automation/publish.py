@@ -404,9 +404,16 @@ def build_payloads(
             payloads[role] = merge_payloads({}, candidate, retention_days)
             statuses[role] = "fresh"
         elif previous_payload:
-            payloads[role] = previous_payload
+            # Jobs past the retention window still age out, so a role whose
+            # scraper keeps failing does not show stale listings forever. No
+            # unseen-days pruning here: when the scrape failed, a job missing
+            # from the run is no evidence that it closed.
+            payloads[role] = merge_payloads(previous_payload, {"role": role}, retention_days)
             statuses[role] = "kept-previous"
-            print(f"[publish] {role}: no fresh data, keeping previous JSON")
+            print(
+                f"[publish] {role}: no fresh data, keeping previous JSON "
+                f"({len(previous_payload.get('jobs') or [])} -> {payloads[role]['count']} after retention)"
+            )
         else:
             print(f"[publish] {role}: no data available")
             statuses[role] = "missing"

@@ -160,3 +160,26 @@ def test_dropping_offrole_jobs_recounts_sources(tmp_path):
     assert out["sources"] == {"Naukri": 1, "Indeed": 1}
     manifest = publish.build_manifest(payloads, statuses, publish.utc_now())
     assert sum(manifest["roles"]["ba"]["sources"].values()) == manifest["roles"]["ba"]["count"]
+
+
+def test_kept_previous_ages_out_but_does_not_prune_unseen(tmp_path):
+    import json
+
+    previous = payload([
+        job("expired", posted_date=day(30), last_seen=day(1), source="Indeed"),
+        job("undated-old", posted_date=None, first_seen=day(25), last_seen=day(1), source="Indeed"),
+        job("unseen", posted_date=day(5), last_seen=day(12), source="Shine"),
+        job("recent", posted_date=day(2), last_seen=day(1)),
+    ], generated="2026-10-20T08:00:00+05:30")
+    previous["sources"] = {"Indeed": 2, "Shine": 1, "Naukri": 1}
+    (tmp_path / "data.json").write_text(json.dumps(payload([])))
+    payloads, statuses = publish.build_payloads(str(tmp_path), {"data": json.dumps(previous)}, 21, 7, False)
+    out = payloads["data"]
+    assert statuses["data"] == "kept-previous"
+    # Retention applies (posted_date, else first_seen); the 12-day-unseen job stays.
+    assert {j["url"] for j in out["jobs"]} == {"https://x.test/unseen", "https://x.test/recent"}
+    assert out["count"] == 2
+    assert out["sources"] == {"Shine": 1, "Naukri": 1}
+    # The data is still as old as the last real scrape.
+    assert out["generated_at"] == "2026-10-20T02:30:00+00:00"
+    assert out["role"] == "data"

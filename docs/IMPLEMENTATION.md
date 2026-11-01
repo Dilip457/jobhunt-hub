@@ -506,7 +506,7 @@ for each role in (genai, data, uiux, ba, sde):
         result = candidate
         status = "fresh"
     else if previous exists:
-        result = previous
+        result = previous minus jobs past retention (no unseen-days pruning)
         status = "kept-previous"
     else:
         status = "missing"
