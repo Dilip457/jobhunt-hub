@@ -259,12 +259,22 @@ function drawScene(ctx: CanvasRenderingContext2D, time: number) {
   ctx.restore();
 }
 
+/** Frame interval: 8 fps is enough for a 32 px walk cycle. */
+const FRAME_MS = 125;
+/** How long after the last scroll or pointer input the icon stays still. */
+const INPUT_QUIET_MS = 400;
+
 /**
  * Keeps a transparent, animated PNG favicon in the tab.
  *
  * SVG favicons are not animated by Chromium, so the tab icon is drawn to a
- * small canvas and swapped in at roughly 12 fps. Static SVG/PNG/ICO files in
- * /public remain the no-JS and reduced-motion fallback.
+ * small canvas and swapped in at 8 fps. Static SVG/PNG/ICO files in /public
+ * remain the no-JS and reduced-motion fallback.
+ *
+ * Each frame costs main-thread time (a PNG encode plus the browser's icon
+ * update), so it stands down whenever that time matters more: while the
+ * cinematic scene draws every frame (`data-scene-busy` on <html>) and for a
+ * moment after any scroll or pointer input.
  */
 export default function AnimatedFavicon() {
   useEffect(() => {
@@ -309,13 +319,17 @@ export default function AnimatedFavicon() {
 
     let frame = 0;
     let last = 0;
+    let lastInput = -Infinity;
     let running = true;
     const started = performance.now();
+
+    const busy = (now: number) =>
+      document.documentElement.hasAttribute("data-scene-busy") || now - lastInput < INPUT_QUIET_MS;
 
     const render = (now: number) => {
       if (!running) return;
 
-      if (now - last >= 80) {
+      if (now - last >= FRAME_MS && !busy(now)) {
         last = now;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(SIZE / GRID, SIZE / GRID);
@@ -325,6 +339,12 @@ export default function AnimatedFavicon() {
 
       frame = window.requestAnimationFrame(render);
     };
+
+    const onInput = () => {
+      lastInput = performance.now();
+    };
+    const inputEvents = ["scroll", "wheel", "touchmove", "pointerdown"] as const;
+    inputEvents.forEach((name) => window.addEventListener(name, onInput, { passive: true }));
 
     frame = window.requestAnimationFrame(render);
 
@@ -360,6 +380,7 @@ export default function AnimatedFavicon() {
     return () => {
       running = false;
       window.cancelAnimationFrame(frame);
+      inputEvents.forEach((name) => window.removeEventListener(name, onInput));
       document.removeEventListener("visibilitychange", onVisibility);
       reduce.removeEventListener("change", onMotionChange);
       link.remove();

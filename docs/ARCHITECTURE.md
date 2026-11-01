@@ -295,11 +295,45 @@ quarter view.
 The tab icon is a transparent mark of the guide climbing two chunky steps. The
 figure and steps were enlarged to fill the canvas so the mark stays legible at 16px.
 Chromium does not animate SVG favicons, so `AnimatedFavicon.tsx` paints a 64×64
-frame to a canvas at about 12 fps and points every `rel="icon"` link at the resulting
-PNG. The animation pauses while the tab is hidden and is skipped under
-`prefers-reduced-motion: reduce`, where the static SVG, ICO and PNG files in
-`web/public/` remain. Icon URLs carry a `?v=6` suffix so a browser that cached an
+frame to a canvas at 8 fps and points every `rel="icon"` link at the resulting PNG.
+Each frame costs main-thread time (a PNG encode and the browser's icon update), so
+the animation stands down whenever that time matters more: while the cinematic
+scene is drawing (`CinematicIntro` sets `data-scene-busy` on `<html>`) and for
+400 ms after any scroll or pointer input. It also pauses while the tab is hidden and
+is skipped under `prefers-reduced-motion: reduce`, where the static SVG, ICO and PNG
+files in `web/public/` remain. Icon URLs carry a `?v=6` suffix so a browser that cached an
 older tab icon picks up the new one.
+
+### 4.5.1 Frame budget
+
+The intro is drawn every frame, so everything that runs per frame is kept inside a
+budget an integrated GPU can meet:
+
+- **Render resolution.** `web/lib/renderQuality.ts` (`createQualityGovernor`) owns the
+  canvas pixel ratio. It starts at the display's own ratio, capped at 1.5, and every
+  30 frames compares the mean frame time with a 24 ms / 13 ms band: too slow and the
+  ratio steps down 0.15 (never below 0.7); comfortably fast for 3 s and it steps back
+  up 0.1 (never above the start). Before this the scene supersampled every display to
+  at least 2×, which held an Intel UHD 630 at about 10 fps.
+- **Lights.** Three directional (key, rim, fill) and three point lights (red, blue,
+  face fill). Each gate's floor light is its additive glow plane, not a point light,
+  because every light is evaluated for every lit fragment.
+- **Shadows.** One 1024 px `PCFShadowMap` from the key light. The character is the
+  only caster, so the shadow camera is a 7 m box that follows him (`updateCharacter`
+  moves the light and its target), which is sharper than the old 24 m, 2048 px soft
+  map and a quarter of the work.
+- **Materials.** Floor, runway and gate frames are `MeshStandardMaterial`; the
+  physical material's extra lobes were paid on every floor fragment.
+- **Overlays.** Nothing drawn over the canvas uses `filter: blur()` or
+  `backdrop-filter`: the ambient discs are radial gradients and the role dock, cards
+  and pills are near-opaque panels. A blur on a composited layer, or a backdrop blur
+  over a canvas that redraws every frame, is recomputed by the compositor every frame.
+
+The dashboard follows the same rule for scrolling: the sticky header and filter bar
+have no backdrop blur, the fixed background glows are gradients rather than blurred
+discs, card hover animates only `transform` and `border-color`, the below-the-fold
+info section uses `content-visibility: auto`, and the search box feeds the job
+filter through `useDeferredValue`, so keystrokes never wait for the list.
 
 ### 4.6 GitHub API
 

@@ -141,7 +141,7 @@ jobhunt-hub/
 │  │  ├─ ConfirmRefresh.tsx       # hidden-refresh confirmation dialog
 │  │  ├─ RefreshPanel.tsx         # queued/running/success/failed progress
 │  │  ├─ BrandMark.tsx            # CSS 3D rocking cube brand mark
-│  │  ├─ AnimatedFavicon.tsx      # transparent canvas favicon, ~12 fps
+│  │  ├─ AnimatedFavicon.tsx      # transparent canvas favicon, 8 fps, pauses while the scene or scrolling is busy
 │  │  └─ Icons.tsx                # inline SVG icon set
 │  ├─ lib/
 │  │  ├─ types.ts                 # Job, RoleData, StatusResponse, RoleMeta
@@ -149,6 +149,7 @@ jobhunt-hub/
 │  │  ├─ service.ts               # data branch first, seed fallback
 │  │  ├─ github.ts                # Contents API, Actions status, dispatch
 │  │  ├─ prefetch.ts              # warm /api/jobs during the intro
+│  │  ├─ renderQuality.ts         # frame-time governor for the intro's pixel ratio
 │  │  ├─ fallback.ts              # seed JSON fallback
 │  │  └─ utils.ts                 # score tiers, dates, filters, labels
 │  ├─ data/                       # committed seed JSON
@@ -211,7 +212,7 @@ jobhunt-hub/
 | Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh` | “Refresh … jobs?” dialog; password form (hidden `username` + `current-password` field, so browsers offer to save it), “Remember on this device”, inline “Wrong password” / lockout error (`aria-live`); Escape/backdrop cancel |
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
 | Brand mark | `web/components/BrandMark.tsx` | `BrandMark` | CSS 3D cube with the spark on front/back faces; rocks ±28° and floats, 42px desktop / 36px phone, frozen under `prefers-reduced-motion` |
-| Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `drawArm`, `drawLeg`, `paint` | Draws the guide climbing two enlarged steps on a 64×64 transparent canvas at ~12 fps, updates every icon link, pauses when hidden, and defers to the static files under `prefers-reduced-motion` |
+| Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `drawArm`, `drawLeg`, `paint` | Draws the guide climbing two enlarged steps on a 64×64 transparent canvas at 8 fps, updates every icon link, pauses when hidden, while `<html data-scene-busy>` is set and for 400 ms after scroll or pointer input, and defers to the static files under `prefers-reduced-motion` |
 | Icons | `web/components/Icons.tsx` | `SearchIcon`, `ChevronDownIcon`, `RefreshIcon`, `MapPinIcon`, `BuildingIcon`, `CalendarIcon`, `ExternalIcon`, `CheckIcon`, `CloseIcon`, `SparkIcon`, `MailIcon`, `BriefcaseIcon`, `LayersIcon`, `GlobeIcon`, `AlertIcon`, `GithubIcon`, `CodeIcon`, `FilterIcon`, `EyeIcon`, `ArrowRightIcon`, `ArrowLeftIcon`, `PlayIcon`, `RouteIcon` | Inline SVG icon set |
 
 ### 4.3 Data access and shared logic
@@ -225,6 +226,7 @@ jobhunt-hub/
 | `web/lib/refreshAuth.ts` | `refreshMode`, `checkRefreshKey`, `checkRefreshAttempt`, `createAttemptLimiter`, `refreshLimiter`, `clientIp`, `wrongKeyDelay` | Refresh password check and the in-memory wrong-password lockout (5 per IP / over 30 overall in 15 min → 15 min lock) |
 | `web/lib/refreshPrompt.ts` | `passwordError`, `tooManyAttemptsMessage`, `TOO_MANY_ATTEMPTS_CODE`, `WRONG_PASSWORD_MESSAGE` | Password dialog copy shared by the dashboard and `/api/refresh` |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
+| `web/lib/renderQuality.ts` | `createQualityGovernor` | Steps the WebGL pixel ratio down when frames run long and back up when there is headroom (see ARCHITECTURE 4.5.1) |
 | `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
 | `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
 

@@ -8,6 +8,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { getRole } from "@/lib/roles";
 import type { RoleSlug } from "@/lib/types";
 import { prefetchRole } from "@/lib/prefetch";
+import { createQualityGovernor } from "@/lib/renderQuality";
 import BrandMark from "./BrandMark";
 import { ArrowRightIcon, PlayIcon, RefreshIcon } from "./Icons";
 import RoleDestinations from "./RoleDestinations";
@@ -60,12 +61,15 @@ function clamp(value: number, min = 0, max = 1): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function renderPixelRatio(): number {
-  const dpr = window.devicePixelRatio || 1;
-  // Supersample 1x displays instead of accepting a soft canvas. Cap mobile
-  // separately so high-density phones do not render a 4K frame buffer.
-  if (window.innerWidth < 760) return Math.min(1.8, Math.max(1.35, dpr));
-  return Math.min(2.25, Math.max(2, dpr));
+// Render resolution. This used to supersample every display to at least 2x
+// (a 1366x768 laptop drew a 2732x1536 frame, with MSAA on top), which pinned
+// integrated GPUs near 10 fps for the whole intro. The scene now starts at the
+// display's own ratio, capped, and a frame-time governor steps it down when
+// frames run long and back up when there is headroom. MSAA stays on.
+const MAX_PIXEL_RATIO = 1.5;
+const MIN_PIXEL_RATIO = 0.7;
+function startPixelRatio(): number {
+  return Math.min(MAX_PIXEL_RATIO, Math.max(1, window.devicePixelRatio || 1));
 }
 
 function smoothstep(value: number): number {
@@ -633,7 +637,6 @@ interface Gate {
   group: THREE.Group;
   strips: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>[];
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-  light: THREE.PointLight;
   glow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 }
 
@@ -762,6 +765,7 @@ export default function CinematicIntro({ onComplete }: Props) {
 
     const cleanup = () => {
       disposed = true;
+      document.documentElement.removeAttribute("data-scene-busy");
       if (raf) cancelAnimationFrame(raf);
       cleanupListeners();
       if (scene) {
@@ -808,15 +812,18 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       if (disposed) return;
 
-      renderer.setPixelRatio(renderPixelRatio());
+      const quality = createQualityGovernor({ start: startPixelRatio(), min: MIN_PIXEL_RATIO });
+      renderer.setPixelRatio(quality.ratio);
       renderer.setSize(window.innerWidth, window.innerHeight, false);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = isMobile ? 0.94 : 0.98;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      // Desktop gets a soft cast shadow. Mobile keeps the cheaper painted
-      // contact shadow so high-DPI phones do not pay for a second scene pass.
+      // Desktop gets a cast shadow. Mobile keeps the cheaper painted contact
+      // shadow so high-DPI phones do not pay for a second scene pass. Plain
+      // PCF: the soft variant takes several times the samples per fragment,
+      // and the map below is tight enough to be smooth without it.
       renderer.shadowMap.enabled = !isMobile;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
 
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x020306);
@@ -848,29 +855,32 @@ export default function CinematicIntro({ onComplete }: Props) {
       const key = new THREE.DirectionalLight(0xfff2e8, isMobile ? 1.7 : 1.85);
       key.position.set(-2.5, 4.5, 4.5);
       if (!isMobile) {
+        // The character is the only shadow caster, so the shadow camera only
+        // has to cover him: a 7 m box that follows him (see updateCharacter)
+        // gives a sharper shadow from a 1024 map than the old 24 m box did
+        // from 2048, at a quarter of the shadow pass.
         key.castShadow = true;
-        key.shadow.mapSize.set(2048, 2048);
-        key.shadow.camera.left = -12;
-        key.shadow.camera.right = 12;
-        key.shadow.camera.top = 12;
-        key.shadow.camera.bottom = -4;
+        key.shadow.mapSize.set(1024, 1024);
+        key.shadow.camera.left = -3.5;
+        key.shadow.camera.right = 3.5;
+        key.shadow.camera.top = 4;
+        key.shadow.camera.bottom = -1.5;
         key.shadow.camera.near = 0.5;
-        key.shadow.camera.far = 26;
+        key.shadow.camera.far = 14;
         key.shadow.bias = -0.0004;
         key.shadow.normalBias = 0.02;
-        key.shadow.radius = 3.5;
         key.shadow.camera.updateProjectionMatrix();
       }
       scene.add(key);
       scene.add(key.target);
-      const frontFill = new THREE.DirectionalLight(0xfff6f0, isMobile ? 0.45 : 0.5);
-      frontFill.position.set(0, 2.1, 5.2);
-      scene.add(frontFill);
       const rim = new THREE.DirectionalLight(0x6f9bff, 1.2);
       rim.position.set(2.2, 3.2, -3.8);
       scene.add(rim);
-      const fill = new THREE.DirectionalLight(0xffe4d8, isMobile ? 0.5 : 0.55);
-      fill.position.set(2.2, 2.4, 3.8);
+      // One fill from front-right stands in for the former front and side
+      // fills. Every light is evaluated for every lit fragment, so the count
+      // is kept low: three directional and three point lights in all.
+      const fill = new THREE.DirectionalLight(0xffeee4, isMobile ? 0.8 : 0.9);
+      fill.position.set(1.4, 2.3, 4.6);
       scene.add(fill);
       const redLight = new THREE.PointLight(0xff304f, 7, 8, 2);
       redLight.position.set(-3.2, 1.5, -1.8);
@@ -886,13 +896,14 @@ export default function CinematicIntro({ onComplete }: Props) {
       faceFill.position.set(0.28, 1.72, 1.55);
       scene.add(faceFill);
 
-      // The floor, runway and gate frames damp their specular response. With
-      // the default F0 the four character lights put a broad grey sheen over
-      // the whole floor, which read as a light theme instead of a dark stage.
-      const floorMaterial = new THREE.MeshPhysicalMaterial({
-        specularIntensity: 0.18,
+      // The floor, runway and gate frames are near-black and rough with little
+      // environment response, so the character lights do not lay a grey sheen
+      // over the stage. Standard rather than physical materials: the floor
+      // covers most of the frame, and the physical shader's extra lobes cost
+      // on every one of those fragments.
+      const floorMaterial = new THREE.MeshStandardMaterial({
         color: 0x010205,
-        roughness: 0.86,
+        roughness: 0.9,
         metalness: 0.04,
         envMapIntensity: 0.03,
       });
@@ -910,10 +921,9 @@ export default function CinematicIntro({ onComplete }: Props) {
 
       const path = new THREE.Group();
       scene.add(path);
-      const pathMaterial = new THREE.MeshPhysicalMaterial({
-        specularIntensity: 0.25,
+      const pathMaterial = new THREE.MeshStandardMaterial({
         color: 0x020307,
-        roughness: 0.8,
+        roughness: 0.84,
         metalness: 0.06,
         envMapIntensity: 0.05,
       });
@@ -966,10 +976,9 @@ export default function CinematicIntro({ onComplete }: Props) {
         group.scale.setScalar(0.86);
         scene?.add(group);
 
-        const frameMaterial = new THREE.MeshPhysicalMaterial({
-          specularIntensity: 0.4,
+        const frameMaterial = new THREE.MeshStandardMaterial({
           color: 0x030409,
-          roughness: 0.55,
+          roughness: 0.6,
           metalness: 0.45,
           envMapIntensity: 0.18,
         });
@@ -1084,10 +1093,9 @@ export default function CinematicIntro({ onComplete }: Props) {
         core.position.set(0, 2.2, 0.32);
         group.add(core);
 
-        const light = new THREE.PointLight(color, 1.8, 5.2, 2);
-        light.position.set(0, 2.0, 0.55);
-        group.add(light);
-
+        // The gate's light on the floor is the additive glow plane below, not
+        // a point light: five more point lights would be evaluated for every
+        // fragment in the scene, and the glow reads the same from the stage.
         const glow = new THREE.Mesh(
           new THREE.PlaneGeometry(4.2, 4.2),
           new THREE.MeshBasicMaterial({
@@ -1103,7 +1111,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         glow.visible = false;
         group.add(glow);
 
-        gates.push({ role, group, strips, ring, light, glow });
+        gates.push({ role, group, strips, ring, glow });
       }
 
       gateRoles.forEach(addGate);
@@ -1532,6 +1540,12 @@ export default function CinematicIntro({ onComplete }: Props) {
           character.position.y + 1.72,
           character.position.z + 1.55,
         );
+        if (key.castShadow) {
+          // Same direction, moved with the guide, so the small shadow box
+          // always holds him (its target is in the scene, so it updates).
+          key.position.set(character.position.x - 2.5, 4.5, character.position.z + 4.5);
+          key.target.position.copy(character.position);
+        }
 
         const pathProgress = character.position.z;
         markers.forEach((marker) => {
@@ -1558,8 +1572,7 @@ export default function CinematicIntro({ onComplete }: Props) {
             strip.material.emissiveIntensity = active ? 1.7 : preparing ? (isSelected ? 1.3 : 0.36) : 0.24;
           });
           gate.ring.material.emissiveIntensity = active ? 1.5 : preparing ? (isSelected ? 1.0 : 0.3) : 0.2;
-          gate.light.intensity = active ? 3.4 : preparing ? (isSelected ? 0.95 : 0.38) : 0.28;
-          gate.glow.material.opacity = active ? 0.13 : preparing ? (isSelected ? 0.07 : 0.026) : 0.016;
+          gate.glow.material.opacity = active ? 0.2 : preparing ? (isSelected ? 0.1 : 0.036) : 0.022;
           gate.ring.rotation.z += dt * (active ? 0.4 : 0.12);
         });
       }
@@ -1653,8 +1666,11 @@ export default function CinematicIntro({ onComplete }: Props) {
         raf = requestAnimationFrame(animate);
         if (document.hidden) return;
         const time = frameTime / 1000;
+        const frameMs = (time - lastTime) * 1000;
         const dt = Math.min(0.05, time - lastTime);
         lastTime = time;
+        const nextRatio = quality.sample(frameMs);
+        if (nextRatio !== null) renderer?.setPixelRatio(nextRatio);
         updateCharacter(dt);
         updateTurntable(dt, time);
         updateCamera(dt, time);
@@ -1672,7 +1688,7 @@ export default function CinematicIntro({ onComplete }: Props) {
         widePosition.y = lerp(2.0, 2.1, narrow);
         widePosition.z = lerp(6.6, 7.4, narrow);
         updateSelectorShot(aspect);
-        renderer?.setPixelRatio(renderPixelRatio());
+        renderer?.setPixelRatio(quality.ratio);
         renderer?.setSize(window.innerWidth, window.innerHeight, false);
       }
 
@@ -1724,6 +1740,9 @@ export default function CinematicIntro({ onComplete }: Props) {
       if (disposed) return;
       setReady(true);
       handleSceneReady();
+      // Lets page-wide extras (the animated favicon) stand down while the
+      // scene is drawing every frame.
+      document.documentElement.setAttribute("data-scene-busy", "");
       raf = requestAnimationFrame(animate);
     }
 
