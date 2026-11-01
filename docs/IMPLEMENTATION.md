@@ -399,7 +399,8 @@ even though the main scrape uses `--no-apis`.
 Exports the vendor SQLite database to public JSON:
 
 - Reads the `jobs` table ordered by score and posted date.
-- Normalizes locations to India/Remote; foreign listings are dropped.
+- Normalizes locations to India/Remote; foreign listings are dropped. Company career page rows (a global source) use the strict rule below; a row with no location can still name its Indian city in the title or URL, and a title naming a foreign place ("...-Germany-EU") is dropped.
+- Gates and publishes the same cleaned title (`clean_title()`), so `publish.py` re-checking the stored title agrees with the export.
 - Keeps only a **240-character snippet**, not the full description.
 - Extracts experience ranges only when the listing states them (board experience field, title or description). "Associate", "Senior", "Manager" and similar level words no longer turn into years: at JPMorgan an Associate role asked for 7+ years and at Amgen a Senior Associate role for 5-9, while the cards showed 0-2. Naukri's per-card "5-9 Yrs" and Foundit's min/max fields are read directly. `experience_source` records whether the value was stated; `publish.finalize_job()` clears older guessed values.
 - Produces `id`, `title`, `company`, `location`, `url`, `apply_url`, `source`, `posted_date`, `score`, `score_parts`, `experience_min`, `experience_max`, `snippet`, `is_new`, `first_seen`. (`publish.py` later drops `score_parts`, drops `apply_url` when it equals `url`, adds `last_seen` and recomputes `is_new`.)
@@ -419,7 +420,9 @@ Exports the vendor SQLite database to public JSON:
 **Title relevance**
 
 - `ROLE_TITLE_TOKENS` and `ROLE_TITLE_EXCLUDE` in `api_sources.py`.
-- `title_relevant()` rejects obviously unrelated titles. For BA it is an allow-list (`BA_TITLE`): only Business Analyst (incl. Business Systems Analyst) and Data Analyst titles are kept; Product, Functional, Systems, Process and other analyst families are left out.
+- `title_relevant()` rejects obviously unrelated titles. For BA it is an allow-list (`BA_TITLE`): only Business Analyst (incl. Business Systems Analyst) and Data Analyst titles are kept; Product, Functional, Systems, Process and other analyst families are left out. Titles are normalised first (HTML entities and tags removed, whitespace collapsed), and BA words may be split by any run of spaces, hyphens or underscores (“Business-Analyst”).
+- `title_tracks()` resolves titles that several tracks would accept. A named specialised role goes to that track only (“ML Engineer” is GenAI, “Data Engineer” is Data, “UX Engineer”/“UI Developer” is UI/UX, never also SDE); a domain phrase without a named role (“Senior Engineer - Generative AI”) picks one specialised track and SDE keeps it too; plain “AI” or “data” moves nothing. Business/Data Analyst titles belong to BA only, and the Data track rejects other analyst titles (“SQL Analyst”, “Data Reporting Analyst”) and data entry.
+- Collectors run `title_relevant()` on the cleaned title they store. `clean_title()` splits a `|` title and drops hiring words, locations, experience, work mode, salary and the company name: “Hiring | UX Designer” is stored as “UX Designer”, not “Hiring”.
 - `publish.py` (`drop_offrole`) re-applies `title_relevant()` to every published job, so a tightened rule also removes jobs carried over from earlier runs.
 - `looks_foreign()` rejects foreign-language/region titles.
 

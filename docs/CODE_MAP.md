@@ -444,7 +444,7 @@ Not every job uses the vendor resume engine.
 `automation/portal_scrapers.py` imports:
 
 ```python
-from api_sources import ROLE_SEARCH_TERMS, build_job, title_relevant
+from api_sources import ROLE_SEARCH_TERMS, build_job, to_date
 ```
 
 `automation/api_sources.py` owns:
@@ -454,7 +454,7 @@ from api_sources import ROLE_SEARCH_TERMS, build_job, title_relevant
 | `ROLE_TITLE_TOKENS` | Role title keywords |
 | `ROLE_TITLE_EXCLUDE` | Obvious wrong-role titles |
 | `ROLE_SKILLS` | Role skill keywords |
-| `title_relevant()` | Rejects unrelated titles |
+| `title_relevant()`, `title_tracks()` | Rejects unrelated titles; a title several tracks accept goes to the one whose role it names |
 | `score_job()` | Base 30, +8 per title hit, +3 per skill hit, capped at 97 |
 | `build_job()` | Builds the public job object and calls `score_job()` |
 
@@ -586,7 +586,7 @@ Company tokens: `automation/companies.json`.
 | `extract_experience_with_source()` | Years from a board's experience field, then title/description ("stated"); only intern/fresher/entry-level words count as a title signal; level words such as "associate" or "senior" never produce numbers |
 | `canonical_url()` | Remove tracking params for deduplication |
 | `make_snippet()` | 240-character public snippet |
-| `clean_company()`, `clean_title()`, `valid_url()` | Public-field cleanup |
+| `clean_company()`, `clean_title()`, `valid_url()` | Public-field cleanup; `clean_title()` keeps the role-bearing segments of a `\|` title |
 | `export()` | SQLite → jobs array with score, parts, experience, first-seen |
 | `main()` | CLI export |
 

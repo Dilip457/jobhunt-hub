@@ -579,9 +579,114 @@ def clean_company(company: str) -> str:
     return value[:120]
 
 
-def clean_title(title: str) -> str:
-    value = unescape(str(title or "")).strip()
-    value = re.sub(r"\s*\|\s*.*$", "", value).strip()
+# Boards pack extra facts into a title with "|": "Hiring | UX Designer",
+# "Data Engineer | 3-5 Yrs | Pune | Hybrid". The role is not always first, so
+# clean_title() drops the segments that carry no role and keeps the rest.
+TITLE_SEPARATOR_RE = re.compile(r"\s*[|｜¦]\s*")
+
+TITLE_FILLER_RE = re.compile(
+    r"^(?:(?:we\s*(?:'re|are)\s+|now\s+)?hiring(?:\s+now)?|"
+    r"urgent(?:ly)?(?:\s+(?:hiring|opening|openings|requirement|need|vacancy))?|"
+    r"(?:job|new|current)?\s*(?:opening|openings|vacancy|vacancies|requirement)|"
+    r"immediate(?:\s+(?:joiners?|joining|hiring|opening|requirement|start))?|"
+    r"(?:early\s+)?joiners?(?:\s+(?:only|preferred))?|"
+    r"walk[\s-]?ins?(?:\s+(?:drive|interview))?|apply(?:\s+now|\s+today)?|"
+    r"jobs?|careers?|freshers?(?:\s+(?:can|may)\s+apply)?|"
+    r"(?:full|part)[\s-]?time|contract(?:ual)?|contract\s+to\s+hire|c2h|"
+    r"permanent|freelance|on[\s-]?site|onsite|in[\s-]?office|hybrid|remote|"
+    r"wfh|wfo|work\s+from\s+(?:home|office)|"
+    r"(?:night|day|general|rotational|us|uk)\s+shifts?)"
+    r"[\s!.:*-]*$",
+    re.I,
+)
+
+# "3-5 Yrs", "5+ years", "Exp: 2-4 years", "0 - 1 Year Experience".
+TITLE_EXPERIENCE_RE = re.compile(
+    r"^(?:exp(?:erience)?\s*[:.-]?\s*)?\d{1,2}\s*(?:\+|(?:-|–|to)\s*\d{1,2})?\s*\+?\s*"
+    r"(?:years?|yrs?)?(?:\s+(?:of\s+)?exp(?:erience)?)?\.?$",
+    re.I,
+)
+
+# "10-15 LPA", "CTC up to 12 L", "INR 8,00,000".
+TITLE_SALARY_RE = re.compile(r"\b(?:lpa|ctc|salary|inr|per\s+annum|p\.a\.)\b|₹", re.I)
+
+# Words that may sit next to a place in a location segment: "Pune (Hybrid)",
+# "Locations: Bangalore / Chennai", "Navi Mumbai", "Delhi NCR".
+TITLE_PLACE_FILLER = (
+    "locations", "location", "based", "only", "city", "multiple", "any",
+    "across", "hybrid", "onsite", "on-site", "office", "navi", "greater", "ncr",
+    "region", "and", "or", "in",
+)
+_TITLE_PLACE_RE = re.compile(
+    r"(?<![a-z])(?:"
+    + "|".join(
+        re.escape(word)
+        for word in sorted(
+            set(CITY_ALIASES) | INDIA_STATES | INDIA_PLACES | FOREIGN_MARKERS
+            | set(REMOTE_WORDS) | {"pan india", "pan-india"},
+            key=len,
+            reverse=True,
+        )
+    )
+    + r")(?![a-z])"
+)
+_TITLE_PLACE_FILLER_RE = re.compile(
+    r"(?<![a-z])(?:" + "|".join(re.escape(w) for w in TITLE_PLACE_FILLER) + r")(?![a-z])"
+)
+
+
+def _is_location_segment(segment: str) -> bool:
+    """True when segment is only places ("Pune", "Bangalore / Chennai",
+    "San Jose, CA"), with no role words left over."""
+    low = segment.lower()
+    if not _TITLE_PLACE_RE.search(low):
+        return False
+    # State and country codes after a place: "Chennai, TN", "Austin, TX".
+    residue = re.sub(r"(?<![A-Za-z])[A-Z]{2}(?![A-Za-z])", " ", segment).lower()
+    residue = _TITLE_PLACE_RE.sub(" ", residue)
+    residue = _TITLE_PLACE_FILLER_RE.sub(" ", residue)
+    return re.search(r"[a-z]", residue) is None
+
+
+def _is_company_segment(segment: str, company: str) -> bool:
+    if not company:
+        return False
+    def norm(value: str) -> str:
+        return _norm_text(COMPANY_SUFFIX_RE.sub(" ", unescape(value)))
+    seg, comp = norm(segment), norm(company)
+    return bool(seg) and seg == comp
+
+
+def _title_noise(segment: str, company: str = "") -> bool:
+    """True when a "|"-separated title segment names no role."""
+    value = segment.strip(" -–—:*!.")
+    if not value:
+        return True
+    return bool(
+        TITLE_FILLER_RE.match(value)
+        or TITLE_EXPERIENCE_RE.match(value)
+        or TITLE_SALARY_RE.search(value)
+        or _is_location_segment(value)
+        or _is_company_segment(value, company)
+    )
+
+
+def clean_title(title: str, company: str = "") -> str:
+    """Public title. Keeps the role-bearing part of a "|"-separated title.
+
+    Generic hiring words, locations, experience ranges, work modes, salary and
+    the company name are dropped; the remaining segments are joined with
+    " - ". "Hiring | UX Designer" becomes "UX Designer", "Business Analyst |
+    Pune" becomes "Business Analyst" and "Senior Engineer | Generative AI"
+    becomes "Senior Engineer - Generative AI".
+    """
+    value = re.sub(r"\s+", " ", unescape(str(title or ""))).strip()
+    if TITLE_SEPARATOR_RE.search(value):
+        segments = [s.strip() for s in TITLE_SEPARATOR_RE.split(value) if s.strip()]
+        kept = [s for s in segments if not _title_noise(s, company)]
+        # Nothing names a role ("Hiring | Pune"): keep the first segment so
+        # the title gate sees what the board actually said and rejects it.
+        value = " - ".join(kept) if kept else (segments[0] if segments else "")
     return value[:180] or "Untitled role"
 
 
@@ -679,7 +784,10 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
         if not key or key in seen:
             continue
 
-        if title_relevant is not None and not title_relevant(role, row["title"] or ""):
+        # The gate sees the same cleaned title that is published, so publish.py
+        # re-checking the stored title can never disagree with this one.
+        title = clean_title(row["title"], row["company"] or "")
+        if title_relevant is not None and not title_relevant(role, title):
             dropped_offrole += 1
             continue
 
@@ -711,7 +819,7 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
 
         job = {
             "id": str(row["job_id"] or key),
-            "title": clean_title(row["title"]),
+            "title": title,
             "company": clean_company(row["company"]),
             "location": city,
             "url": url,
