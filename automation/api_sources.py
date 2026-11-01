@@ -25,8 +25,11 @@ import argparse
 import concurrent.futures as cf
 import json
 import os
+import random
 import re
 import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -759,153 +762,410 @@ def fetch_weworkremotely(role: str, max_days: int) -> List[Dict[str, Any]]:
 
 # ── Company ATS boards (keyless, public JSON) ─────────────────────────────────
 #
-# Naukri / Indeed / Foundit block datacenter IPs *and* now return nothing even
-# from a home IP, so we read companies' own careers systems instead. These
-# endpoints are official, public, need no key and no card, and answer fine from
-# GitHub Actions. The company list lives in companies.json.
+# Most company career sites are a front end over a hosted applicant tracking
+# system (ATS). Its public job feed is official, needs no key or card, answers
+# from GitHub Actions, and returns structured jobs, where scraping the career
+# page itself mostly finds an empty JavaScript shell. The boards live in
+# companies.json; validate_companies.py checks them against the live feeds.
+#
+# Each ATS has a *postings* reader that returns a board's jobs as plain dicts,
+# independent of role; _board_jobs then turns them into public jobs for one
+# role through build_job (title gate, scoring, strict India location).
 
 COMPANIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "companies.json")
 CAREERS_SOURCE = "Company Career Pages"
 
+# Boards are read in parallel; each costs one or a few small JSON requests.
+ATS_WORKERS = 16
+# Large employers list thousands of openings. These caps bound what one board
+# can cost; where the ATS allows it, India is filtered in the request itself.
+SMARTRECRUITERS_PAGE_SIZE = 100
+SMARTRECRUITERS_MAX_POSTINGS = 1000
+WORKDAY_PAGE_SIZE = 20
+WORKDAY_MAX_POSTINGS = 600
 
-def load_companies() -> Dict[str, List[str]]:
+Posting = Dict[str, Any]
+
+
+def load_companies() -> Dict[str, List[Dict[str, Any]]]:
+    """companies.json as {ats: [board, ...]}.
+
+    A board is a token string ("postman") or an object. An object may carry a
+    display "name" (otherwise the feed's company name or the token is used);
+    Workday boards are objects with "host" and "site" (see _workday_postings).
+    """
     try:
         with open(COMPANIES_FILE, encoding="utf-8-sig") as handle:
             data = json.load(handle)
     except Exception:
         return {}
-    return {k: v for k, v in data.items() if isinstance(v, list) and not k.startswith("_")}
+    boards: Dict[str, List[Dict[str, Any]]] = {}
+    for ats, entries in data.items():
+        if ats.startswith("_") or not isinstance(entries, list):
+            continue
+        for entry in entries:
+            board = {"token": entry} if isinstance(entry, str) else entry
+            if isinstance(board, dict) and (board.get("token") or board.get("host")):
+                boards.setdefault(ats, []).append(board)
+    return boards
 
 
 def pretty(token: str) -> str:
     return " ".join(part.capitalize() for part in str(token).replace("_", "-").split("-") if part)
 
 
-def _greenhouse(token: str, role: str) -> List[Dict[str, Any]]:
-    data = get_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs")
-    jobs = []
-    for item in data.get("jobs", []):
-        places = ((item.get("location") or {}).get("name") or "").strip()
-        if not places:
-            continue
-        job = build_job(
-            role, CAREERS_SOURCE,
-            item.get("title", ""),
-            pretty(token),
-            places,
-            item.get("absolute_url", ""),
-            "",
-            to_date(item.get("updated_at") or item.get("first_published")),
-            item.get("id"),
-            strict_location=True,
+def post_json(url: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None):
+    merged = {"Content-Type": "application/json"}
+    if headers:
+        merged.update(headers)
+    return _request(url, data=json.dumps(payload).encode("utf-8"), headers=merged)
+
+
+# Workday rate-limits by caller across every tenant (429 Too Many Requests), so
+# its requests share a few slots whatever ATS_WORKERS is. Every ATS request
+# retries the answers that mean "try later" (429, 5xx, timeouts) with backoff,
+# honouring a short Retry-After.
+WORKDAY_CONCURRENCY = 8
+ATS_RETRIES = 3
+ATS_RETRY_STATUS = {429, 500, 502, 503, 504}
+_WORKDAY_SLOTS = threading.BoundedSemaphore(WORKDAY_CONCURRENCY)
+
+
+def _retry_after(exc: urllib.error.HTTPError) -> float:
+    try:
+        return min(float(exc.headers.get("Retry-After")), 30.0)
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
+def _ats_call(func, *args, slots: Optional[threading.BoundedSemaphore] = None, **kwargs):
+    """func(*args, **kwargs), retried on transient failures; inside `slots` if given."""
+    for attempt in range(ATS_RETRIES + 1):
+        try:
+            if slots is None:
+                return func(*args, **kwargs)
+            with slots:
+                return func(*args, **kwargs)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in ATS_RETRY_STATUS or attempt == ATS_RETRIES:
+                raise
+            wait = _retry_after(exc) or 2.0 * 2 ** attempt
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == ATS_RETRIES:
+                raise
+            wait = 2.0 * 2 ** attempt
+        # The slot is released while waiting, and jitter spreads the retries.
+        time.sleep(wait + random.uniform(0, 1))
+    raise AssertionError("unreachable")
+
+
+def _greenhouse_postings(board: Dict[str, Any]) -> List[Posting]:
+    token = board["token"]
+    data = _ats_call(get_json, f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs")
+    return [
+        {
+            "title": item.get("title", ""),
+            "company": item.get("company_name"),
+            "location": ((item.get("location") or {}).get("name") or "").strip(),
+            "url": item.get("absolute_url", ""),
+            "posted": to_date(item.get("updated_at") or item.get("first_published")),
+            "id": item.get("id"),
+        }
+        for item in data.get("jobs", [])
+    ]
+
+
+def _lever_postings(board: Dict[str, Any]) -> List[Posting]:
+    token = board["token"]
+    data = _ats_call(get_json, f"https://api.lever.co/v0/postings/{token}", params={"mode": "json"})
+    return [
+        {
+            "title": item.get("text", ""),
+            "location": ((item.get("categories") or {}).get("location") or "").strip(),
+            "url": item.get("hostedUrl", ""),
+            "description": item.get("descriptionPlain") or "",
+            "posted": to_date(item.get("createdAt")),
+            "id": item.get("id"),
+        }
+        for item in (data if isinstance(data, list) else [])
+    ]
+
+
+def _ashby_postings(board: Dict[str, Any]) -> List[Posting]:
+    token = board["token"]
+    data = _ats_call(get_json, f"https://api.ashbyhq.com/posting-api/job-board/{token}")
+    return [
+        {
+            "title": item.get("title", ""),
+            "location": (item.get("location") or item.get("locationName") or "").strip(),
+            "url": item.get("jobUrl") or item.get("applyUrl") or "",
+            "description": item.get("descriptionPlain") or "",
+            "posted": to_date(item.get("publishedAt")),
+            "id": item.get("id"),
+        }
+        for item in data.get("jobs", [])
+        if item.get("isListed") is not False
+    ]
+
+
+def _smartrecruiters_postings(board: Dict[str, Any]) -> List[Posting]:
+    """India postings only (country=in), paged. Big employers list thousands
+    worldwide, so the old single unfiltered page rarely held an Indian one."""
+    token = board["token"]
+    postings: List[Posting] = []
+    offset = 0
+    while offset < SMARTRECRUITERS_MAX_POSTINGS:
+        data = _ats_call(
+            get_json,
+            f"https://api.smartrecruiters.com/v1/companies/{token}/postings",
+            params={"limit": SMARTRECRUITERS_PAGE_SIZE, "offset": offset, "country": "in"},
         )
-        if job:
-            jobs.append(job)
-    return jobs
+        items = data.get("content") or []
+        for item in items:
+            loc = item.get("location") or {}
+            # The country filter guarantees India; the feed's own country is a
+            # bare "in", which the location rules cannot read.
+            city = loc.get("city") or ("Remote" if loc.get("remote") else "")
+            postings.append({
+                "title": item.get("name", ""),
+                "company": (item.get("company") or {}).get("name"),
+                "location": ", ".join(part for part in (city, "India") if part),
+                "url": f"https://jobs.smartrecruiters.com/{token}/{item.get('id')}",
+                "posted": to_date(item.get("releasedDate")),
+                "id": item.get("id"),
+            })
+        offset += len(items)
+        if not items or offset >= int(data.get("totalFound") or 0):
+            break
+    return postings
 
 
-def _lever(token: str, role: str) -> List[Dict[str, Any]]:
-    data = get_json(f"https://api.lever.co/v0/postings/{token}", params={"mode": "json"})
-    jobs = []
-    for item in (data if isinstance(data, list) else []):
-        places = ((item.get("categories") or {}).get("location") or "").strip()
-        if not places:
-            continue
-        job = build_job(
-            role, CAREERS_SOURCE,
-            item.get("text", ""),
-            pretty(token),
-            places,
-            item.get("hostedUrl", ""),
-            item.get("descriptionPlain") or "",
-            to_date(item.get("createdAt")),
-            item.get("id"),
-            strict_location=True,
-        )
-        if job:
-            jobs.append(job)
-    return jobs
+def _workday_india_facets(facets: Any) -> Dict[str, List[str]]:
+    """The appliedFacets that restrict a Workday search to India.
+
+    Tenants name their location facets differently (locationCountry,
+    locationHierarchy1, locations, ...), sometimes nested in a group. A value
+    called exactly "India" (a country facet) wins; otherwise every India value
+    of the one facet with the most of them (city sites such as "India,
+    Bengaluru"). Empty when the tenant lists no Indian location.
+    """
+    found: Dict[str, List[tuple]] = {}
+
+    def walk(items: Any) -> None:
+        for facet in items or []:
+            param = facet.get("facetParameter")
+            for value in facet.get("values") or []:
+                if "facetParameter" in value:
+                    walk([value])
+                    continue
+                label = (value.get("descriptor") or "").strip()
+                if param and value.get("id") and re.search(r"\bindia\b", label, re.I):
+                    found.setdefault(param, []).append((value["id"], label))
+
+    walk(facets)
+    for param, values in found.items():
+        exact = [value_id for value_id, label in values if label.lower() == "india"]
+        if exact:
+            return {param: exact}
+    if not found:
+        return {}
+    param = max(found, key=lambda name: len(found[name]))
+    return {param: [value_id for value_id, _label in found[param]]}
 
 
-def _ashby(token: str, role: str) -> List[Dict[str, Any]]:
-    data = get_json(f"https://api.ashbyhq.com/posting-api/job-board/{token}")
-    jobs = []
-    for item in data.get("jobs", []):
-        if item.get("isListed") is False:
-            continue
-        places = (item.get("location") or item.get("locationName") or "").strip()
-        if not places:
-            continue
-        job = build_job(
-            role, CAREERS_SOURCE,
-            item.get("title", ""),
-            pretty(token),
-            places,
-            item.get("jobUrl") or item.get("applyUrl") or "",
-            item.get("descriptionPlain") or "",
-            to_date(item.get("publishedAt")),
-            item.get("id"),
-            strict_location=True,
-        )
-        if job:
-            jobs.append(job)
-    return jobs
+def _workday_posted(text: Any) -> Optional[str]:
+    """Workday's "Posted Today" / "Posted Yesterday" / "Posted 3 Days Ago" /
+    "Posted 30+ Days Ago" as a UTC date ("30+" reads as 30, past the cutoff)."""
+    value = str(text or "").lower()
+    today = datetime.now(timezone.utc).date()
+    if "today" in value:
+        return today.isoformat()
+    if "yesterday" in value:
+        return (today - timedelta(days=1)).isoformat()
+    match = re.search(r"(\d+)\+?\s*days?", value)
+    if match:
+        return (today - timedelta(days=int(match.group(1)))).isoformat()
+    return None
 
 
-def _smartrecruiters(token: str, role: str) -> List[Dict[str, Any]]:
-    data = get_json(
-        f"https://api.smartrecruiters.com/v1/companies/{token}/postings",
-        params={"limit": 100},
+def _workday_location(text: Any, path: str) -> str:
+    """One readable location for a posting already filtered to India.
+
+    "2 Locations" hides the list; the URL path names the primary one
+    ("/job/India-Gurugram/..."). When neither names India the posting still
+    matched the India facet, so it is labelled plain "India".
+    """
+    value = str(text or "").strip()
+    if value and not re.fullmatch(r"\d+\s+locations?", value, re.I) and norm_location(value, strict=True)[1]:
+        return value
+    parts = path.strip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "job":
+        primary = parts[1].replace("-", " ")
+        if norm_location(primary, strict=True)[1]:
+            return primary
+    return "India"
+
+
+def _workday_postings(board: Dict[str, Any]) -> List[Posting]:
+    """India postings of one Workday career site.
+
+    A board is {"host": "nvidia.wd5.myworkdayjobs.com", "site":
+    "NVIDIAExternalCareerSite"}, read off the public careers URL
+    https://<host>/<site>; "tenant" defaults to the host's first label. The
+    first request only reads the location facets, then the India-filtered
+    search is paged.
+    """
+    host, site = board["host"], board["site"]
+    tenant = board.get("tenant") or host.split(".")[0]
+    url = f"https://{host}/wday/cxs/{tenant}/{site}/jobs"
+    probe = _ats_call(
+        post_json, url, {"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""},
+        slots=_WORKDAY_SLOTS,
     )
-    jobs = []
-    for item in data.get("content", []):
-        loc = item.get("location") or {}
-        places = ", ".join(p for p in [loc.get("city"), loc.get("region") or loc.get("country")] if p).strip()
-        if not places:
-            continue
-        job = build_job(
-            role, CAREERS_SOURCE,
-            item.get("name", ""),
-            pretty(token),
-            places,
-            f"https://jobs.smartrecruiters.com/{token}/{item.get('id')}",
-            "",
-            to_date(item.get("releasedDate")),
-            item.get("id"),
-            strict_location=True,
-        )
-        if job:
-            jobs.append(job)
-    return jobs
+    india = _workday_india_facets(probe.get("facets"))
+    if not india:
+        return []
+    postings: List[Posting] = []
+    offset = 0
+    total: Optional[int] = None
+    while offset < WORKDAY_MAX_POSTINGS:
+        try:
+            page = _ats_call(post_json, url, {
+                "appliedFacets": india, "limit": WORKDAY_PAGE_SIZE, "offset": offset, "searchText": "",
+            }, slots=_WORKDAY_SLOTS)
+        except (urllib.error.URLError, TimeoutError):
+            # Still throttled after the retries: keep the pages already read
+            # (newest first) rather than losing the whole board.
+            if not postings:
+                raise
+            break
+        items = page.get("jobPostings") or []
+        # Only the first page reliably carries the total; later pages send 0.
+        if total is None:
+            total = int(page.get("total") or 0)
+        for item in items:
+            path = item.get("externalPath") or ""
+            if not path:
+                continue
+            postings.append({
+                "title": item.get("title", ""),
+                "location": _workday_location(item.get("locationsText"), path),
+                "url": f"https://{host}/{site}{path}",
+                "posted": _workday_posted(item.get("postedOn")),
+                "id": (item.get("bulletFields") or [path])[0],
+            })
+        offset += len(items)
+        if not items or offset >= total:
+            break
+    return postings
 
 
-_ATS_FETCHERS = {
-    "greenhouse": _greenhouse,
-    "lever": _lever,
-    "ashby": _ashby,
-    "smartrecruiters": _smartrecruiters,
+ATS_POSTINGS = {
+    "greenhouse": _greenhouse_postings,
+    "lever": _lever_postings,
+    "ashby": _ashby_postings,
+    "smartrecruiters": _smartrecruiters_postings,
+    "workday": _workday_postings,
 }
 
 
+def board_label(board: Dict[str, Any]) -> str:
+    return board.get("token") or board.get("host", "")
+
+
+# Portal results come from a role keyword search, so the broad track rules
+# (any "engineer" for SDE, any "design" for UI/UX) only have to sort them.
+# A company feed returns every opening, and those rules then let in
+# switchgear installers and chip designers. An ATS job must also name its
+# role outright. BA_TITLE is already that strict, and GenAI's rule needs an AI
+# qualifier, which a stricter pattern only cost real jobs ("AI Software
+# Solutions Engineer").
+_DATA_ROLE_EXTRA_TITLE = re.compile(
+    r"(?<![a-z])data\s+(?:architects?|architecture|model+ers?|model+ing|platforms?|pipelines?)(?![a-z])"
+)
+_SDE_ROLE_TITLE = re.compile(
+    r"(?<![a-z])(?:software|developers?|programmers?|sde|swe|full[\s-]?stack|back[\s-]?end|"
+    r"front[\s-]?end|java|j2ee|spring\s+boot|\.net|dotnet|c#|c\+\+|python|golang|node(?:\.?js)?|"
+    r"react|angular|devops|sre|site\s+reliability|cloud\s+engineer\w*|platform\s+engineer\w*|"
+    r"mobile|android|ios|web|apis?|microservices?|applications?\s+engineer\w*|mainframe|"
+    r"firmware|embedded)(?![a-z])"
+)
+# Design that is not UI/UX: silicon, mechanical, building, identity and
+# infrastructure, learning ("Senior DFT Designer", "BMS Design", "IAM Lead
+# Designer").
+_NON_UX_DESIGN_TITLE = re.compile(
+    r"(?<![a-z])(?:dft|asic|fpga|rtl|vlsi|soc|silicon|analog|mixed[\s-]signal|physical\s+design|"
+    r"ip\s+design|circuit|layout|pcb|verification|mechanical|electrical|hvac|bms|civil|"
+    r"structural|piping|tool\s+design|mou?ld|iam|identity|infrastructure|network|"
+    r"instructional|learning|interior|retrofit|solutions?|clinical|db|database|cpu|gpu|"
+    r"chip|clock|textile|fashion|jewell?e?ry)(?![a-z])"
+)
+ATS_ROLE_TITLE = {
+    "data": (DATA_ROLE_TITLE, DATA_DOMAIN_TITLE, _DATA_ROLE_EXTRA_TITLE),
+    "uiux": (UIUX_ROLE_TITLE, UIUX_DOMAIN_TITLE),
+    "sde": (_SDE_ROLE_TITLE,),
+}
+
+
+def ats_title_ok(role: str, title: str) -> bool:
+    """The extra title rule for company-feed jobs (see ATS_ROLE_TITLE)."""
+    patterns = ATS_ROLE_TITLE.get(role)
+    if not patterns:
+        return True
+    low = normalize_title(title).lower()
+    if role == "uiux" and _NON_UX_DESIGN_TITLE.search(low) and not UI_WORD_TITLE.search(low):
+        return False
+    return any(pattern.search(low) for pattern in patterns)
+
+
+def _board_jobs(ats: str, board: Dict[str, Any], role: str) -> List[Dict[str, Any]]:
+    """One board's postings as public jobs for `role`.
+
+    Every ATS lists jobs worldwide, so locations take the strict rule. The
+    company name prefers companies.json, then the feed's own, then the token.
+    """
+    fallback = pretty(board.get("token") or board.get("host", "").split(".")[0])
+    jobs: List[Dict[str, Any]] = []
+    for posting in ATS_POSTINGS[ats](board):
+        if not posting.get("location") or not ats_title_ok(role, posting.get("title", "")):
+            continue
+        job = build_job(
+            role, CAREERS_SOURCE,
+            posting.get("title", ""),
+            board.get("name") or posting.get("company") or fallback,
+            posting["location"],
+            posting.get("url", ""),
+            posting.get("description", ""),
+            posting.get("posted"),
+            posting.get("id"),
+            strict_location=True,
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
 def fetch_ats(role: str, max_days: int) -> List[Dict[str, Any]]:
-    companies = load_companies()
     targets = [
-        (ats, token)
-        for ats, tokens in companies.items()
-        for token in tokens
-        if ats in _ATS_FETCHERS
+        (ats, board)
+        for ats, boards in load_companies().items()
+        if ats in ATS_POSTINGS
+        for board in boards
     ]
     if not targets:
         return []
     jobs: List[Dict[str, Any]] = []
-    with cf.ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(_ATS_FETCHERS[ats], token, role): (ats, token) for ats, token in targets}
+    failed: List[str] = []
+    with cf.ThreadPoolExecutor(max_workers=ATS_WORKERS) as pool:
+        futures = {pool.submit(_board_jobs, ats, board, role): (ats, board) for ats, board in targets}
         for future in cf.as_completed(futures):
-            ats, token = futures[future]
+            ats, board = futures[future]
             try:
                 jobs.extend(future.result() or [])
             except Exception:
-                continue
+                failed.append(f"{ats}:{board_label(board)}")
+    note = f", {len(failed)} boards failed: {', '.join(sorted(failed)[:10])}" if failed else ""
+    print(f"[apis] ats: {len(targets)} boards, {len(jobs)} {role} jobs{note}", file=sys.stderr)
     return jobs
 
 
@@ -937,17 +1197,21 @@ def collect_api_jobs(
     min_score: float = 20.0,
     include_ats: bool = True,
     parallel: int = 1,
+    sources: Optional[Iterable[str]] = None,
 ) -> List[Dict[str, Any]]:
+    """Jobs from SOURCES (all, or only the names in `sources`) for one role."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=max_days)).date().isoformat()
     seen = set()
     seen_roles = set()
     collected: List[Dict[str, Any]] = []
     counts: Dict[str, int] = {}
 
+    wanted = set(sources) if sources is not None else None
     selected = [
         (name, fetcher)
         for name, fetcher in SOURCES
         if not (name == "ats" and not include_ats)
+        and (wanted is None or name in wanted)
     ]
     results: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -1050,7 +1314,18 @@ def main() -> None:
         default=1,
         help="Fetch this many API sources at once (default 1, sequential).",
     )
+    parser.add_argument(
+        "--sources",
+        default="all",
+        help="Comma-separated source names to run, or 'all' (default). Names: "
+        + ", ".join(name for name, _fetcher in SOURCES),
+    )
     args = parser.parse_args()
+    known = {name for name, _fetcher in SOURCES}
+    sources = None if args.sources == "all" else [s.strip() for s in args.sources.split(",") if s.strip()]
+    unknown = sorted(set(sources or []) - known)
+    if unknown:
+        parser.error(f"unknown source(s): {', '.join(unknown)}")
 
     profile: Dict[str, Any] = {}
     if args.profile and os.path.exists(args.profile):
@@ -1067,6 +1342,7 @@ def main() -> None:
         args.min_score,
         include_ats=not args.no_ats,
         parallel=args.parallel_sources,
+        sources=sources,
     )
     payload = merge_api_jobs({"role": args.role, "jobs": []}, jobs)
 

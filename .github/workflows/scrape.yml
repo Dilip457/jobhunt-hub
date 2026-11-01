@@ -143,20 +143,27 @@ jobs:
             --parallel-portals 4 \
             --previous "previous/${{ matrix.role }}.json"
 
-      - name: Fetch extra keyless sources (BA, SDE)
-        if: matrix.role == 'ba' || matrix.role == 'sde'
+      - name: Fetch company career boards and keyless sources
+        # Company ATS boards (automation/companies.json) for every role; the
+        # remote job boards only for BA and SDE, as before. About 2-3
+        # minutes, mostly Workday paging.
         continue-on-error: true
+        timeout-minutes: 15
         working-directory: portal
         env:
           PYTHONUNBUFFERED: "1"
+          ROLE: ${{ matrix.role }}
         run: |
+          sources=ats
+          case "$ROLE" in ba|sde) sources=all ;; esac
           python automation/api_sources.py \
-            --role "${{ matrix.role }}" \
-            --profile "profiles/${{ matrix.role }}.json" \
-            --out "artifacts/${{ matrix.role }}.apis.json" \
+            --role "$ROLE" \
+            --profile "profiles/$ROLE.json" \
+            --out "artifacts/$ROLE.apis.json" \
             --max-days 21 \
             --min-score 18 \
-            --parallel-sources 4
+            --parallel-sources 4 \
+            --sources "$sources"
 
       - name: Upload role artifact
         if: always()

@@ -5,7 +5,7 @@ A public, daily-updated job portal for five role tracks — **GenAI**, **Data En
 **Live:** <https://jobhunt-hub-web.vercel.app>
 
 - **UI:** Next.js on Vercel
-- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired) + LinkedIn, plus optional keyless boards (no PC required)
+- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired) + LinkedIn, plus company career boards and keyless feeds (no PC required)
 - **Business Analyst:** the UI/UX vendor pipeline with BA config, scoring and title filters, plus IIBA Career Center, Wellfound, Remote OK and We Work Remotely. Fresher and 1–3 year roles rank first.
 - **Data:** compact JSON on an orphan `data` branch
 - **Database:** none
@@ -31,7 +31,7 @@ GitHub Actions (03:00 IST or manual — runs entirely in the cloud, no PC needed
   ├─ scrape Naukri / Foundit / Indeed / Shine directly
   │    (plain HTTP for Shine & Foundit, real Chrome via Playwright for Naukri)
   ├─ scrape Indeed SEO + SimplyHired through an isolated WARP job
-  ├─ optional: keyless ATS boards     (Greenhouse/Lever/Ashby/SmartRecruiters)
+  ├─ company career boards            (Workday/Greenhouse/Lever/Ashby/SmartRecruiters)
   └─ export compact JSON (no PII, no full descriptions)
             │
             ▼
@@ -62,8 +62,9 @@ jobhunt-hub/
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
 │  ├─ portal_scrapers.py          # direct Naukri / Foundit / Indeed / Shine / SimplyHired scrapers
-│  ├─ api_sources.py              # optional: ATS boards + job APIs
-│  ├─ companies.json              # company ATS tokens (edit freely, no key)
+│  ├─ api_sources.py              # company career boards + keyless feeds
+│  ├─ companies.json              # company career boards (edit freely, no key)
+│  ├─ validate_companies.py       # check companies.json against the live feeds
 │  ├─ export.py                   # SQLite → compact public JSON
 │  ├─ publish.py                  # rebuild the orphan `data` branch (merges)
 │  ├─ matrix.py                   # workflow matrix helper
@@ -202,29 +203,45 @@ BA is an **entry-level-first** track: `api_sources.py` and `export.py` boost fre
 graduate, junior and 1–3 year titles and push senior/lead/manager titles down. The dashboard
 applies the same priority when sorting by score, so fresher and 1–3 year roles appear first.
 
-### Keyless extra sources: ATS boards and remote boards
+### Company career boards and keyless extra sources
 
-`automation/api_sources.py` adds company ATS boards and remote job boards. The main scrape
-runs with `--no-apis` because the direct scrapers are the primary source; the workflow's
-**Fetch extra keyless sources** step then runs this module for the `ba` and `sde` roles.
-Other roles do not run that step. None of these sources needs a key, an account or a card.
+`automation/api_sources.py` reads company career sites through the job feeds of the hiring
+systems behind them, plus a few remote job boards. The main scrape runs with `--no-apis`
+because the direct scrapers are the primary source; the workflow's **Fetch company career
+boards and keyless sources** step then runs this module: the company boards for **every
+role**, the remote boards for `ba` and `sde` only. None of these sources needs a key, an
+account or a card. The company boards take about 2–3 minutes per role.
 
 | Source | What it adds |
 |---|---|
-| **Company ATS boards** | Real openings pulled straight from companies' own hiring systems (Greenhouse, Lever, Ashby, SmartRecruiters), public JSON |
-| **Remotive** | Remote roles |
-| **Himalayas** | Remote roles |
-| **Remote OK** | Remote roles |
-| **We Work Remotely** | Remote roles (RSS feed) |
+| **Company career boards** | Openings straight from about 240 companies' own hiring systems: Workday (Accenture, Citi, NVIDIA, Cisco, Salesforce, Adobe, …), Greenhouse (Okta, Databricks, MongoDB, Stripe, …), Lever (Paytm, Meesho, CRED, …), Ashby (Sarvam AI, Supabase, OpenAI, …) and SmartRecruiters (Bosch, ServiceNow, Freshworks, …). Published as "Company Career Pages". |
+| **Remotive** | Remote roles (BA, SDE) |
+| **Himalayas** | Remote roles (BA, SDE) |
+| **Remote OK** | Remote roles (BA, SDE) |
+| **We Work Remotely** | Remote roles, RSS feed (BA, SDE) |
 
-The ATS board list lives in `automation/companies.json` — add any company token you
-like; invalid ones are skipped automatically.
-
-Results are filtered to India + India-eligible remote and de-duplicated against the scraper
-output. Run it locally:
+The board list lives in `automation/companies.json`. A board is a token from the careers
+URL (`boards.greenhouse.io/<token>`, `jobs.lever.co/<token>`, `jobs.ashbyhq.com/<token>`,
+`jobs.smartrecruiters.com/<token>`) or, for Workday, `{"name", "host", "site"}` from
+`https://<host>/<site>`. Give Lever, Ashby and Workday boards a `"name"`: their feeds carry
+none, and the name is what lets a company's own listing collapse with the same job on
+Naukri or LinkedIn. Check the list against the live feeds, and drop boards with no India
+postings, with:
 
 ```bash
-python automation/api_sources.py --role ba --profile profiles/ba.json   --out /tmp/apis.json
+python automation/validate_companies.py           # report
+python automation/validate_companies.py --write   # prune companies.json
+```
+
+Results are filtered to India + India-eligible remote and de-duplicated against the scraper
+output (same title, company and city collapse to one listing). A company feed returns every
+opening, not just a keyword search's, so its jobs must also name the role in the title
+(`ats_title_ok`): a software title for SDE, a data engineering title for Data, a UX or
+product designer title for UI/UX. Run it locally:
+
+```bash
+python automation/api_sources.py --role data --profile profiles/data.json \
+  --out /tmp/apis.json --sources ats
 ```
 
 **Merging:** `publish.py` unions each run with the previously published file, so a lighter
@@ -429,7 +446,7 @@ Scrapers and keyless feeds fail in different ways, so the pipeline uses both:
 | **Shine** | ✅ direct scrape | static HTML search pages |
 | **Indeed** | ⚠️ IP-blocked | Cloudflare `403 Security Check - Indeed.com` from Azure runner IPs, on every path |
 | **SimplyHired** (Indeed inventory) | ✅ via WARP (optional) | Indeed's sister site; same Indian listings |
-| Company ATS boards | ✅ works (optional) | Greenhouse / Lever / Ashby / SmartRecruiters, no key |
+| Company career boards | ✅ works (every role) | Workday / Greenhouse / Lever / Ashby / SmartRecruiters, no key |
 | **IIBA Career Center** | ✅ works (BA only) | plain HTTP; the BA-specific board |
 | **Wellfound** | ✅ works (BA only) | India + unrestricted remote only |
 | **Remote OK / We Work Remotely** | ✅ works (BA only) | keyless remote feeds |

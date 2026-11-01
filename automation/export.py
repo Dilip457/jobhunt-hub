@@ -135,7 +135,7 @@ FOREIGN_MARKERS = {
     "jakarta", "taipei", "seoul", "tokyo", "osaka", "shanghai", "beijing",
     "shenzhen", "riyadh", "doha",
     # Regions. Global boards often give only a region ("Remote (Americas)").
-    "americas", "north america", "south america", "central america", "europe",
+    "americas", "amer", "north america", "south america", "central america", "europe",
     "eu", "eea", "mena", "anz", "nordics", "dach", "benelux", "baltics",
     # US states and the tech-hub cities that global career pages list.
     "california", "texas", "florida", "illinois", "massachusetts", "virginia",
@@ -203,7 +203,7 @@ REMOTE_FOREIGN_RE = re.compile(
     r"europe|eu|australia|singapore|uae|dubai|germany|france|netherlands|ireland|"
     r"poland|spain|italy|japan|china|brazil|latam|latin america|mexico|argentina|"
     r"colombia|chile|peru|philippines|malaysia|thailand|vietnam|indonesia|"
-    r"hong kong|taiwan|korea|saudi|qatar|new zealand|americas|north america)\b",
+    r"hong kong|taiwan|korea|saudi|qatar|new zealand|americas|amer|north america)\b",
     re.I,
 )
 

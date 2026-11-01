@@ -50,7 +50,7 @@ automation/portal_scrapers.py
 automation/api_sources.py
   ├─ score_job()  (title + snippet keyword score)
   ├─ Remotive · Himalayas · Remote OK · We Work Remotely
-  └─ ATS: Greenhouse · Lever · Ashby · SmartRecruiters
+  └─ ATS: Workday · Greenhouse · Lever · Ashby · SmartRecruiters
         ↓
 merge into the same artifacts/<role>.json
 ```
@@ -110,7 +110,8 @@ jobhunt-hub/
 │  ├─ agent.py                   # optional local residential-IP agent
 │  ├─ install-agent.ps1          # optional Windows Task Scheduler setup
 │  ├─ run-agent.ps1              # Task Scheduler entry point
-│  ├─ companies.json             # public ATS company tokens
+│  ├─ companies.json             # company career boards (Workday, Greenhouse, Lever, Ashby, SmartRecruiters)
+│  ├─ validate_companies.py      # check companies.json against the live feeds
 │  └─ requirements.txt           # portal scraper dependencies
 ├─ tests/                        # pytest suite (export, scoring, publish, roles, run_source)
 ├─ profiles/
@@ -568,14 +569,17 @@ Shared helpers: `_session()`, `_relative_date()`, `_absolute()`, `_open_browser(
 | Himalayas | `fetch_himalayas()` |
 | Remote OK | `fetch_remoteok()` |
 | We Work Remotely | `fetch_weworkremotely()` |
-| Greenhouse | `_greenhouse()` |
-| Lever | `_lever()` |
-| Ashby | `_ashby()` |
-| SmartRecruiters | `_smartrecruiters()` |
+| Greenhouse | `_greenhouse_postings()` |
+| Lever | `_lever_postings()` |
+| Ashby | `_ashby_postings()` |
+| SmartRecruiters (India filter, paged) | `_smartrecruiters_postings()` |
+| Workday (India facet, paged) | `_workday_postings()`, `_workday_india_facets()`, `_workday_posted()`, `_workday_location()` |
+| Readers by ATS name | `ATS_POSTINGS` |
+| One board → one role's jobs | `_board_jobs()`, with the stricter title rule `ats_title_ok()` |
 | ATS collector | `fetch_ats()` |
-| Collection/merge | `collect_api_jobs()`, `merge_api_jobs()` |
+| Collection/merge | `collect_api_jobs(..., sources=)`, `merge_api_jobs()` |
 
-Company tokens: `automation/companies.json`.
+Company boards: `automation/companies.json` (`load_companies()`); check them against the live feeds with `automation/validate_companies.py` (`--write` prunes boards with no India postings).
 
 ### 9.6 Export (`automation/export.py`)
 
