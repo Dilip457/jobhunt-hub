@@ -381,7 +381,7 @@ Direct, account-free scrapers. Each fetcher returns a list of normalized job dic
 
 #### Posted-date caveat
 
-Naukri, Shine and Foundit use the portal's posted date. **Indeed and SimplyHired currently use the scrape date as `posted_date`** because their relative timestamps are not parsed reliably. For those two sources, the card's “Posted” value is effectively the scrape date; `first_seen` remains the authoritative first-scrape date.
+Naukri, Shine and Foundit use the portal's posted date. Indeed and SimplyHired read the card's age stamp (`_card_posted_date()`: “Just posted”, “Today”, “Posted 3 days ago”, “Active 5 days ago”, “30+ days ago”, “a day ago”, SimplyHired's “3d” / “30d+”; dates are UTC days, like `first_seen`); a card without one gets `posted_date: null`, never the scrape date. `publish.py` keeps the earliest known `posted_date` for a job, caps it at `first_seen` (a job cannot be posted after we first collected it, which also retires the scrape dates published before this change), and ages undated jobs out from `first_seen`.
 
 ### 4.4 `api_sources.py` (optional)
 
@@ -516,7 +516,7 @@ for each role in (genai, data, uiux, ba, sde):
         result = candidate
         status = "fresh"
     else if previous exists:
-        result = previous
+        result = previous minus jobs past retention (no unseen-days pruning)
         status = "kept-previous"
     else:
         status = "missing"
@@ -526,11 +526,11 @@ for each role in (genai, data, uiux, ba, sde):
 
 1. Index every job by canonical URL (fallback `title|company|location`).
 2. If the same job appears twice, keep the version with the higher `score`.
-3. Set `first_seen` to the earliest non-null value.
-4. Drop jobs older than `retention_days` (default 21), using `posted_date` or `first_seen`.
+3. Set `first_seen` and `posted_date` to the earliest non-null value.
+4. Cap `posted_date` at `first_seen`, then drop jobs older than `retention_days` (default 21), using `posted_date` or, when it is null, `first_seen`. A job the fresh scrape lists without a `posted_date` is not aged out by `first_seen`: it stays while the board lists it and is aged as usual once it stops (otherwise it would return next run with a new `first_seen` and the NEW badge).
 5. Sort by score descending, then posted date ascending/empty.
 6. Recompute `sources` counts.
-7. Set `generated_at` to the newer of the two payload timestamps.
+7. Set `generated_at` to the later of the two payload timestamps, compared as times (not strings) and written in UTC; `publish.py` writes every timestamp it produces in UTC.
 
 ### 5.3 Manifest
 
@@ -557,16 +557,27 @@ The `status` value is one of `merged`, `fresh`, `kept-previous`, `missing`.
 ### 5.4 Orphan `data` branch mechanics
 
 1. Fetch `origin/data` (ignore failure on the first run).
-2. Read previous `<role>.json` files with `git show origin/data:<file>`.
+2. Read previous `<role>.json` files from that commit with `git show <sha>:<file>`, decoded as UTF-8 in Python (never the Windows code page). Only "the branch or file does not exist" counts as no previous data; any other failure (git error, invalid UTF-8, invalid JSON) aborts the publish with exit code 1 and nothing is pushed. Every git call runs with `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never` (no Git Credential Manager window) and a 300-second timeout.
 3. Create a temporary git worktree.
 4. `git checkout --orphan portal-data-<pid>`.
 5. Remove tracked files.
 6. Write `<role>.json`, `manifest.json`, and `vercel.json`.
 7. `git add -A` and commit once.
-8. `git push --force origin HEAD:data`.
+8. `git push --force-with-lease=data:<sha from step 2> origin HEAD:data`; if the branch moved meanwhile, start again from step 1.
 9. Remove the worktree and temporary branch.
 
 The branch always has one commit.
+
+**Recovering from an unreadable role file.** If a publish stops with `Publish aborted: published <role>.json is not valid JSON` (or `is not valid UTF-8`), every publish will stop until that file is fixed, because carrying on would silently drop the role's carried-over jobs. Remove (or replace) the file on the data branch; the next publish then treats the role as having no previous data and rebuilds it from the fresh scrape:
+
+```bash
+git fetch origin data
+git worktree add --detach ../data-fix origin/data
+git -C ../data-fix rm <role>.json
+git -C ../data-fix commit -m "data: remove unreadable <role>.json"
+git -C ../data-fix push origin HEAD:data
+git worktree remove ../data-fix
+```
 
 ### 5.5 Vercel skip
 
@@ -1100,7 +1111,7 @@ Brand mark and favicon clarity pass (2026-10-29, local production build): the st
 ## 11. Current constraints and future work
 
 1. **Indeed** — direct cloud scraping is blocked most of the time. Options: WARP (current), a residential proxy, or the optional local agent.
-2. **Posted dates for Indeed/SimplyHired** — currently set to the scrape date; could be improved by parsing their date elements.
+2. **Posted dates for Indeed/SimplyHired** — parsed from the card's age stamp; cards without one have no posted date. Selectors need updating if those boards change their markup.
 3. **First-seen backfill** — legacy jobs use the portal posted date as a proxy. Exact historical scrape dates could be backfilled from Actions artifacts while they are still retained.
 4. **Concurrency ceiling** — roles run in parallel and each role scrapes up to `--parallel-sources` sources at once. Raising either throttle speeds the run up to the point the portals start rate-limiting.
 5. **Parser maintenance** — portal HTML changes require selector updates.

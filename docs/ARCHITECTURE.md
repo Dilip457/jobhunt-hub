@@ -430,8 +430,8 @@ Browser
 
 - **Identity:** canonical URL, falling back to `title|company|location`.
 - **Winner:** the version with the higher `score`.
-- **First seen:** the earliest non-null `first_seen` across both versions.
-- **Retention:** drop when `posted_date` (or `first_seen` fallback) is older than 21 days.
+- **First seen / posted date:** the earliest non-null value across both versions; `posted_date` is capped at `first_seen`.
+- **Retention:** drop when `posted_date` (or `first_seen` fallback) is older than 21 days; `posted_date` is capped at `first_seen` before this check. A job the fresh scrape lists with no posted date is not aged out by `first_seen` (that is only our first sighting; dropping it would bring it straight back as NEW); it leaves once the board stops listing it.
 - **Sort:** score descending, then posted date.
 - **Counts:** recomputed from the final job list.
 
@@ -441,7 +441,7 @@ Browser
 |---|---|
 | `fresh` | Fresh jobs existed and there was no previous file |
 | `merged` | Fresh jobs were merged with previous data |
-| `kept-previous` | No usable fresh jobs; previous JSON was kept |
+| `kept-previous` | No usable fresh jobs; previous JSON was kept, minus jobs past the retention window (unseen-days pruning is skipped because a failed scrape says nothing about which jobs closed) |
 | `missing` | No fresh or previous data for this role |
 
 The status is written to `manifest.json` for diagnostics.
@@ -457,7 +457,7 @@ Each card distinguishes two dates:
 | `posted_date` | When the portal says the job was posted | Portal / vendor scraper |
 | `first_seen` | When **this site** first scraped the job | Scraper run date |
 
-> **Note:** Indeed and SimplyHired currently use the scrape date as `posted_date` because their relative timestamps are not parsed reliably. For those two sources, “Posted” is effectively the scrape date; `first_seen` remains the authoritative first-scrape date.
+> **Note:** Indeed and SimplyHired dates come from the card's age stamp (“Posted 3 days ago”, “30d+”); cards without one have `posted_date: null` and the card shows only “First seen”. The publisher keeps the earliest known `posted_date` and caps it at `first_seen`, so a re-dated listing never looks new again.
 
 The card renders:
 

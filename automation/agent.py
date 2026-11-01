@@ -19,8 +19,10 @@ Usage (normally via automation\\run-agent.ps1 from Task Scheduler):
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -30,24 +32,72 @@ from typing import Dict, List, Optional
 from roles import ROLES
 
 LOCK_STALE_MINUTES = 240
+# Seconds before a git call is abandoned, so a stalled fetch or a credential
+# prompt cannot hold the agent lock forever. Generous because a first vendor
+# clone includes its jobs.db.
+GIT_TIMEOUT = 600
 
 
 def iso_now() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_stamp(value: object) -> Optional[datetime]:
+    """An ISO timestamp as an aware datetime (naive values are taken as UTC)."""
+    if not value:
+        return None
+    try:
+        when = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def oldest_role_age_hours(manifest: Dict) -> Optional[float]:
+    """Age in hours of the stalest role in a manifest, or None if no role has a time.
+
+    The oldest role decides: a one-role refresh must not make every other
+    role look fresh. Timestamps are compared as datetimes, not strings, so
+    "+05:30" (PC) and "+00:00" (CI) values order correctly.
+    """
+    stamps = [
+        when
+        for when in (parse_stamp(item.get("generated_at")) for item in (manifest.get("roles") or {}).values())
+        if when
+    ]
+    if not stamps:
+        return None
+    return (datetime.now(timezone.utc) - min(stamps)).total_seconds() / 3600.0
 
 
 def log(message: str) -> None:
     print(f"[{iso_now()}] {message}", flush=True)
 
 
+def git_env() -> Dict[str, str]:
+    # Fail instead of waiting for a username/password nobody will type.
+    # GIT_TERMINAL_PROMPT covers the console prompt; GCM_INTERACTIVE stops
+    # Git Credential Manager's sign-in window on Windows.
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
+
+
 def run(cmd: List[str], cwd: str, check: bool = False) -> int:
     log("$ " + " ".join(cmd))
+    is_git = bool(cmd) and cmd[0] == "git"
     try:
-        result = subprocess.run(cmd, cwd=cwd)
+        result = subprocess.run(
+            cmd,
+            cwd=cwd,
+            timeout=GIT_TIMEOUT if is_git else None,
+            env=git_env() if is_git else None,
+        )
         return result.returncode
     except FileNotFoundError as exc:
         log(f"command not found: {exc}")
         return 127
+    except subprocess.TimeoutExpired:
+        log(f"timed out after {GIT_TIMEOUT}s")
+        return 124
 
 
 def read_profile(portal: str, role: str) -> Dict:
@@ -57,36 +107,45 @@ def read_profile(portal: str, role: str) -> Dict:
 
 
 def published_age_hours(portal: str) -> Optional[float]:
-    """Age in hours of the newest published role data, read from origin/data."""
+    """Age in hours of the oldest published role data, read from origin/data."""
     run(["git", "fetch", "origin", "data"], cwd=portal)
-    result = subprocess.run(
-        ["git", "show", "origin/data:manifest.json"],
-        cwd=portal,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    try:
+        # Explicit UTF-8: the Windows default code page mangles or drops it.
+        result = subprocess.run(
+            ["git", "show", "origin/data:manifest.json"],
+            cwd=portal,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=GIT_TIMEOUT,
+            env=git_env(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log(f"could not read the published manifest: {exc}")
+        return None
+    if result.returncode != 0 or not result.stdout:
         return None
     try:
         manifest = json.loads(result.stdout)
     except json.JSONDecodeError:
         return None
 
-    stamps = [
-        item.get("generated_at")
-        for item in (manifest.get("roles") or {}).values()
-        if item.get("generated_at")
-    ]
-    if not stamps:
-        return None
-    newest = max(stamps)
-    try:
-        when = datetime.fromisoformat(newest)
-    except ValueError:
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+    return oldest_role_age_hours(manifest) if isinstance(manifest, dict) else None
+
+
+def clear_role_artifacts(artifacts: str, role: str) -> List[str]:
+    """Delete artifacts/<role>.* left by an earlier run; returns what was removed.
+
+    publish.py publishes every artifacts/<role>*.json it finds and stamps it
+    as seen today, so a leftover file from a role that crashed or was not
+    run this time would be republished as fresh data.
+    """
+    removed = []
+    for path in sorted(glob.glob(os.path.join(artifacts, f"{role}.*"))):
+        if os.path.isfile(path):
+            os.remove(path)
+            removed.append(path)
+    return removed
 
 
 def venv_python(venv_dir: str, role: str) -> str:
@@ -143,14 +202,12 @@ def main() -> int:
             last_run = None
 
     last_run_age = None
-    if last_run:
-        try:
-            last_run_age = (datetime.now(timezone.utc) - datetime.fromisoformat(last_run)).total_seconds() / 3600.0
-        except ValueError:
-            last_run_age = None
+    last_run_at = parse_stamp(last_run)
+    if last_run_at:
+        last_run_age = (datetime.now(timezone.utc) - last_run_at).total_seconds() / 3600.0
 
     log(
-        f"published data age: "
+        f"oldest published role: "
         f"{'unknown' if age_hours is None else f'{age_hours:.1f}h'}; "
         f"last local run: {'never' if last_run_age is None else f'{last_run_age:.1f}h ago'}"
     )
@@ -204,8 +261,20 @@ def main() -> int:
     with open(lock_path, "w", encoding="utf-8") as handle:
         handle.write(iso_now())
 
+    publish_code = 0
+
     try:
         os.makedirs(artifacts, exist_ok=True)
+
+        # Clear every role, not only the ones scraped now: publish would pick
+        # up any leftover artifact and present it as today's data.
+        try:
+            for role in ROLES:
+                for path in clear_role_artifacts(artifacts, role):
+                    log(f"removed stale artifact {os.path.relpath(path, portal)}")
+        except OSError as exc:
+            log(f"could not clear old artifacts ({exc}); not scraping or publishing")
+            return 1
 
         for role in roles:
             profile = read_profile(portal, role)
@@ -217,7 +286,13 @@ def main() -> int:
                     log(f"{role}: no repo in profile; skipping")
                     continue
                 log(f"{role}: cloning {repo}")
-                run(["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir], cwd=portal)
+                if run(["git", "clone", "--depth", "1", f"https://github.com/{repo}.git", repo_dir], cwd=portal):
+                    # A failed or timed-out clone can leave a partial folder
+                    # that later runs would try to pull; remove it so the next
+                    # run clones again.
+                    shutil.rmtree(repo_dir, ignore_errors=True)
+                    log(f"{role}: clone failed; skipping")
+                    continue
             else:
                 run(["git", "-C", repo_dir, "pull", "--ff-only", "--quiet"], cwd=portal)
 
@@ -228,7 +303,7 @@ def main() -> int:
             run(role_command(role), cwd=portal)
 
         if not args.no_publish:
-            run(
+            publish_code = run(
                 [
                     sys.executable,
                     os.path.join("automation", "publish.py"),
@@ -238,6 +313,8 @@ def main() -> int:
                 ],
                 cwd=portal,
             )
+            if publish_code != 0:
+                log(f"publish failed (exit {publish_code}); the published data was not changed")
     finally:
         if os.path.exists(lock_path):
             os.remove(lock_path)
@@ -246,7 +323,7 @@ def main() -> int:
             json.dump({"last_run": iso_now(), "roles": roles}, handle, indent=2)
 
     log("done")
-    return 0
+    return 1 if publish_code else 0
 
 
 if __name__ == "__main__":

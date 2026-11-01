@@ -38,11 +38,59 @@ NEW_DAYS = 2
 # Only drop unseen jobs when the fresh scrape is at least this share of the
 # previous size, so a partial or blocked run cannot empty a role.
 MIN_FRESH_SHARE_FOR_PRUNE = 0.3
+# Seconds before a git call is abandoned. Local steps are instant; this only
+# matters when fetch/push stalls on the network or a credential helper.
+GIT_TIMEOUT = 300
 
 
-def run(cmd: list[str], cwd: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
-    print("[publish] $", " ".join(cmd))
-    return subprocess.run(cmd, cwd=cwd, check=check, text=True, capture_output=True)
+RECOVERY_HINT = " (fix or delete it on the data branch; see docs/IMPLEMENTATION.md 5.4)"
+
+
+class PublishError(RuntimeError):
+    """A git step failed in a way that would publish incomplete data."""
+
+
+def _git_env() -> Dict[str, str]:
+    # Fail instead of waiting for a username/password nobody will type.
+    # GIT_TERMINAL_PROMPT covers the console prompt; GCM_INTERACTIVE stops
+    # Git Credential Manager's sign-in window on Windows.
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
+
+
+def git(args: list[str], cwd: Optional[str], check: bool = True, timeout: int = GIT_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run git with UTF-8 output decoding, no terminal prompts and a timeout.
+
+    Without an explicit encoding Python decodes git's output with the Windows
+    ANSI code page, which mangles or silently drops UTF-8 text.
+    """
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=check,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        env=_git_env(),
+    )
+
+
+def git_step(args: list[str], cwd: str) -> subprocess.CompletedProcess:
+    """A git call that must succeed; failures become PublishError with git's message."""
+    try:
+        return git(args, cwd)
+    except subprocess.CalledProcessError as exc:
+        raise PublishError(f"git {args[0]} failed: {(exc.stderr or '').strip()[:300]}") from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublishError(f"git {args[0]} failed: {exc}") from exc
+
+
+def git_quiet(args: list[str], cwd: str) -> None:
+    """Best-effort cleanup; never raises."""
+    try:
+        git(args, cwd, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def read_json(path: str) -> Optional[Dict[str, Any]]:
@@ -72,6 +120,43 @@ def _days_ago(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
 
 
+def _count_sources(jobs: list[Dict[str, Any]]) -> Dict[str, int]:
+    """Jobs per source, largest first (the shape the manifest and site expect)."""
+    sources: Dict[str, int] = {}
+    for job in jobs:
+        name = job.get("source") or "Unknown"
+        sources[name] = sources.get(name, 0) + 1
+    return dict(sorted(sources.items(), key=lambda kv: -kv[1]))
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_stamp(value: Any) -> Optional[datetime]:
+    """An ISO timestamp as an aware datetime (naive values are taken as UTC)."""
+    if not value:
+        return None
+    try:
+        when = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def newest_stamp(values: list[Any]) -> Optional[str]:
+    """The latest of several ISO timestamps, written in UTC.
+
+    Compared as datetimes: as strings "09:00+05:30" sorts after "05:00+00:00"
+    although it is half an hour earlier, so mixing PC and CI publishes could
+    move generated_at backwards.
+    """
+    stamps = [when for when in (parse_stamp(v) for v in values) if when]
+    if not stamps:
+        return None
+    return max(stamps).astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
 def stamp_seen(payload: Dict[str, Any], day: Optional[str] = None) -> Dict[str, Any]:
     """Mark every job in a fresh scrape as seen today."""
     day = day or _today()
@@ -84,15 +169,29 @@ def stamp_seen(payload: Dict[str, Any], day: Optional[str] = None) -> Dict[str, 
 
 def _backfill_last_seen(payload: Dict[str, Any]) -> None:
     """Older published files have no last_seen; use the file's own date."""
-    fallback = (payload.get("generated_at") or "")[:10] or _today()
+    generated = parse_stamp(payload.get("generated_at"))
+    fallback = generated.astimezone(timezone.utc).date().isoformat() if generated else _today()
     for job in payload.get("jobs", []):
         if not job.get("last_seen"):
             job["last_seen"] = fallback
 
 
+def cap_posted_date(job: Dict[str, Any]) -> None:
+    """A listing was posted no later than we first collected it.
+
+    Indeed and SimplyHired used to stamp the scrape date as posted_date,
+    refreshed every run; capping at first_seen retires those fake dates.
+    """
+    first_seen = (job.get("first_seen") or "")[:10]
+    posted = (job.get("posted_date") or "")[:10]
+    if posted and first_seen and posted > first_seen:
+        job["posted_date"] = first_seen
+
+
 def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS) -> Dict[str, Any]:
     """Fields derived at publish time, plus trimming of unused fields."""
     first_seen = (job.get("first_seen") or "")[:10]
+    cap_posted_date(job)
     # NEW means "first collected in the last couple of days". The vendor
     # is_new flag stuck for weeks after merges, so it is recomputed here.
     job["is_new"] = bool(first_seen and first_seen >= _days_ago(new_days))
@@ -121,11 +220,17 @@ def merge_payloads(
     """Union two role payloads so a lighter run never removes recent data.
 
     The fresh copy of a job wins (it carries the current title, snippet and
-    scoring rules); first_seen keeps the oldest value and last_seen the newest.
-    With unseen_days set, jobs that no scrape has returned for that many days
-    are treated as closed and dropped.
+    scoring rules); first_seen and posted_date keep the oldest value and
+    last_seen the newest. Jobs older than retention_days (by posted_date, or
+    first_seen when the board gave no date) are dropped, except undated jobs
+    the fresh scrape still lists. With unseen_days set, jobs that no scrape
+    has returned for that many days are treated as closed and dropped.
     """
     merged: Dict[str, Dict[str, Any]] = {}
+    # Jobs the fresh scrape lists without a posted date (see the age check).
+    listed_undated = {
+        key for key in (_job_key(job) for job in fresh.get("jobs", []) if not job.get("posted_date")) if key
+    }
 
     for source in (previous, fresh):
         for job in source.get("jobs", []):
@@ -158,14 +263,29 @@ def merge_payloads(
             merged_job["first_seen"] = min(firsts) if firsts else None
             lasts = [v for v in (current.get("last_seen"), job.get("last_seen")) if v]
             merged_job["last_seen"] = max(lasts) if lasts else None
+            # Keep the earliest known posted date. A board that re-dates a
+            # listing (or a copy with no date) must not make it look new or
+            # restart its retention clock.
+            posts = [v for v in (current.get("posted_date"), job.get("posted_date")) if v]
+            merged_job["posted_date"] = min(posts, key=lambda v: str(v)[:10]) if posts else None
 
             merged[key] = merged_job
 
     cutoff = _days_ago(retention_days)
     unseen_cutoff = _days_ago(unseen_days) if unseen_days else None
     jobs = []
-    for job in merged.values():
+    for key, job in merged.items():
+        # Cap before the age check, so a fake date published before the cap
+        # existed cannot keep an old job inside the window for one more run.
+        cap_posted_date(job)
         stamp = (job.get("posted_date") or job.get("first_seen") or "")[:10]
+        # When the board's current listing gives no date, first_seen is only
+        # our own first sighting, not the job's age. Expiring it while still
+        # listed would bring it straight back next run as a NEW job (no
+        # previous copy left to keep first_seen), every retention_days. It
+        # leaves once the board stops listing it: then it is aged as usual.
+        if key in listed_undated:
+            stamp = ""
         if stamp and stamp < cutoff:
             continue
         last_seen = (job.get("last_seen") or "")[:10]
@@ -177,45 +297,91 @@ def merge_payloads(
     jobs = dedupe_jobs(jobs)
     jobs.sort(key=lambda j: (-(j.get("score") or 0), j.get("posted_date") or ""))
 
-    sources: Dict[str, int] = {}
-    for job in jobs:
-        name = job.get("source") or "Unknown"
-        sources[name] = sources.get(name, 0) + 1
-
-    stamps = [p.get("generated_at") for p in (previous, fresh) if p.get("generated_at")]
-
     return {
         "role": fresh.get("role") or previous.get("role"),
-        "generated_at": max(stamps) if stamps else datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "generated_at": newest_stamp([previous.get("generated_at"), fresh.get("generated_at")]) or utc_now(),
         "count": len(jobs),
-        "sources": dict(sorted(sources.items(), key=lambda kv: -kv[1])),
+        "sources": _count_sources(jobs),
         "jobs": jobs,
         "demo": False,
     }
 
 
+def file_at(commit: str, filename: str, cwd: Optional[str] = None) -> Optional[str]:
+    """Content of <filename> in <commit>, or None when the commit has no such file.
+
+    Any other failure raises PublishError. Treating a failed read as "no
+    previous file" would publish the role without its carried-over jobs, or
+    drop the role from the data branch entirely.
+    """
+    try:
+        listing = git(["ls-tree", "--name-only", commit, "--", filename], cwd)
+        if listing.stdout.strip() != filename:
+            return None
+        # Read raw bytes and decode here, so a decoding problem raises in this
+        # thread instead of silently emptying stdout.
+        shown = subprocess.run(
+            ["git", "show", f"{commit}:{filename}"],
+            cwd=cwd,
+            capture_output=True,
+            timeout=GIT_TIMEOUT,
+            env=_git_env(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublishError(f"could not read {filename} from {commit[:12]}: {exc}") from exc
+    if shown.returncode != 0:
+        error = shown.stderr.decode("utf-8", "replace").strip()
+        raise PublishError(f"could not read {filename} from {commit[:12]}: {error}")
+    try:
+        return shown.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PublishError(f"{filename} on {commit[:12]} is not valid UTF-8: {exc}{RECOVERY_HINT}") from exc
+
+
 def previous_file(branch: str, filename: str, cwd: Optional[str] = None) -> Optional[str]:
-    """Return the previous file content from origin/<branch>, if it exists."""
-    result = subprocess.run(
-        ["git", "show", f"origin/{branch}:{filename}"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout
+    """Previous content of <filename> on origin/<branch>; None when not published yet."""
+    head = remote_head(branch, cwd)
+    return file_at(head, filename, cwd) if head else None
 
 
-def remote_head(branch: str, cwd: str) -> str:
+def remote_head(branch: str, cwd: Optional[str]) -> str:
     """SHA of origin/<branch> after the last fetch, or "" when it does not exist."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    try:
+        result = git(
+            ["rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{branch}^{{commit}}"],
+            cwd,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PublishError(f"could not resolve origin/{branch}: {exc}") from exc
+    if result.returncode == 0:
+        return result.stdout.strip()
+    # --quiet exits 1 with no message when the ref is simply missing; anything
+    # else (not a repository, broken git) must not look like a first publish.
+    if result.returncode == 1 and not result.stderr.strip():
+        return ""
+    raise PublishError(f"could not resolve origin/{branch}: {result.stderr.strip()}")
+
+
+def read_previous(head: str, cwd: str) -> Dict[str, str]:
+    """Every published role file at <head>, checked to be a JSON object."""
+    previous: Dict[str, str] = {}
+    if not head:
+        return previous
+    for role in ROLES:
+        content = file_at(head, f"{role}.json", cwd)
+        if content is None:
+            continue
+        # Recovery (fix or delete the file on the data branch) is described
+        # in docs/IMPLEMENTATION.md 5.4.
+        try:
+            parsed = json.loads(content)
+        except ValueError as exc:
+            raise PublishError(f"published {role}.json is not valid JSON: {exc}{RECOVERY_HINT}") from exc
+        if not isinstance(parsed, dict):
+            raise PublishError(f"published {role}.json is not a JSON object{RECOVERY_HINT}")
+        previous[role] = content
+    return previous
 
 
 def load_candidate(artifacts: str, role: str, retention_days: int) -> Optional[Dict[str, Any]]:
@@ -279,9 +445,16 @@ def build_payloads(
             payloads[role] = merge_payloads({}, candidate, retention_days)
             statuses[role] = "fresh"
         elif previous_payload:
-            payloads[role] = previous_payload
+            # Jobs past the retention window still age out, so a role whose
+            # scraper keeps failing does not show stale listings forever. No
+            # unseen-days pruning here: when the scrape failed, a job missing
+            # from the run is no evidence that it closed.
+            payloads[role] = merge_payloads(previous_payload, {"role": role}, retention_days)
             statuses[role] = "kept-previous"
-            print(f"[publish] {role}: no fresh data, keeping previous JSON")
+            print(
+                f"[publish] {role}: no fresh data, keeping previous JSON "
+                f"({len(previous_payload.get('jobs') or [])} -> {payloads[role]['count']} after retention)"
+            )
         else:
             print(f"[publish] {role}: no data available")
             statuses[role] = "missing"
@@ -305,9 +478,12 @@ def drop_offrole(payload: Dict[str, Any], role: str) -> int:
     jobs = payload.get("jobs") or []
     kept = [job for job in jobs if title_relevant(role, job.get("title") or "")]
     dropped = len(jobs) - len(kept)
+    # Always recount: the manifest copies count and sources from here, and
+    # they must describe the jobs actually published.
+    payload["jobs"] = kept
+    payload["count"] = len(kept)
+    payload["sources"] = _count_sources(kept)
     if dropped:
-        payload["jobs"] = kept
-        payload["count"] = len(kept)
         print(f"[publish] {role}: dropped {dropped} jobs whose titles no longer match the role")
     return dropped
 
@@ -370,17 +546,12 @@ def push_data_branch(
     if os.path.exists(worktree):
         shutil.rmtree(worktree, ignore_errors=True)
 
-    subprocess.run(["git", "worktree", "prune"], cwd=repo_dir, check=False, capture_output=True)
-    subprocess.run(
-        ["git", "worktree", "add", "--detach", worktree],
-        cwd=repo_dir,
-        check=True,
-        capture_output=True,
-    )
+    git_quiet(["worktree", "prune"], repo_dir)
+    git_step(["worktree", "add", "--detach", worktree], repo_dir)
 
     try:
-        subprocess.run(["git", "checkout", "--orphan", tmp_branch], cwd=worktree, check=True)
-        subprocess.run(["git", "rm", "-rf", "."], cwd=worktree, check=False, capture_output=True)
+        git_step(["checkout", "--orphan", tmp_branch], worktree)
+        git_quiet(["rm", "-rf", "."], worktree)
 
         for role, payload in payloads.items():
             with open(os.path.join(worktree, f"{role}.json"), "w", encoding="utf-8") as handle:
@@ -402,35 +573,23 @@ def push_data_branch(
                 indent=1,
             )
 
-        subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
-        subprocess.run(
-            ["git", "commit", "-m", f"data: publish {', '.join(payloads)} at {now}"],
-            cwd=worktree,
-            check=True,
-        )
-        push = subprocess.run(
-            ["git", "push", f"--force-with-lease={branch}:{expected_head}", "origin", f"HEAD:{branch}"],
-            cwd=worktree,
-            capture_output=True,
-            text=True,
-        )
+        git_step(["add", "-A"], worktree)
+        git_step(["commit", "-m", f"data: publish {', '.join(payloads)} at {now}"], worktree)
+        try:
+            push = git(
+                ["push", f"--force-with-lease={branch}:{expected_head}", "origin", f"HEAD:{branch}"],
+                worktree,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise PublishError(f"git push failed: {exc}") from exc
         if push.returncode != 0:
             print(f"[publish] push rejected: {push.stderr.strip()[:300]}")
             return False
         return True
     finally:
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", worktree],
-            cwd=repo_dir,
-            check=False,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "branch", "-D", tmp_branch],
-            cwd=repo_dir,
-            check=False,
-            capture_output=True,
-        )
+        git_quiet(["worktree", "remove", "--force", worktree], repo_dir)
+        git_quiet(["branch", "-D", tmp_branch], repo_dir)
 
 
 def main() -> int:
@@ -452,28 +611,36 @@ def main() -> int:
     repo_dir = os.path.abspath(args.repo_dir)
     artifacts = os.path.abspath(args.artifacts)
 
-    subprocess.run(["git", "config", "user.name", "jobhunt-bot"], cwd=repo_dir, check=False)
-    subprocess.run(
-        ["git", "config", "user.email", "jobhunt-bot@users.noreply.github.com"],
-        cwd=repo_dir,
-        check=False,
-    )
+    git_quiet(["config", "user.name", "jobhunt-bot"], repo_dir)
+    git_quiet(["config", "user.email", "jobhunt-bot@users.noreply.github.com"], repo_dir)
 
+    try:
+        return publish(args, repo_dir, artifacts)
+    except PublishError as exc:
+        # Publishing with a role's previous data unreadable would silently
+        # discard its carried-over jobs, so stop and leave the branch as it is.
+        print(f"::error title=Publish aborted::{exc}")
+        print(f"[publish] aborted, nothing was pushed: {exc}")
+        return 1
+
+
+def publish(args: argparse.Namespace, repo_dir: str, artifacts: str) -> int:
     for attempt in range(1, max(1, args.attempts) + 1):
         # Read the previous published state (may not exist on the first run).
-        subprocess.run(
-            ["git", "fetch", "origin", f"+refs/heads/{args.branch}:refs/remotes/origin/{args.branch}"],
-            cwd=repo_dir,
-            check=False,
-            capture_output=True,
-        )
+        try:
+            fetch = git(
+                ["fetch", "origin", f"+refs/heads/{args.branch}:refs/remotes/origin/{args.branch}"],
+                repo_dir,
+                check=False,
+            )
+            if fetch.returncode != 0:
+                # Also the normal first-run message. The push lease below still
+                # refuses to overwrite a remote branch we could not read.
+                print(f"[publish] fetch of '{args.branch}' failed: {fetch.stderr.strip()[:300]}")
+        except subprocess.TimeoutExpired:
+            print(f"[publish] fetch of '{args.branch}' timed out")
         expected_head = remote_head(args.branch, repo_dir)
-
-        previous: Dict[str, str] = {}
-        for role in ROLES:
-            content = previous_file(args.branch, f"{role}.json", repo_dir)
-            if content:
-                previous[role] = content
+        previous = read_previous(expected_head, repo_dir)
 
         payloads, statuses = build_payloads(
             artifacts, previous, args.retention_days, args.unseen_days, args.no_merge
@@ -482,7 +649,7 @@ def main() -> int:
             print("[publish] nothing to publish")
             return 1
 
-        now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        now = utc_now()
         manifest = build_manifest(payloads, statuses, now)
 
         if push_data_branch(repo_dir, args.branch, payloads, manifest, expected_head, now):

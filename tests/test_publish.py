@@ -123,3 +123,63 @@ def test_publish_drops_previously_published_offrole_titles(tmp_path):
     titles = sorted(j["title"] for j in payloads["ba"]["jobs"])
     assert titles == ["Business Analyst", "Data Analyst"]
     assert payloads["ba"]["count"] == 2
+
+
+def test_generated_at_is_the_latest_time_in_utc():
+    # 09:00 IST is 03:30 UTC: earlier than 05:00 UTC, though larger as a string.
+    ist = payload([job("a")], generated="2026-10-31T09:00:00+05:30")
+    utc = payload([job("b")], generated="2026-10-31T05:00:00+00:00")
+    assert publish.merge_payloads(ist, utc, 21)["generated_at"] == "2026-10-31T05:00:00+00:00"
+    assert publish.merge_payloads(utc, ist, 21)["generated_at"] == "2026-10-31T05:00:00+00:00"
+    later_ist = payload([job("c")], generated="2026-10-31T11:00:00+05:30")
+    assert publish.merge_payloads(utc, later_ist, 21)["generated_at"] == "2026-10-31T05:30:00+00:00"
+
+
+def test_generated_at_falls_back_to_now_in_utc():
+    out = publish.merge_payloads({}, {"role": "data", "jobs": [job("a")], "generated_at": "junk"}, 21)
+    assert out["generated_at"].endswith("+00:00")
+    assert publish.utc_now().endswith("+00:00")
+
+
+def test_dropping_offrole_jobs_recounts_sources(tmp_path):
+    import json
+
+    def ba(jobs):
+        return {**payload(jobs), "role": "ba"}
+
+    fresh = [job("a", title="Business Analyst", source="Naukri")]
+    old = [
+        job("b", title="Product Analyst", source="Indeed", last_seen=day(1)),
+        job("c", title="Business Analyst II", source="Indeed", last_seen=day(1)),
+        job("d", title="Functional Analyst", source="Shine", last_seen=day(1)),
+    ]
+    (tmp_path / "ba.json").write_text(json.dumps(ba(fresh)))
+    payloads, statuses = publish.build_payloads(str(tmp_path), {"ba": json.dumps(ba(old))}, 21, 7, False)
+    out = payloads["ba"]
+    assert out["count"] == len(out["jobs"]) == 2
+    assert out["sources"] == {"Naukri": 1, "Indeed": 1}
+    manifest = publish.build_manifest(payloads, statuses, publish.utc_now())
+    assert sum(manifest["roles"]["ba"]["sources"].values()) == manifest["roles"]["ba"]["count"]
+
+
+def test_kept_previous_ages_out_but_does_not_prune_unseen(tmp_path):
+    import json
+
+    previous = payload([
+        job("expired", posted_date=day(30), last_seen=day(1), source="Indeed"),
+        job("undated-old", posted_date=None, first_seen=day(25), last_seen=day(1), source="Indeed"),
+        job("unseen", posted_date=day(5), last_seen=day(12), source="Shine"),
+        job("recent", posted_date=day(2), last_seen=day(1)),
+    ], generated="2026-10-20T08:00:00+05:30")
+    previous["sources"] = {"Indeed": 2, "Shine": 1, "Naukri": 1}
+    (tmp_path / "data.json").write_text(json.dumps(payload([])))
+    payloads, statuses = publish.build_payloads(str(tmp_path), {"data": json.dumps(previous)}, 21, 7, False)
+    out = payloads["data"]
+    assert statuses["data"] == "kept-previous"
+    # Retention applies (posted_date, else first_seen); the 12-day-unseen job stays.
+    assert {j["url"] for j in out["jobs"]} == {"https://x.test/unseen", "https://x.test/recent"}
+    assert out["count"] == 2
+    assert out["sources"] == {"Shine": 1, "Naukri": 1}
+    # The data is still as old as the last real scrape.
+    assert out["generated_at"] == "2026-10-20T02:30:00+00:00"
+    assert out["role"] == "data"

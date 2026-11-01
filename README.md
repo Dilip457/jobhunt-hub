@@ -255,8 +255,11 @@ powershell -ExecutionPolicy Bypass -File .\automation\install-agent.ps1
 ```
 
 It registers a Windows Scheduled Task (every 15 min, at logon, at startup, *start when
-available*) that runs the full pipeline from your PC only when the data is stale — so it
-catches up whenever the PC is next on. See `automation/agent.py` (`--dry-run`, `--force`).
+available*) that runs the full pipeline from your PC only when the data is stale (the
+oldest role's `generated_at` is over 18 hours old) — so it catches up whenever the PC is
+next on. A role published as `kept-previous` keeps its old `generated_at`, so while one
+role's scrape keeps failing the agent re-runs all roles at most every 4 hours
+(`--min-gap-hours`). See `automation/agent.py` (`--dry-run`, `--force`).
 
 ---
 
@@ -348,8 +351,8 @@ Why: the branch always has **one commit**, so the repository never grows by ~1 M
 If a role's scrape fails or returns zero jobs, the publisher **keeps the previous JSON** for that role instead of blanking the site and raises a warning on the Actions run. Otherwise it **merges** the new jobs with the previous ones:
 
 - Deduplicated by canonical URL, then by title + company + city, so one opening posted on several boards appears once (the best-scored copy is kept).
-- The fresh copy of a job wins, so scoring changes reach old listings; `first_seen` keeps the oldest date and `last_seen` the newest.
-- Jobs that no scrape has returned for 7 days (`--unseen-days`) are treated as closed and dropped, and nothing older than 21 days is kept. Pruning is skipped when a run is much smaller than the previous data, so a blocked run cannot empty a role.
+- The fresh copy of a job wins, so scoring changes reach old listings; `first_seen` and `posted_date` keep the oldest date and `last_seen` the newest.
+- Jobs that no scrape has returned for 7 days (`--unseen-days`) are treated as closed and dropped, and nothing older than 21 days is kept (an undated listing the boards still return stays until they stop returning it). Pruning is skipped when a run is much smaller than the previous data, so a blocked run cannot empty a role.
 - `is_new` (the NEW badge) is recomputed at publish time: first collected within the last 2 days.
 - `score_parts`, and `apply_url` when it equals `url`, are dropped to keep each role file well under 1 MB.
 

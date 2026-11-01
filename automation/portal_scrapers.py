@@ -378,6 +378,43 @@ def _indeed_variants(query: str, city: str) -> List[str]:
     ]
 
 
+_CARD_AGE = re.compile(r"(\d+)\s*\+?\s*(minute|min|hour|hr|day|week|month|[hdw])s?\b")
+# "an hour ago", "a day ago", "Posted a month ago": whole-word units only.
+_CARD_AGE_ONE = re.compile(r"\ban?\s+(minute|hour|day|week|month)\b")
+_CARD_AGE_DAYS = {"minute": 0, "min": 0, "hour": 0, "hr": 0, "h": 0, "day": 1, "d": 1, "week": 7, "w": 7, "month": 30}
+
+
+def _card_posted_date(text: str) -> Optional[str]:
+    """Posted date from an Indeed/SimplyHired card's age stamp, or None.
+
+    Understands "Just posted", "Today", "Posted 3 days ago", "Active 5 days
+    ago", "30+ days ago", "a day ago" and SimplyHired's compact "3d", "30d+"
+    and "5h". Dates are UTC days, like first_seen, so the two compare cleanly.
+    "30+" counts as 30 days: the listing is at least that old, which is all
+    retention needs. A card without a stamp gets None, not today's date: a
+    scrape-date stand-in was refreshed on every run, so those jobs never
+    expired and always looked new. publish.py ages undated jobs from
+    first_seen instead.
+    """
+    low = _clean(text).lower()
+    if not low:
+        return None
+    if "just posted" in low or "just now" in low or "today" in low:
+        days = 0
+    elif "yesterday" in low:
+        days = 1
+    else:
+        match = _CARD_AGE.search(low)
+        one = None if match else _CARD_AGE_ONE.search(low)
+        if match:
+            days = int(match.group(1)) * _CARD_AGE_DAYS[match.group(2)]
+        elif one:
+            days = _CARD_AGE_DAYS[one.group(1)]
+        else:
+            return None
+    return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+
+
 def _parse_indeed_html(role: str, html: str) -> List[Dict[str, Any]]:
     jobs: List[Dict[str, Any]] = []
     soup = BeautifulSoup(html, "lxml")
@@ -398,7 +435,9 @@ def _parse_indeed_html(role: str, html: str) -> List[Dict[str, Any]]:
             _text(card.select_one('[data-testid="text-location"]')),
             f"https://in.indeed.com/viewjob?jk={jk}",
             _text(card.select_one(".job-snippet")),
-            datetime.now(timezone.utc).date().isoformat(),
+            _card_posted_date(_text(
+                card.select_one('[data-testid="myJobsStateDate"]') or card.select_one("span.date")
+            )),
             jk,
         )
         if job:
@@ -562,7 +601,6 @@ def fetch_simplyhired(role: str, profile: Dict[str, Any], max_days: int) -> List
         print(f"[portal] simplyhired: curl_cffi unavailable ({exc})", file=sys.stderr)
         return []
 
-    today = datetime.now(timezone.utc).date().isoformat()
     session = cffi_requests.Session()
     jobs: List[Dict[str, Any]] = []
     failures = 0
@@ -607,7 +645,7 @@ def fetch_simplyhired(role: str, profile: Dict[str, Any], max_days: int) -> List
                     _text(card.select_one("[data-testid='searchSerpJobLocation']")),
                     href,
                     _text(card),
-                    today,
+                    _card_posted_date(_text(card.select_one("[data-testid='searchSerpJobDateStamp']"))),
                     card.get("data-jobkey") or href,
                 )
                 if job:
