@@ -289,16 +289,16 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 | Filter source | Source select | exact `job.source` match |
 | Filter match score | Match select | `job.score >= Number(score)` |
 | Filter experience | Experience select | `matchesExperience()` in `web/lib/utils.ts` |
-| Filter posted date | Posted select | `job.posted_date` age in days |
+| Filter posted date | Posted select | `postedWithinDays()`: `posted_date`, else `first_seen`, age in days |
 | Sort | Sort select | score / date / company |
 | Change page | Pager (`web/components/Pagination.tsx`) | `setPage(n)`; 8 jobs per page (`PAGE_SIZE = 8`), page numbers from `pageItems()` in `web/lib/utils.ts`; any filter, sort or role change goes back to page 1 |
-| Share filters | Any filter or page change | `window.history.replaceState` with query params (`page` included when > 1) |
+| Share filters | Any filter or page change | `window.history.replaceState(window.history.state, …)` with query params (`page` included when > 1), only after the URL has been read (`hydrated`) |
 | Switch role | Role tabs | `prefetchRole(next)` + `router.push("/jobs/<role>")` |
 | Retry load | Error state | `setReloadKey(k + 1)` |
 | Open refresh | `Alt+Shift+R` | keydown listener → `setConfirmOpen(true)` |
 | Confirm refresh | Dialog | `triggerRefresh()` → `POST /api/refresh` |
-| Poll refresh | Queued/running status | `/api/status` every 8 seconds |
-| Load fresh jobs | State changes to success | `freshRef.current = true` → `/api/jobs?role=…&fresh=1` |
+| Poll refresh | Queued/running status | `/api/status` every 8 seconds, with `&since=<dispatchedAt>` while a dispatch is pending |
+| Load fresh jobs | State changes to success | `freshRef.current = true` → `/api/jobs?role=…&fresh=<timestamp>` with `x-refresh-token` |
 | Show toast | Refresh/load outcomes | `pushToast()` |
 
 URL parameters:
@@ -307,7 +307,7 @@ URL parameters:
 q · city · source · score · exp · days · sort
 ```
 
-Read and written in `JobDashboard.tsx`; select options in `Filters.tsx`.
+Read with `parseFilterParams()` and written with `filterSearch()` (`web/lib/filters.ts`), which also holds the select options `Filters.tsx` renders. A value the menus cannot show falls back to its default; `city` and `source` are checked once the role's jobs load.
 
 ---
 
@@ -315,11 +315,11 @@ Read and written in `JobDashboard.tsx`; select options in `Filters.tsx`.
 
 | Route | File | Request | Success | Failure / notes |
 |---|---|---|---|---|
-| `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data`, `uiux` or `ba`; optional `fresh=1` | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` |
-| `GET /api/status` | `web/app/api/status/route.ts` | optional `role` | `StatusResponse` | Always `no-store`; returns idle message if GitHub is unreachable |
-| `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued" }` | `403` blocked origin; `401` missing/wrong refresh key (when `REFRESH_TOKEN` is set); `400` bad body/role; `503` unconfigured; `409` already running; `429` cooldown; `502` dispatch failed |
+| `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data`, `uiux` or `ba`; optional `fresh` (honoured only with a valid `x-refresh-token`) | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` is present (`private, no-store`) |
+| `GET /api/status` | `web/app/api/status/route.ts` | optional `role`; optional `since` (ISO time) | `StatusResponse` | Always `no-store`; returns idle message if GitHub is unreachable; with `since`, reports `queued` + `awaitingRun` until a run created after it is listed |
+| `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued", dispatchedAt }` | `403` blocked origin; `401` missing/wrong refresh key; `503` refresh disabled (`code: "refresh_disabled"`, production without `REFRESH_TOKEN`) or unconfigured; `400` bad body/role; `409` already running or just dispatched; `429` cooldown; `502` dispatch failed |
 
-Origin check: the `Origin` header is required and must be localhost, the request host, the `NEXT_PUBLIC_SITE_URL` host, or one of `VERCEL_URL` / `VERCEL_BRANCH_URL` / `VERCEL_PROJECT_PRODUCTION_URL`. With `REFRESH_TOKEN` set, the `x-refresh-token` header must match.
+Origin check (CSRF): the `Origin` header is required and must be the request host, the `NEXT_PUBLIC_SITE_URL` host, or one of `VERCEL_URL` / `VERCEL_BRANCH_URL` / `VERCEL_PROJECT_PRODUCTION_URL` (localhost too in development). The `x-refresh-token` header must match `REFRESH_TOKEN` (`web/lib/refreshAuth.ts`); a production build without `REFRESH_TOKEN` refuses every refresh.
 
 Underlying GitHub calls: `web/lib/github.ts`
 

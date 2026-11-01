@@ -476,12 +476,12 @@ Posted 3 days ago · First seen today
 
 | Layer | Behaviour |
 |---|---|
-| GitHub read for role jobs | `no-store` (always reads the `data` branch) |
+| GitHub read for role jobs | In memory per server instance for 60 s (15 s after a seed fallback); not the Next.js data cache |
 | CDN response | `s-maxage=60, stale-while-revalidate=300` |
-| `?fresh=1` | Bypasses the CDN (`no-store`) |
-| `/api/status` | `no-store` |
+| `?fresh=…` | Always `private, no-store`; skips the in-memory read only with a valid `x-refresh-token` |
+| `/api/status` | `no-store`; the Actions runs listing is cached in memory for 5 s and shared by every role |
 
-After a publish, the edge may serve the previous response for up to about **5 minutes**; `?fresh=1` bypasses it. The origin does not cache role JSON, so a publish cannot stay invisible behind the Next.js data cache.
+After a publish, the edge may serve the previous response for up to about **5 minutes**, and a server instance may hold the previous read for up to 60 s. The admin's reload after a refresh sends `fresh` with the refresh key, which bypasses both and replaces the cached read. Without the key `fresh` is ignored, so it cannot be used to spend the GitHub API quota.
 
 ---
 
@@ -506,13 +506,13 @@ sequenceDiagram
     UI->>Refresh: { role: "genai" }
     Refresh->>GH: workflow_dispatch
     GH-->>Refresh: 204
-    Refresh-->>UI: 202 queued
+    Refresh-->>UI: 202 queued + dispatchedAt
     loop every 8 seconds
-        UI->>Status: /api/status?role=genai
+        UI->>Status: /api/status?role=genai&since=dispatchedAt
         Status->>GH: latest run
         Status-->>UI: queued / running / success / failed / cancelled
     end
-    UI->>UI: success → reload jobs with fresh=1
+    UI->>UI: success → reload jobs with fresh + refresh key
 ```
 
 Each role has its own shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
