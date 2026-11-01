@@ -186,11 +186,16 @@ def test_kept_previous_ages_out_but_does_not_prune_unseen(tmp_path):
 
 
 def test_finalize_keeps_or_computes_score_parts():
-    given = publish.finalize_job(job("a", score_parts={"role": 50.0, "skill": 33.3}), role="data")
-    assert given["score_parts"] == {"role": 50.0, "skill": 33.3}
+    given = publish.finalize_job(job("a", score_parts={"role": 50.0, "skill": 33.3, "tool": 25.0}), role="data")
+    assert given["score_parts"] == {"role": 50.0, "skill": 33.3, "tool": 25.0}
+
+    # A set from before the "tool" part was split out is recomputed.
+    stale = publish.finalize_job(job("a2", score_parts={"role": 50.0, "skill": 33.3}, title="Data Engineer",
+                                     snippet="spark and airflow pipelines"), role="data")
+    assert set(stale["score_parts"]) == {"role", "skill", "tool"} and stale["score_parts"]["tool"] > 0
 
     computed = publish.finalize_job(job("b", title="Data Engineer", snippet="spark and airflow pipelines"), role="data")
-    assert computed["score_parts"]["role"] > 0 and computed["score_parts"]["skill"] > 0
+    assert computed["score_parts"]["role"] > 0 and computed["score_parts"]["tool"] > 0
 
     zeros = publish.finalize_job(job("c", score_parts={"role": 0.0, "skill": 0.0}, title="Analyst", snippet=""), role="data")
     assert "score_parts" not in zeros

@@ -543,6 +543,9 @@ export default function JobDashboard({ role }: Props) {
         <span className="dashboard-glow dashboard-glow-blue" />
         <span className="dashboard-grid" />
       </div>
+      {/* The gate's light strip, now the page's edges (the Runway concept). */}
+      <span className="edge-light edge-light-l" aria-hidden />
+      <span className="edge-light edge-light-r" aria-hidden />
 
       <header className="dashboard-header">
         <div className="shell dashboard-header-inner">
@@ -607,7 +610,7 @@ export default function JobDashboard({ role }: Props) {
         {data ? (
           <section className="overview" aria-label="Overview">
             <BestMatch job={best} accent={roleMeta.accent} />
-            <MatchSignal job={best} jobs={jobs} accent={roleMeta.accent} />
+            <MatchSignal job={best} jobs={jobs} role={role} accent={roleMeta.accent} />
           </section>
         ) : null}
 

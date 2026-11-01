@@ -251,7 +251,7 @@ The `web/` directory is a Next.js 16 app deployed with **Root Directory = `web`*
 - `/jobs/genai`, `/jobs/data`, `/jobs/uiux`, `/jobs/ba` and `/jobs/sde` are static, shareable dashboards.
 - `/jobs/[role]` is pre-rendered for the five known roles; any other slug redirects to `/`.
 - The dashboard is a client component with filters, a role switcher, numbered pages of 8 jobs and shareable query parameters (including `page`).
-- It opens with what changed and what is best, before the list: a ticker of jobs new since the last scrape, the role's gate beside the title, the best match as a solid tile, and how that match earns its score (a radar of its published `score_parts`) next to the role's jobs by match band. All of it is computed in the browser from the one role file the page already loads; nothing extra is fetched.
+- It opens with what changed and what is best, before the list: a ticker of jobs new since the last scrape, the role's gate beside the title, the best match as a solid tile, and how that match earns its score (a radar of its `score_parts`: role fit, skills, tools, and experience fit for BA and SDE) next to the role's jobs by match band. All of it is computed in the browser from the one role file the page already loads; nothing extra is fetched. When the file carries fewer than three parts (files from before the parts existed, or before the tools part was split out), the browser reads the same parts from the listing with a copy of the scraper's rules (`web/lib/estimate.ts`) and says so under the bars. The role's colour also runs down both edges of the page as a thin fixed light, the gate's strip carried over from the intro.
 - `/api/jobs` reads a role's JSON from the `data` branch.
 - `/api/refresh` dispatches the GitHub Actions workflow.
 - `/api/status` reports the latest workflow run for the role.
@@ -335,18 +335,19 @@ budget an integrated GPU can meet:
   and pills are near-opaque panels. A blur on a composited layer, or a backdrop blur
   over a canvas that redraws every frame, is recomputed by the compositor every frame.
 
-The dashboard follows the same rule for scrolling: the sticky header and filter bar
-have no backdrop blur, the fixed background glows are gradients rather than blurred
+The dashboard follows the same rule for scrolling: the sticky header has no backdrop
+blur (the filter bar scrolls with the page, so it never rides over the cards), the fixed background glows are gradients rather than blurred
 discs, the below-the-fold info section uses `content-visibility: auto`, and the
 search box feeds the job filter through `useDeferredValue`, so keystrokes never wait
 for the list. Its own motion is transform and opacity only: the gate beside the title
 (`HeroGate`) and the radar in the match-signal panel turn on CSS keyframes; the
 updates ticker is one translating track that pauses under the pointer; a job card
-tilts toward the pointer (`--rx`/`--ry`, at most 6°) and lights in the role colour on
-a separate layer whose opacity fades after 1.2 s, and both run only on a pointer that
+tilts toward the pointer (`--rx`/`--ry`, at most 10°), lifts 18px toward the viewer
+(`--lift`) and lights in the role colour on a separate layer whose opacity fades after
+1.2 s, and both run only on a pointer that
 can hover with motion not reduced (`JobCard` checks the media query once). Under
-`prefers-reduced-motion: reduce` the ticker stands still and scrolls, the gate and
-radar hold, and cards neither tilt nor light.
+`prefers-reduced-motion: reduce` the ticker stands still and scrolls, the gate, radar
+and edge lights hold, and cards neither tilt nor light.
 
 ### 4.6 GitHub API
 

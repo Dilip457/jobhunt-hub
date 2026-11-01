@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
-import { newJobs } from "@/lib/rank";
+import { newJobs, topMatch } from "@/lib/rank";
 import type { Job, RoleSlug } from "@/lib/types";
-import { formatNumber, timeAgo } from "@/lib/utils";
+import { formatNumber, timeAgo, uniqueCompanies } from "@/lib/utils";
 
 interface Props {
   jobs: Job[];
@@ -14,18 +14,37 @@ interface Props {
 const SHOWN = 12;
 
 /**
- * The strip under the header: what arrived since the last scrape, best match
- * first. It scrolls on its own, pauses under the pointer, and stands still
- * (scrollable) when motion is reduced. The lane is repeated once so the loop
- * has no seam; the copy is hidden from assistive technology.
+ * The strip under the header: the role's signals (when the data was
+ * published, how many companies are hiring, the top match), then what
+ * arrived since the last scrape, best match first. It scrolls on its own,
+ * pauses under the pointer, and stands still (scrollable) when motion is
+ * reduced. The lane is repeated once so the loop has no seam; the copy is
+ * hidden from assistive technology.
  */
 export default function UpdatesTicker({ jobs, role, updatedAt }: Props) {
   const fresh = newJobs(jobs, role);
+  const best = topMatch(jobs, role);
+  const facts = (
+    <>
+      <span className="ticker-fact">updated {timeAgo(updatedAt)}</span>
+      {jobs.length > 0 ? (
+        <span className="ticker-fact">
+          <b>{formatNumber(jobs.length)}</b> jobs · <b>{formatNumber(uniqueCompanies(jobs))}</b> companies
+        </span>
+      ) : null}
+      {best ? (
+        <span className="ticker-fact">
+          top match <b>{Math.round(best.score)}</b> · {best.company}
+        </span>
+      ) : null}
+    </>
+  );
+
   if (fresh.length === 0) {
     return (
       <div className="ticker ticker-quiet" aria-label="Updates">
         <span className="ticker-lead">Nothing new since the last scrape</span>
-        <span className="ticker-item">updated {timeAgo(updatedAt)}</span>
+        {facts}
       </div>
     );
   }
@@ -36,6 +55,7 @@ export default function UpdatesTicker({ jobs, role, updatedAt }: Props) {
       <span className="ticker-lead">
         {formatNumber(fresh.length)} new since the last scrape
       </span>
+      {facts}
       {shown.map((job) => (
         <a
           key={`${job.source}-${job.id}`}
@@ -55,7 +75,7 @@ export default function UpdatesTicker({ jobs, role, updatedAt }: Props) {
     <div
       className="ticker"
       aria-label="New since the last scrape"
-      style={{ "--ticker-duration": `${Math.max(28, shown.length * 5)}s` } as CSSProperties}
+      style={{ "--ticker-duration": `${Math.max(28, (shown.length + 3) * 5)}s` } as CSSProperties}
     >
       <div className="ticker-track">
         {lane(false)}

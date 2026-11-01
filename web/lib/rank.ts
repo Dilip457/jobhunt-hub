@@ -1,3 +1,4 @@
+import { estimateParts } from "./estimate";
 import type { Job, RoleSlug, ScoreParts } from "./types";
 import { experienceBandPriority, experiencePriority } from "./utils";
 
@@ -68,6 +69,29 @@ export function scoreAxes(job: Pick<Job, "score_parts">): ScoreAxis[] {
     return [{ key, label: AXIS_LABELS[key], value: Math.max(0, Math.min(100, value)) }];
   });
   return axes.some((axis) => axis.value > 0) ? axes : [];
+}
+
+export interface MatchAxes {
+  axes: ScoreAxis[];
+  /** True when the parts came from the browser's copy of the rules, not the file. */
+  estimated: boolean;
+}
+
+/** The radar needs this many parts; fewer are drawn as bars only. */
+export const RADAR_MIN_AXES = 3;
+
+/**
+ * The axes the match signal draws for a job: the published parts when the
+ * file carries enough of them for a radar, else the browser's estimate from
+ * the same rules (estimate.ts). Older files have no parts, or only the two
+ * from before the tools part was split out; both fall back.
+ */
+export function matchAxes(job: Job | null, role: RoleSlug): MatchAxes {
+  if (!job) return { axes: [], estimated: false };
+  const published = scoreAxes(job);
+  if (published.length >= RADAR_MIN_AXES) return { axes: published, estimated: false };
+  const estimated = scoreAxes({ score_parts: estimateParts(job, role) });
+  return estimated.length > 0 ? { axes: estimated, estimated: true } : { axes: published, estimated: false };
 }
 
 export interface MatchBand {

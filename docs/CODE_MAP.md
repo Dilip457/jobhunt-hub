@@ -154,6 +154,8 @@ jobhunt-hub/
 │  │  ├─ prefetch.ts              # warm /api/jobs during the intro
 │  │  ├─ renderQuality.ts         # frame-time governor for the intro's pixel ratio
 │  │  ├─ fallback.ts              # seed JSON fallback
+│  │  ├─ rank.ts                  # role order, top match, score axes, match bands
+│  │  ├─ estimate.ts              # browser copy of the scraper's score parts
 │  │  └─ utils.ts                 # score tiers, dates, filters, labels
 │  ├─ data/                       # committed seed JSON
 │  ├─ public/models/student/      # GLB, scene/portrait posters, attribution
@@ -193,7 +195,7 @@ jobhunt-hub/
 - boot / loading screen
 - in-scene role dock and mobile sheet
 - static / reduced-motion intro
-- dashboard: updates ticker, hero gate, figures, best-match tile, match signal (radar + bands), filters, job grid and card (tilt + role light), pager, states
+- dashboard: updates ticker (facts + new jobs), edge lights, hero gate, figures, best-match tile, match signal (radar + bands, estimated when the file has no parts), filters (scroll with the page), job grid and card (tilt + lift + role light), pager, states
 - modal, refresh panel and toasts
 - responsive rules and `prefers-reduced-motion: reduce`
 
@@ -208,11 +210,12 @@ jobhunt-hub/
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX / Business Analyst |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
-| Job card | `web/components/JobCard.tsx` | `JobCard`, `LIGHT_MS`, `TILT_DEG` | Monogram, score figure with tier word, title, company · city · experience, snippet, source · date, New, Apply; tilts toward the pointer and lights in the role colour for 1.2 s (hover-capable pointers, motion not reduced) |
-| Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | New-since-last-scrape strip under the header, pauses on hover, static when motion is reduced |
+| Job card | `web/components/JobCard.tsx` | `JobCard`, `LIGHT_MS`, `TILT_DEG` | Monogram, score figure with tier word, title, company · city · experience, snippet, source · date, New, Apply; tilts toward the pointer (≤ 10°), lifts and lights in the role colour for 1.2 s (hover-capable pointers, motion not reduced) |
+| Updates ticker | `web/components/UpdatesTicker.tsx` | `UpdatesTicker`, `SHOWN` | Strip under the header: updated-when, job and company counts, top match, then the new-since-last-scrape jobs; pauses on hover, static when motion is reduced |
 | Hero gate | `web/components/HeroGate.tsx` | `HeroGate` | The role's gate beside the title, CSS only |
 | Best match | `web/components/BestMatch.tsx` | `BestMatch` | The top job of the role's default order as a solid tile linking to the posting |
-| Match signal | `web/components/MatchSignal.tsx` | `MatchSignal` | Radar of the top job's `score_parts` (3+ parts), parts bars, jobs by match band |
+| Match signal | `web/components/MatchSignal.tsx` | `MatchSignal` | Radar of the top job's score parts (3+ parts, from the file or `estimate.ts`), parts bars, a footnote when estimated, jobs by match band |
+| Score estimate | `web/lib/estimate.ts` | `estimateParts` | The scraper's `score_parts()` in the browser: copies of `ROLE_TITLE_TOKENS`, `ROLE_SKILLS`, `ROLE_TOOLS` and the caps; experience from `utils.ts` bands |
 | Ranking | `web/lib/rank.ts` | `compareByRole`, `rankJobs`, `topMatch`, `newJobs`, `scoreAxes`, `matchBands` | The role's default order shared by the list and the overview; parts and bands for the signal panel |
 | Stats | `web/components/StatsBar.tsx` | `StatsBar` | Open jobs, companies, sources, time since the last scrape, as type under the title |
 | Role switcher | `web/components/RoleSwitcher.tsx` | `RoleSwitcher` | In-dashboard role tabs |
@@ -294,10 +297,11 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 
 ```text
 header: brand · RoleSwitcher · Live · Journey
-  └─ UpdatesTicker        new since the last scrape (is_new), best first, each a link
+  └─ UpdatesTicker        updated-when · jobs · companies · top match, then new since the last scrape (is_new), best first, each a link
+edge lights             two fixed 3px strips in the role colour down the page's edges (.edge-light)
 hero: h1 · lede · StatsBar (4 figures as type) · Explore / Change destination   |   HeroGate (role colour)
-overview: BestMatch (topMatch, solid role-colour tile)   |   MatchSignal (radar of score_parts + match bands)
-Filters (sticky)
+overview: BestMatch (topMatch, solid role-colour tile)   |   MatchSignal (radar of matchAxes: file parts or estimate.ts + match bands)
+Filters (scroll with the page)
 job grid: 8 JobCards per page (4 columns ≥1200px, 2 below, 1 ≤640px) → Pagination
 info cards (pipeline, contact/credits)
 ```
@@ -325,10 +329,10 @@ to `HeroGate`, `BestMatch`, `MatchSignal` and `JobCard`.
 | Poll refresh | Queued/running status | `/api/status` every 8 seconds, with `&since=<dispatchedAt>` while a dispatch is pending |
 | Load fresh jobs | State changes to success | `freshRef.current = true` → `/api/jobs?role=…&fresh=<timestamp>` with `x-refresh-token` |
 | Show toast | Refresh/load outcomes | `pushToast()` |
-| Updates ticker | Data loaded | `UpdatesTicker`: `newJobs(jobs, role)` from `rank.ts`, first `SHOWN = 12` on a CSS-translated track repeated once; pauses on hover/focus; "Nothing new since the last scrape" when none |
+| Updates ticker | Data loaded | `UpdatesTicker`: the facts (`timeAgo(updatedAt)`, `jobs.length`, `uniqueCompanies()`, `topMatch()`), then `newJobs(jobs, role)` from `rank.ts`, first `SHOWN = 12`, on a CSS-translated track repeated once; pauses on hover/focus; "Nothing new since the last scrape" plus the facts when none |
 | Best match tile | Data loaded | `best = topMatch(jobs, role)` (unfiltered list, the role's default order) → `BestMatch`; the tile links to the posting |
-| Match signal | Data loaded | `MatchSignal`: `scoreAxes(best)` (radar when 3+ parts, bars otherwise, a note when none) and `matchBands(jobs)` |
-| Card hover | Pointer over a card | `JobCard` `aim()` sets `--rx`/`--ry` (≤ `TILT_DEG` = 6°) and `--mx`/`--my`; `enter()` adds `.is-lit` for `LIGHT_MS` = 1200 ms; only when `(hover: hover) and (prefers-reduced-motion: no-preference)` |
+| Match signal | Data loaded | `MatchSignal`: `matchAxes(best, role)` (the file's parts when 3+, else `estimateParts()` with a footnote; radar when 3+ axes, bars otherwise) and `matchBands(jobs)` |
+| Card hover | Pointer over a card | `JobCard` `aim()` sets `--rx`/`--ry` (≤ `TILT_DEG` = 10°) and `--mx`/`--my`; `:hover` sets `--lift` = 18px (translateZ) and a shadow; `enter()` adds `.is-lit` for `LIGHT_MS` = 1200 ms; only when `(hover: hover) and (prefers-reduced-motion: no-preference)` |
 
 URL parameters:
 
@@ -485,14 +489,14 @@ from api_sources import ROLE_SEARCH_TERMS, build_job, to_date
 | `ROLE_SKILLS` | Role skill keywords |
 | `title_relevant()`, `title_tracks()` | Rejects unrelated titles; with `resolve_overlap=True` (collectors) a title several tracks accept goes to the one whose role it names; `publish.py` uses the default per-track rule |
 | `score_job()` | Base 30, +8 per title hit (max 2), +3 per skill hit (max 6), BA/SDE experience nudges, capped at 88 (`SCORE_CAP`) |
-| `score_parts()` | The parts behind `score_job()` on 0–100: `role` (title hits of the 2 allowed), `skill` (skills of the 6 allowed), and for SDE `experience` (`sde_band_adjust()` mapped from −9…+8) or for BA `experience` (entry title 100, senior 0, else 50) |
+| `score_parts()` | The parts behind `score_job()` on 0–100: `role` (title hits of the 2 allowed), `skill` (practices matched, of the skill allowance), `tool` (named products matched: the `ROLE_TOOLS` subset of `ROLE_SKILLS`, which the score counts as one allowance), and for SDE `experience` (`sde_band_adjust()` mapped from −9…+8) or for BA `experience` (entry title 100, senior 0, else 50) |
 | `build_job()` | Builds the public job object and calls `score_job()` |
 
 This is a **title + snippet keyword score**, not the hardcoded resume profile score.
 
 Consequences:
 
-- Vendor LinkedIn/company-page jobs carry the resume-style score and its five `score_parts`; portal and API/ATS jobs carry `score_parts()` (two or three parts).
+- Vendor LinkedIn/company-page jobs carry the resume-style score and its five `score_parts`; portal and API/ATS jobs carry `score_parts()` (three or four parts).
 - Direct portal and API/ATS jobs carry the simpler score. It is capped (2 title hits, 6 skills; at most 64 before BA/SDE nudges) so a keyword match cannot outrank a strong resume match; uncapped, Foundit's skill-tag lists scored up to 97 and filled the first page.
 - The merged board can therefore contain two scoring methods side by side. The constants live at the top of `score_job()` in `api_sources.py`.
 
@@ -502,7 +506,7 @@ Consequences:
 |---|---|---|
 | Vendor DB | External SQLite | `match_score`, `role_match`, `skill_match`, `experience_match`, `tool_match`, `domain_match` |
 | Export | `automation/export.py` | `score: round(match_score, 1)`, `score_parts` object |
-| Publish | `automation/publish.py` | `merge_payloads()` keeps the fresh copy; `dedupe_jobs()` keeps the best-scored copy across boards; `finalize_job()` keeps `score_parts`, computing them with `score_parts()` for jobs that have none |
+| Publish | `automation/publish.py` | `merge_payloads()` keeps the fresh copy; `dedupe_jobs()` keeps the best-scored copy across boards; `finalize_job()` keeps `score_parts`, computing them with `score_parts()` for jobs that have none or a set without `tool` |
 | Type | `web/lib/types.ts` | `Job.score`, `ScoreParts` |
 | API | `web/app/api/jobs/route.ts` | returns `RoleData` |
 | Dashboard | `web/components/JobDashboard.tsx` | filter by `score`, sort by `score`, pass `showScore` |
@@ -510,7 +514,7 @@ Consequences:
 | Overview | `web/components/BestMatch.tsx`, `MatchSignal.tsx` | the top job's score as `/100`, its `score_parts` as a radar |
 | Tier labels | `web/lib/utils.ts` | `scoreTier()`: ≥85 Excellent, ≥75 Strong, ≥65 Good, ≥50 Fair, else Low |
 
-Cards show the **overall** score. `MatchSignal` draws the top job's `score_parts`: `api_sources.score_parts()` publishes `role` (title hits), `skill` (skills matched) and, for BA and SDE, `experience` (fit to the role's band), each 0–100; vendor jobs may add `tool` and `domain`.
+Cards show the **overall** score. `MatchSignal` draws the top job's `score_parts`: `api_sources.score_parts()` publishes `role` (title hits), `skill` (practices matched), `tool` (named products matched) and, for BA and SDE, `experience` (fit to the role's band), each 0–100; vendor jobs may add `domain`. When a file carries fewer than three, `web/lib/estimate.ts` reads the same parts from the listing in the browser and the panel says so.
 
 ### 8.7 Important limitation
 
@@ -631,7 +635,7 @@ The export deliberately excludes full descriptions, resumes and PII.
 |---|---|
 | `_job_key()` | Canonical URL, fallback title/company/location |
 | `merge_payloads()` | Union previous + fresh, fresh copy wins, oldest `first_seen` / `posted_date` (capped at `first_seen`), newest `last_seen`, retention (undated jobs still listed are exempt) + unseen filter, cross-board dedupe |
-| `finalize_job()` | Cap `posted_date` at `first_seen`, recompute `is_new` from `first_seen`, keep or compute `score_parts` (all-zero sets are dropped), drop redundant `apply_url` |
+| `finalize_job()` | Cap `posted_date` at `first_seen`, recompute `is_new` from `first_seen`, keep or compute `score_parts` (all-zero sets and sets without `tool` are recomputed; still all-zero sets are dropped), drop redundant `apply_url` |
 | `build_payloads()` | Per-role merge / fresh / kept-previous / missing decision |
 | `previous_file()` / `read_previous()` | Read previous JSON from `origin/data` as UTF-8; `None` only when the file is absent, `PublishError` (publish aborts) on any other failure |
 | `push_data_branch()` | Write `<role>.json`, `manifest.json`, branch-level `vercel.json`; push with `--force-with-lease` |
@@ -686,7 +690,7 @@ Canonical TypeScript contract: `web/lib/types.ts` (`Job`, `RoleData`, `Manifest`
 | `Job.source` | string | export/build_job | filter, badge |
 | `Job.posted_date` | date/null | export/build_job | date filter, card |
 | `Job.score` | number | vendor engine or `score_job()` | filter, sort, card figure, best-match tile, match bands, ticker |
-| `Job.score_parts` | `{role, skill, experience?, tool?, domain?}`, 0–100 each; omitted when none or all zero | vendor export, `api_sources.score_parts()`, `publish.finalize_job()` | `MatchSignal` radar for the top match |
+| `Job.score_parts` | `{role, skill, tool, experience?, domain?}`, 0–100 each; omitted when none or all zero | vendor export, `api_sources.score_parts()`, `publish.finalize_job()` | `MatchSignal` radar for the top match (`estimate.ts` stands in when fewer than three) |
 | `Job.experience_min/max` | number/null | `extract_experience_with_source()` | experience label/filter |
 | `Job.experience_source` | `"board"`, `"text"`, `"page"`, `"level"`, `"title"` or null | export/build_job/enrich_experience | where the experience came from; publish keeps page/level answers across runs |
 | `Job.experience_level` | string/null | `enrich_experience.py` | LinkedIn's "Seniority level" when no years are stated; shown as-is |
@@ -751,15 +755,17 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
-| Card hover tilt / light | `JobCard.tsx` (`TILT_DEG`, `LIGHT_MS`) | `.job-card`, `.job-card-light` in `globals.css` |
+| Card hover tilt / lift / light | `JobCard.tsx` (`TILT_DEG`, `LIGHT_MS`) | `.job-grid` perspective, `.job-card` (`--lift`), `.job-card-light` in `globals.css` |
+| Edge lights | `globals.css` `.edge-light` | the two spans in `JobDashboard.tsx` |
+| Filter bar placement | `globals.css` `.filters` (scrolls with the page) | `.dashboard-jobs-anchor` scroll margin |
 | Grid columns per width | `globals.css` `.job-grid` (4 ≥1200px, 2, 1 ≤640px) | `PAGE_SIZE = 8` in `JobDashboard.tsx` |
-| Updates ticker | `web/components/UpdatesTicker.tsx` (`SHOWN`) | `.ticker*` styles, `newJobs()` in `web/lib/rank.ts` |
+| Updates ticker | `web/components/UpdatesTicker.tsx` (`SHOWN`, the facts) | `.ticker*` styles, `newJobs()`, `topMatch()` in `web/lib/rank.ts` |
 | Hero gate | `web/components/HeroGate.tsx` | `.hero-gate`, `.gate*` styles |
 | Best match choice | `web/lib/rank.ts` `topMatch()`, `compareByRole()` | `BestMatch.tsx`, the dashboard's score sort |
-| Match signal parts / bands | `web/lib/rank.ts` `scoreAxes()`, `matchBands()` | `MatchSignal.tsx`, `automation/api_sources.py` `score_parts()` |
+| Match signal parts / bands | `web/lib/rank.ts` `matchAxes()`, `scoreAxes()`, `matchBands()` | `MatchSignal.tsx`, `web/lib/estimate.ts`, `automation/api_sources.py` `score_parts()` |
 | Score tier colours/labels | `web/lib/utils.ts` `scoreTier()` | `JobCard.tsx` |
 | Resume profile / scoring keywords | External vendor `config.py` and `scoring_engine.py` (BA: `run_source.py` patches) | `automation/export.py`, `publish.py` |
-| Simple portal/API score | `automation/api_sources.py` `score_job()` | `score_parts()` (keep the two in step), `build_job()`, portal/API collectors |
+| Simple portal/API score | `automation/api_sources.py` `score_job()` | `score_parts()` and `web/lib/estimate.ts` (keep the three in step; `ROLE_TOOLS` ⊆ `ROLE_SKILLS`), `build_job()`, portal/API collectors |
 | Search keywords/cities/score floor | `profiles/<role>.json` | `run_source.py`, workflow |
 | Add a portal source | `automation/portal_scrapers.py` `fetch_*`, `SOURCES` | `collect_portal_jobs()` |
 | Add an API/ATS source | `automation/api_sources.py` `fetch_*`, `SOURCES` | `collect_api_jobs()` |
