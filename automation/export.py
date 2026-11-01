@@ -579,6 +579,39 @@ def clean_company(company: str) -> str:
     return value[:120]
 
 
+def normalize_title(title: str) -> str:
+    """Title as a reader sees it: entities decoded, HTML tags removed and any
+    whitespace (including non-breaking spaces) collapsed to one space.
+    "<strong>Business</strong>&nbsp;<strong>Analyst</strong>" -> "Business Analyst".
+    The stored title (clean_title) and the title gate (api_sources) both use it."""
+    text = unescape(str(title or ""))
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+LEGAL_SUFFIX_RE = re.compile(
+    r"(?:[\s,]+(?:private\s+limited|pvt\.?\s*ltd\.?|ltd\.?|limited|llc|llp|inc\.?|"
+    r"corp\.?|corporation|gmbh|plc|co\.?|s\.?a\.?))+\s*$",
+    re.I,
+)
+
+
+def strip_company(title: str, company: str) -> str:
+    """Title with the company name taken out, for the foreign-place check. A
+    title that names "NTT DATA North America" or "Bridgestone Americas" as the
+    employer says nothing about where the job is."""
+    text = normalize_title(title)
+    name = normalize_title(company)
+    # "Tesco Technology and Services Europe Limited" is written without its
+    # legal suffix in titles.
+    bare = LEGAL_SUFFIX_RE.sub("", name).strip(" ,.-")
+    short = re.sub(r"\s+", " ", COMPANY_SUFFIX_RE.sub(" ", name)).strip(" ,.-")
+    for value in sorted({name, bare, short}, key=len, reverse=True):
+        if len(value) >= 3:
+            text = re.sub(rf"(?<![a-z0-9]){re.escape(value)}(?![a-z0-9])", " ", text, flags=re.I)
+    return text
+
+
 # Boards pack extra facts into a title with "|": "Hiring | UX Designer",
 # "Data Engineer | 3-5 Yrs | Pune | Hybrid". The role is not always first, so
 # clean_title() drops the segments that carry no role and keeps the rest.
@@ -588,8 +621,10 @@ TITLE_FILLER_RE = re.compile(
     r"^(?:(?:we\s*(?:'re|are)\s+|now\s+)?hiring(?:\s+now)?|"
     r"urgent(?:ly)?(?:\s+(?:hiring|opening|openings|requirement|need|vacancy))?|"
     r"(?:job|new|current)?\s*(?:opening|openings|vacancy|vacancies|requirement)|"
-    r"immediate(?:\s+(?:joiners?|joining|hiring|opening|requirement|start))?|"
+    r"immediate(?:\s+(?:joiners?|joining|hiring|opening|requirement|start))?"
+    r"(?:\s+(?:only|preferred|required))?|"
     r"(?:early\s+)?joiners?(?:\s+(?:only|preferred))?|"
+    r"(?:\d{1,2}\s*days?\s+)?notice(?:\s+period)?\b.*|"
     r"walk[\s-]?ins?(?:\s+(?:drive|interview))?|apply(?:\s+now|\s+today)?|"
     r"jobs?|careers?|freshers?(?:\s+(?:can|may)\s+apply)?|"
     r"(?:full|part)[\s-]?time|contract(?:ual)?|contract\s+to\s+hire|c2h|"
@@ -607,15 +642,23 @@ TITLE_EXPERIENCE_RE = re.compile(
     re.I,
 )
 
-# "10-15 LPA", "CTC up to 12 L", "INR 8,00,000".
-TITLE_SALARY_RE = re.compile(r"\b(?:lpa|ctc|salary|inr|per\s+annum|p\.a\.)\b|₹", re.I)
+# "10-15 LPA", "CTC up to 12 L", "INR 8,00,000", "Salary: Negotiable". Anchored
+# to salary-shaped segments, so "Business Analyst - INR Payments" is a role.
+TITLE_SALARY_RE = re.compile(
+    r"^(?:salary|ctc|package)\b|"
+    r"(?:₹|\binr\b|\brs\.?)\s*\d|"
+    r"\d[\d,.]*\s*(?:(?:-|–|to)\s*\d[\d,.]*\s*)?(?:lpa|lakhs?|lacs?|l|k|cr|ctc)\b|"
+    r"\b(?:lpa|per\s+annum|p\.a\.)(?![a-z])",
+    re.I,
+)
 
 # Words that may sit next to a place in a location segment: "Pune (Hybrid)",
 # "Locations: Bangalore / Chennai", "Navi Mumbai", "Delhi NCR".
 TITLE_PLACE_FILLER = (
     "locations", "location", "based", "only", "city", "multiple", "any",
     "across", "hybrid", "onsite", "on-site", "office", "navi", "greater", "ncr",
-    "region", "and", "or", "in",
+    "region", "and", "or", "in", "wfo", "work from office", "sec", "sector",
+    "phase",
 )
 _TITLE_PLACE_RE = re.compile(
     r"(?<![a-z])(?:"
@@ -633,33 +676,58 @@ _TITLE_PLACE_RE = re.compile(
 _TITLE_PLACE_FILLER_RE = re.compile(
     r"(?<![a-z])(?:" + "|".join(re.escape(w) for w in TITLE_PLACE_FILLER) + r")(?![a-z])"
 )
+# US and Indian state codes, upper case only.
+_TITLE_STATE_CODE_RE = re.compile(
+    r"(?<![A-Za-z])(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|"
+    r"MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|"
+    r"VA|WA|WV|WI|WY|DC|KA|KL|MH|TS|TG|AP|GJ|DL|HR|UP|WB|RJ|MP|PB|OD|HP|JK|JH|CG)"
+    r"(?![A-Za-z])"
+)
+# Punctuation around a segment: "#Hiring", "- UX Designer -", "Urgent!".
+TITLE_SEGMENT_PUNCT = " -–—:*!.#"
 
 
 def _is_location_segment(segment: str) -> bool:
     """True when segment is only places ("Pune", "Bangalore / Chennai",
-    "San Jose, CA"), with no role words left over."""
+    "San Jose, CA", "Noida Sec 62"), with no role words left over."""
     low = segment.lower()
     if not _TITLE_PLACE_RE.search(low):
         return False
-    # State and country codes after a place: "Chennai, TN", "Austin, TX".
-    residue = re.sub(r"(?<![A-Za-z])[A-Z]{2}(?![A-Za-z])", " ", segment).lower()
+    # State and country codes after a place: "Chennai, TN", "Austin, TX". Only
+    # known codes count, so "AI, Bangalore" keeps its "AI".
+    residue = _TITLE_STATE_CODE_RE.sub(" ", segment).lower()
     residue = _TITLE_PLACE_RE.sub(" ", residue)
     residue = _TITLE_PLACE_FILLER_RE.sub(" ", residue)
     return re.search(r"[a-z]", residue) is None
 
 
+def _company_key(value: str) -> str:
+    return _norm_text(COMPANY_SUFFIX_RE.sub(" ", unescape(value)))
+
+
 def _is_company_segment(segment: str, company: str) -> bool:
+    """True when segment is the company, or the start of its name ("Deloitte"
+    for "Deloitte USI"). Prefixes shorter than four letters are not trusted."""
     if not company:
         return False
-    def norm(value: str) -> str:
-        return _norm_text(COMPANY_SUFFIX_RE.sub(" ", unescape(value)))
-    seg, comp = norm(segment), norm(company)
-    return bool(seg) and seg == comp
+    seg, comp = _company_key(segment), _company_key(company)
+    if not seg:
+        return False
+    return seg == comp or (len(seg) >= 4 and comp.startswith(seg + " "))
+
+
+def _trim_trailing_places(segment: str) -> str:
+    """Drop trailing ", <place>" parts of a kept segment: "AI, Bangalore" ->
+    "AI". A segment that is only places is dropped by _title_noise instead."""
+    parts = [p.strip() for p in segment.split(",")]
+    while len(parts) > 1 and (not parts[-1] or _is_location_segment(parts[-1])):
+        parts.pop()
+    return ", ".join(parts)
 
 
 def _title_noise(segment: str, company: str = "") -> bool:
     """True when a "|"-separated title segment names no role."""
-    value = segment.strip(" -–—:*!.")
+    value = segment.strip(TITLE_SEGMENT_PUNCT)
     if not value:
         return True
     return bool(
@@ -680,10 +748,11 @@ def clean_title(title: str, company: str = "") -> str:
     Pune" becomes "Business Analyst" and "Senior Engineer | Generative AI"
     becomes "Senior Engineer - Generative AI".
     """
-    value = re.sub(r"\s+", " ", unescape(str(title or ""))).strip()
+    value = normalize_title(title)
     if TITLE_SEPARATOR_RE.search(value):
         segments = [s.strip() for s in TITLE_SEPARATOR_RE.split(value) if s.strip()]
-        kept = [s for s in segments if not _title_noise(s, company)]
+        kept = [_trim_trailing_places(s.strip(TITLE_SEGMENT_PUNCT))
+                for s in segments if not _title_noise(s, company)]
         # Nothing names a role ("Hiring | Pune"): keep the first segment so
         # the title gate sees what the board actually said and rejects it.
         value = " - ".join(kept) if kept else (segments[0] if segments else "")
@@ -784,10 +853,12 @@ def export(db_path: str, role: str, min_score: float, limit: int, max_days: int 
         if not key or key in seen:
             continue
 
-        # The gate sees the same cleaned title that is published, so publish.py
-        # re-checking the stored title can never disagree with this one.
+        # The gate sees the same cleaned title that is published. Here the
+        # title also goes to one track only (resolve_overlap); publish.py's
+        # re-check uses each track's own, wider rule, so it never drops a job
+        # this gate let through.
         title = clean_title(row["title"], row["company"] or "")
-        if title_relevant is not None and not title_relevant(role, title):
+        if title_relevant is not None and not title_relevant(role, title, resolve_overlap=True):
             dropped_offrole += 1
             continue
 

@@ -35,7 +35,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
-from html import unescape
 from typing import Any, Dict, Iterable, List, Optional
 
 from export import (
@@ -48,6 +47,8 @@ from export import (
     looks_foreign,
     make_snippet,
     normalize_location,
+    normalize_title,
+    strip_company,
     valid_url,
 )
 
@@ -120,10 +121,7 @@ ROLE_TITLE_EXCLUDE = {
              "test", "testing", "tester", "qa", "quality assurance", "etl testing",
              # Platform operations rather than pipeline engineering.
              "administrator", "dba", "database administrator",
-             "support engineer", "support lead", "support", "iam support",
-             # Analyst titles belong to BA (Data Analyst) or nowhere; see
-             # DATA_ANALYST_TITLE for the analyst rule itself.
-             "data analysts", "data entry"],
+             "support engineer", "support lead", "support", "iam support"],
     "uiux": ["mechanical", "hardware", "electrical", "civil", "data center",
              "instructional", "graphic designer", "graphic design", "illustrator",
              "motion graphics", "motion designer", "motion design",
@@ -155,7 +153,8 @@ ROLE_TITLE_EXCLUDE = {
             "site reliability", "solutions engineer", "salesforce",
             "servicenow", "sap ", "warehouse", "driver", "technician",
             # Hardware design ("FPGA Design Engineer", "PCB Design Engineer").
-            "fpga", "asic", "pcb", "vlsi", "rtl", "analog", "design engineer",
+            # Not plain "fpga": "FPGA IP Software Development Engineer" is software.
+            "asic", "pcb", "vlsi", "rtl", "analog", "design engineer",
             "design engineering", "signal integrity", "board design"],
 }
 
@@ -320,15 +319,6 @@ def _hit_word(token: str, text: str) -> bool:
     return re.search(rf"(?<![a-z]){re.escape(token)}(?![a-z])", text) is not None
 
 
-def normalize_title(title: str) -> str:
-    """Title as a reader sees it: entities decoded, HTML tags removed and any
-    whitespace (including non-breaking spaces) collapsed to one space.
-    "<strong>Business</strong>&nbsp;<strong>Analyst</strong>" -> "Business Analyst"."""
-    text = unescape(str(title or ""))
-    text = re.sub(r"<[^>]+>", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
-
-
 # ── One track per title ───────────────────────────────────────────────────────
 #
 # The token lists above are broad on purpose ("engineer" for SDE, "data" for
@@ -353,8 +343,14 @@ def normalize_title(title: str) -> str:
 #
 # GenAI and Data also leave web-stack roles to SDE unless they are named:
 # "Senior Software Engineer - Data & Backend" and "Full Stack developer (AI &
-# SaaS)" are SDE jobs. BA is an allow-list of its own (BA_TITLE) and is never
-# part of this.
+# SaaS)" are SDE jobs. A Business/Data Analyst title (BA_TITLE) is a BA job
+# only, whatever its domain ("Business Analyst - Generative AI").
+#
+# These rules decide where a newly scraped job goes (build_job and export call
+# title_relevant(..., resolve_overlap=True)). publish.py re-checks the jobs it
+# carries over from earlier runs with each track's own, wider rule
+# (_track_accepts), so a job already published under the "losing" track is not
+# deleted before the winning track has scraped it; it ages out instead.
 
 _AI_QUALIFIER = (
     r"(?:ai|a\.i\.|ml|aiml|ai\s*[/&+-]\s*ml|ml\s*[/&+-]\s*ai|ai\s+and\s+ml|"
@@ -413,18 +409,24 @@ SPECIALISED_TITLE = {
 }
 OVERLAP_TRACKS = ("genai", "data", "uiux", "sde")
 
-# The Data track is engineering. "Data Analytics Analyst", "SQL Analyst" or
-# "Senior Data Analysts" contain its broad "data"/"sql" tokens but are analyst
-# jobs (BA keeps the Data Analyst ones). An analyst grade on a data
-# engineering title ("Analyst I Data Engineering") still counts.
+# The Data track is engineering. "Data Analytics Analyst", "SQL Analyst",
+# "ETL Analyst" or "Senior Data Analysts" contain its broad tokens but are
+# analyst jobs (BA keeps the Data Analyst ones). Only an analyst grade on a
+# title that names a data engineering role ("Analyst I Data Engineering",
+# "Sr. Analyst, Data Engineer") still counts.
 DATA_ANALYST_TITLE = re.compile(r"(?<![a-z])analysts?(?![a-z])")
+ENGINEERING_NOUN = re.compile(r"(?<![a-z])(?:engineers?|engineering|developers?)(?![a-z])")
+# "Data Entry Operator", "Data-Entry Executive", "DataEntry".
+DATA_ENTRY_TITLE = re.compile(r"(?<![a-z])data[\s_-]*entry(?![a-z])")
 
 # Hardware design titles ("FPGA Design Engineer", "Product Design Engineer")
-# carry UI/UX's "design" token; they stay out unless a UI/UX role is named.
+# carry UI/UX's "design" token; they stay out unless a UI/UX role or a UI
+# word is named ("Design Engineer - UI", "Web Design Engineer").
 HARDWARE_DESIGN_TITLE = re.compile(
     r"(?<![a-z])(?:design\s+engineer\w*|fpga|asic|pcb|vlsi|rtl|analog|"
     r"signal\s+integrity|board\s+design)(?![a-z])"
 )
+UI_WORD_TITLE = re.compile(r"(?<![a-z])(?:ui|front[\s-]?end|web|interface)(?![a-z])")
 
 
 def _claim(role: str, low: str):
@@ -441,24 +443,24 @@ def _claim(role: str, low: str):
 
 def _track_accepts(role: str, low: str) -> bool:
     """The track's own rule, before overlaps with other tracks are resolved."""
+    if role == "ba":
+        return BA_TITLE.search(low) is not None
     # Internships are not full-time openings for the engineering/design tracks.
     if ENTRY_LEVEL_TITLE.search(low):
         return False
-    # Business/Data Analyst titles are BA jobs, whatever their domain
-    # ("Business Analyst - Generative AI", "Associate - Financial Data Analysis").
-    if BA_TITLE.search(low):
-        return False
     if role == "genai" and GENAI_HARD_TITLE.search(low):
-        return False
-    if role in ("genai", "data") and SDE_WEB_ROLE_TITLE.search(low) and not _claim(role, low):
         return False
     if role == "genai" and GENAI_CORE_TITLE.search(low):
         return True
     if role == "sde" and re.fullmatch(r"\s*data engineering\s*", low):
         return False
-    if role == "data" and DATA_ANALYST_TITLE.search(low) and not DATA_ROLE_TITLE.search(low):
+    if role == "data" and DATA_ANALYST_TITLE.search(low) and not (
+            DATA_ROLE_TITLE.search(low) and ENGINEERING_NOUN.search(low)):
         return False
-    if role == "uiux" and HARDWARE_DESIGN_TITLE.search(low) and not UIUX_ROLE_TITLE.search(low):
+    if role == "data" and DATA_ENTRY_TITLE.search(low):
+        return False
+    if role == "uiux" and HARDWARE_DESIGN_TITLE.search(low) and not (
+            UIUX_ROLE_TITLE.search(low) or UI_WORD_TITLE.search(low)):
         return False
     if any(_hit_word(token, low) for token in ROLE_TITLE_EXCLUDE.get(role, [])):
         return False
@@ -467,7 +469,17 @@ def _track_accepts(role: str, low: str) -> bool:
 
 @lru_cache(maxsize=16384)
 def _title_tracks(low: str) -> frozenset:
+    # Business/Data Analyst titles are BA jobs, whatever their domain
+    # ("Business Analyst - Generative AI", "Associate - Financial Data Analysis").
+    if BA_TITLE.search(low):
+        return frozenset({"ba"})
     accepted = [role for role in OVERLAP_TRACKS if _track_accepts(role, low)]
+    if "sde" in accepted:
+        accepted = [
+            role for role in accepted
+            if role not in ("genai", "data") or not SDE_WEB_ROLE_TITLE.search(low)
+            or _claim(role, low)
+        ]
     if len(accepted) > 1:
         claims = {role: _claim(role, low) for role in accepted if role != "sde"}
         claims = {role: claim for role, claim in claims.items() if claim}
@@ -475,19 +487,28 @@ def _title_tracks(low: str) -> frozenset:
             winner = max(claims, key=claims.get)
             named_role = claims[winner][0] == 2
             accepted = [winner] if named_role or "sde" not in accepted else [winner, "sde"]
-    if BA_TITLE.search(low):
-        accepted.append("ba")
     return frozenset(accepted)
 
 
 def title_tracks(title: str) -> frozenset:
-    """Every track a title belongs to: usually at most one of GenAI, Data,
-    UI/UX and SDE (see the rules above), plus BA when BA_TITLE matches."""
+    """The tracks a newly scraped title goes to: BA alone for a BA_TITLE,
+    otherwise usually at most one of GenAI, Data, UI/UX and SDE (see the rules
+    above)."""
     return _title_tracks(normalize_title(title).lower())
 
 
-def title_relevant(role: str, title: str) -> bool:
-    return role in title_tracks(title)
+def title_relevant(role: str, title: str, resolve_overlap: bool = False) -> bool:
+    """True when title belongs to the role's track.
+
+    Collectors pass ``resolve_overlap=True``: the title must also win the
+    one-track-per-title rules (title_tracks). Without it only the track's own
+    rule applies; publish.py re-checks jobs carried over from earlier runs
+    that way, so it never deletes a job the collectors would keep.
+    """
+    low = normalize_title(title).lower()
+    if resolve_overlap:
+        return role in _title_tracks(low)
+    return _track_accepts(role, low)
 
 
 # SDE targets 3-8 years; titles are the fallback when no range is stated.
@@ -590,7 +611,7 @@ def build_job(
     # stored and checked as "UX Designer"). The foreign checks still read the
     # raw title, where "| Berlin" or "- EU" may sit in a dropped segment.
     public_title = clean_title(title, company)
-    if not title_relevant(role, public_title):
+    if not title_relevant(role, public_title, resolve_overlap=True):
         return None
     if looks_foreign(title):
         return None

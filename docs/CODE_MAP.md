@@ -454,7 +454,7 @@ from api_sources import ROLE_SEARCH_TERMS, build_job, to_date
 | `ROLE_TITLE_TOKENS` | Role title keywords |
 | `ROLE_TITLE_EXCLUDE` | Obvious wrong-role titles |
 | `ROLE_SKILLS` | Role skill keywords |
-| `title_relevant()`, `title_tracks()` | Rejects unrelated titles; a title several tracks accept goes to the one whose role it names |
+| `title_relevant()`, `title_tracks()` | Rejects unrelated titles; with `resolve_overlap=True` (collectors) a title several tracks accept goes to the one whose role it names; `publish.py` uses the default per-track rule |
 | `score_job()` | Base 30, +8 per title hit, +3 per skill hit, capped at 97 |
 | `build_job()` | Builds the public job object and calls `score_job()` |
 
@@ -586,7 +586,8 @@ Company tokens: `automation/companies.json`.
 | `extract_experience_with_source()` | Years from a board's experience field, then title/description ("stated"); only intern/fresher/entry-level words count as a title signal; level words such as "associate" or "senior" never produce numbers |
 | `canonical_url()` | Remove tracking params for deduplication |
 | `make_snippet()` | 240-character public snippet |
-| `clean_company()`, `clean_title()`, `valid_url()` | Public-field cleanup; `clean_title()` keeps the role-bearing segments of a `\|` title |
+| `clean_company()`, `clean_title()`, `valid_url()` | Public-field cleanup; `clean_title()` removes HTML and keeps the role-bearing segments of a `\|` title |
+| `normalize_title()`, `strip_company()` | Title text without HTML/extra whitespace (shared with `api_sources.py`); title without the company name for the foreign-place check |
 | `export()` | SQLite → jobs array with score, parts, experience, first-seen |
 | `main()` | CLI export |
 
