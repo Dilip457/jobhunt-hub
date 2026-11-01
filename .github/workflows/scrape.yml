@@ -20,16 +20,24 @@ on:
           - ba
           - sde
 
+# Read-only by default: the scrape and warp jobs run third-party code (vendor
+# repos and their unpinned requirements). Only publish gets contents: write.
 permissions:
-  contents: write
+  contents: read
 
+# One queue per role. A shared group keeps at most one pending run, so a third
+# dispatch for another role silently cancelled the second. Runs for different
+# roles may now publish at the same time; publish.py's force-with-lease retry
+# re-reads the data branch and merges again when the other run got there first.
+# The schedule has no inputs, so it shares the "all" queue with manual "all".
 concurrency:
-  group: jobhunt-scrape
+  group: jobhunt-scrape-${{ inputs.role || 'all' }}
   cancel-in-progress: false
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
@@ -37,11 +45,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: portal
+          persist-credentials: false
 
       - name: Build matrix
         id: set
         working-directory: portal
-        run: python automation/matrix.py --role "${{ inputs.role || 'all' }}" >> "$GITHUB_OUTPUT"
+        env:
+          ROLE: ${{ inputs.role || 'all' }}
+        run: python automation/matrix.py --role "$ROLE" >> "$GITHUB_OUTPUT"
 
   scrape:
     needs: prepare
@@ -61,6 +72,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: portal
+          # Nothing in this job pushes; keep the token out of .git/config so
+          # vendor code and pip packages cannot read it.
+          persist-credentials: false
 
       - name: Checkout scraper repo
         uses: actions/checkout@v4
@@ -71,6 +85,7 @@ jobs:
           # upstream change can silently break a role.
           ref: ${{ matrix.ref }}
           path: vendor/${{ matrix.role }}
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -151,6 +166,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: portal
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -211,6 +227,11 @@ jobs:
     needs: [prepare, scrape, warp]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The only job that writes: publish.py pushes the data branch through the
+    # token actions/checkout persists in .git/config (default), so keep it.
+    permissions:
+      contents: write
     steps:
       - name: Checkout portal
         uses: actions/checkout@v4
@@ -224,4 +245,4 @@ jobs:
           merge-multiple: true
 
       - name: Publish to data branch (merges with existing data)
-        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21 --unseen-days 7
+        run: python automation/publish.py --artifacts artifacts --branch data --retention-days 21 --unseen-days 7 --attempts 5

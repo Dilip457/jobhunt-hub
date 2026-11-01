@@ -374,7 +374,7 @@ Protections:
 
 - No visible refresh button and no separate admin URL.
 - Hidden keyboard shortcut (`Alt+Shift+R`) plus a confirmation dialog.
-- GitHub Actions `concurrency: jobhunt-scrape` serialises runs.
+- GitHub Actions `concurrency: jobhunt-scrape-<role>` serialises runs for the same role; different roles run side by side and their publishes merge.
 - 25-minute cooldown per role (`lib/github.ts`).
 - Same-origin check on the POST route: only this deployment's own hosts are accepted, and requests without an `Origin` header (scripts) are refused.
 - **Refresh key:** set `REFRESH_TOKEN` on Vercel and the dialog asks for it (it is remembered in that browser). Without it, anyone who finds the shortcut can start a scrape.
@@ -390,7 +390,7 @@ browser history work normally. Filter parameters such as `?q=python&city=Bangalo
 written to the role URL for shareable filtered views. Unknown role slugs redirect to `/`.
 
 Hiding the control is a UX guard, not an authentication boundary. Set `REFRESH_TOKEN` for
-real access control; the cooldown and one-run concurrency limit only bound repeated use.
+real access control; the cooldown and one-run-per-role concurrency limit only bound repeated use.
 
 ---
 

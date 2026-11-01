@@ -122,23 +122,26 @@ on:
 
 ```yaml
 permissions:
-  contents: write
+  contents: read            # every job by default
 
 concurrency:
-  group: jobhunt-scrape
+  group: jobhunt-scrape-${{ inputs.role || 'all' }}
   cancel-in-progress: false
 ```
 
-- `contents: write` is needed to force-push the `data` branch.
-- Only one scrape workflow runs at a time; a second run queues rather than cancelling the first.
+- The token is read-only for `prepare`, `scrape` and `warp`, which run third-party code (vendor repos and their unpinned `requirements.txt`). Their checkouts also set `persist-credentials: false`, so no token is left in `.git/config` for that code to read.
+- Only `publish` gets `permissions: contents: write`, which it needs to force-push the `data` branch. Its checkout keeps the default persisted credentials because `publish.py` pushes through `origin`.
+- Runs queue **per role**: the scheduled run has no inputs and shares the `all` queue with a manual `all`. GitHub keeps one pending run per group, so a shared group used to cancel a pending run for one role when another role was dispatched. Runs for different roles can now overlap; when two publish at once, the loser's `--force-with-lease` push is rejected and `publish.py` re-reads the `data` branch and merges again (`--attempts 5`).
 
 ### 3.3 `prepare` job
 
+- `timeout-minutes: 5`
+
 1. Checks out the portal repository into `portal/`.
-2. Runs:
+2. Runs (the input is passed as the `ROLE` environment variable, never pasted into the script):
 
 ```bash
-python automation/matrix.py --role "${{ inputs.role || 'all' }}" >> "$GITHUB_OUTPUT"
+python automation/matrix.py --role "$ROLE" >> "$GITHUB_OUTPUT"
 ```
 
 `matrix.py` maps roles to vendor repos:
@@ -232,12 +235,14 @@ WARP is best-effort. If it fails to connect, the main scrape still publishes.
 
 - `needs: [prepare, scrape, warp]`
 - `if: always()`
+- `timeout-minutes: 10`, so a hung push cannot hold the role's queue for GitHub's 6-hour default
+- `permissions: contents: write` (the only job with it)
 - Checks out the portal with `fetch-depth: 0`
 - Downloads all artifacts with `merge-multiple: true`
 - Runs:
 
 ```bash
-python automation/publish.py --artifacts artifacts --branch data --retention-days 21
+python automation/publish.py --artifacts artifacts --branch data --retention-days 21 --unseen-days 7 --attempts 5
 ```
 
 The `if: always()` means publishing can happen even when a scrape or WARP job failed or was cancelled.
