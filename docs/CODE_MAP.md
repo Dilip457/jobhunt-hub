@@ -143,7 +143,7 @@ jobhunt-hub/
 │  │  ├─ RoleSwitcher.tsx         # in-dashboard role tabs
 │  │  ├─ ConfirmRefresh.tsx       # hidden-refresh confirmation dialog
 │  │  ├─ RefreshPanel.tsx         # queued/running/success/failed progress
-│  │  ├─ BrandMark.tsx            # CSS 3D rocking cube brand mark
+│  │  ├─ BrandMark.tsx            # "Next Step" brand mark: CSS 3D steps, a red dot climbing
 │  │  ├─ AnimatedFavicon.tsx      # transparent canvas favicon, 8 fps, pauses while the scene or scrolling is busy
 │  │  └─ Icons.tsx                # inline SVG icon set
 │  ├─ lib/
@@ -221,8 +221,8 @@ jobhunt-hub/
 | Role switcher | `web/components/RoleSwitcher.tsx` | `RoleSwitcher` | In-dashboard role tabs |
 | Refresh confirmation | `web/components/ConfirmRefresh.tsx` | `ConfirmRefresh` | “Refresh … jobs?” dialog; password form (hidden `username` + `current-password` field, so browsers offer to save it), “Remember on this device”, inline “Wrong password” / lockout error (`aria-live`); Escape/backdrop cancel |
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
-| Brand mark | `web/components/BrandMark.tsx` | `BrandMark` | CSS 3D cube with the spark on front/back faces; rocks ±28° and floats, 42px desktop / 36px phone, frozen under `prefers-reduced-motion` |
-| Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `drawArm`, `drawLeg`, `paint` | Draws the guide climbing two enlarged steps on a 64×64 transparent canvas at 8 fps, updates every icon link, pauses when hidden, while `<html data-scene-busy>` is set and for 400 ms after scroll or pointer input, and defers to the static files under `prefers-reduced-motion` |
+| Brand mark | `web/components/BrandMark.tsx` | `BrandMark` | "Next Step": three isometric CSS 3D steps (top one blue) and a red dot hopping up them every 3.6 s (`brand-climb` in `globals.css`); em-sized, 42px desktop / 36px phone; the dot rests on the top step under `prefers-reduced-motion` |
+| Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `dotPosition`, `project`, `paint` | Draws the Next Step mark (the geometry of `favicon.svg`) with the red dot hopping on the CSS mark's 3.6 s timing, on a 64×64 transparent canvas at 8 fps, updates every icon link, pauses when hidden, while `<html data-scene-busy>` is set and for 400 ms after scroll or pointer input, and defers to the static files under `prefers-reduced-motion` |
 | Icons | `web/components/Icons.tsx` | `SearchIcon`, `ChevronDownIcon`, `RefreshIcon`, `MapPinIcon`, `BuildingIcon`, `CalendarIcon`, `ExternalIcon`, `CheckIcon`, `CloseIcon`, `SparkIcon`, `MailIcon`, `BriefcaseIcon`, `LayersIcon`, `GlobeIcon`, `AlertIcon`, `GithubIcon`, `CodeIcon`, `FilterIcon`, `EyeIcon`, `ArrowRightIcon`, `ArrowLeftIcon`, `PlayIcon`, `RouteIcon` | Inline SVG icon set |
 
 ### 4.3 Data access and shared logic
@@ -248,8 +248,8 @@ jobhunt-hub/
 | Wide scene poster | `web/public/models/student/scene.webp` | `.intro-poster` and `.static-intro-scene` in `globals.css` |
 | Portrait reference | `web/public/models/student/portrait.webp` | Reference render only; not used as the loading background |
 | Attribution | `web/public/models/student/ATTRIBUTION.txt` | Asset license, modifications and prototype limitations |
-| Favicon source | `web/public/favicon.svg` | Transparent guide-on-two-steps mark enlarged for 16px legibility; SMIL walk cycle for browsers that animate SVG favicons |
-| Favicon fallbacks | `web/public/favicon.ico`, `favicon-{16,32,48}.png`, `apple-touch-icon.png`, `icon-{192,512}.png` | Static tab, iOS and PWA icons; alpha preserved |
+| Favicon source | `web/public/favicon.svg` | Transparent Next Step mark on a 32-unit grid (three isometric steps, ink outlines, red dot on the top step); SMIL hop for browsers that animate SVG favicons |
+| Favicon fallbacks | `web/public/favicon.ico`, `favicon-{16,32,48}.png`, `apple-touch-icon.png`, `icon-{192,512}.png` | Rendered from `favicon.svg`: tab sizes transparent; Apple and PWA icons on the dark ground inside the maskable safe zone; links versioned `?v=7` |
 | PWA manifest | `web/public/manifest.json` | Installable app metadata and shortcuts to the four role pages |
 
 ---
