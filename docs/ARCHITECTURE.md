@@ -286,15 +286,18 @@ The character has no facial blendshapes, eye rig, lip-sync or motion capture;
 the source ships only walk and run clips. The dashboard states this and the full
 modification record ships in `web/public/models/student/ATTRIBUTION.txt`.
 
-The shared brand mark is a CSS 3D cube with the white spark on its front and back
-faces (`BrandMark.tsx`). It gently rocks ±28° on Y and floats a pixel, so the mark
-reads as dimensional without hiding the spark; the boot screen stays cheap because
-the effect uses CSS transforms rather than a second WebGL context. The mark is 42px
-on desktop and 36px on phones, and the reduced-motion path freezes it at a three-
-quarter view.
+The shared brand mark is "Next Step" (`BrandMark.tsx`): three isometric steps in
+CSS 3D, the top one in blue, with a red dot that hops from step to step, rests on
+the top, fades and starts again every 3.6 s. It carries the site's line, "find your
+next move". The boot screen stays cheap because the effect uses CSS transforms
+rather than a second WebGL context. Everything is sized in em from the mark's
+font-size, 42px on desktop and 36px on phones, and under reduced motion the dot
+rests on the top step.
 
-The tab icon is a transparent mark of the guide climbing two chunky steps. The
-figure and steps were enlarged to fill the canvas so the mark stays legible at 16px.
+The tab icon is the same mark: the same three steps and red dot, outlined in ink so
+it reads on light and dark tab strips, in `web/public/favicon.svg` with PNG and ICO
+sizes rendered from it. The PWA and Apple icons put it on the site's dark ground
+inside the maskable safe zone.
 Chromium does not animate SVG favicons, so `AnimatedFavicon.tsx` paints a 64×64
 frame to a canvas at 8 fps and points every `rel="icon"` link at the resulting PNG.
 Each frame costs main-thread time (a PNG encode and the browser's icon update), so
@@ -302,7 +305,7 @@ the animation stands down whenever that time matters more: while the cinematic
 scene is drawing (`CinematicIntro` sets `data-scene-busy` on `<html>`) and for
 400 ms after any scroll or pointer input. It also pauses while the tab is hidden and
 is skipped under `prefers-reduced-motion: reduce`, where the static SVG, ICO and PNG
-files in `web/public/` remain. Icon URLs carry a `?v=6` suffix so a browser that cached an
+files in `web/public/` remain. Icon URLs carry a `?v=7` suffix so a browser that cached an
 older tab icon picks up the new one.
 
 ### 4.5.1 Frame budget

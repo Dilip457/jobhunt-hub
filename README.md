@@ -287,6 +287,8 @@ The dashboard is one click away in every degraded mode:
 - Every full page load plays the greeting; use **Skip intro** if you want to go straight to the roles.
 - Keyboard focus, mobile layout and browser back/forward work normally.
 
+The logo is **Next Step**: three 3D steps with a red dot climbing them, the site's "find your next move" in one mark. It is the same in the header, the intro, the boot screen and the browser tab, and it rests on the top step under reduced motion.
+
 Each role lives at a clean, shareable URL — `/jobs/genai`, `/jobs/data`, `/jobs/uiux` and
 `/jobs/ba`, `/jobs/sde` — and filter parameters are preserved in the URL.
 

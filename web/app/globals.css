@@ -144,121 +144,155 @@ button:disabled {
   flex: none;
 }
 
+/* Brand mark: "Next Step" (BrandMark.tsx). Three isometric steps in CSS 3D,
+   the top one blue, and a red dot hopping up them. Sized in em from the
+   mark's font-size: 42px here, 36px on small screens. */
 .brand-mark {
-  --cube: 18px;
-  --half: 9px;
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
-  color: #fff;
-  background:
-    radial-gradient(120% 120% at 24% 12%, rgba(255, 48, 79, 0.34), transparent 55%),
-    radial-gradient(120% 120% at 82% 88%, rgba(40, 123, 255, 0.36), transparent 58%),
-    #10131c;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 14px 34px -16px rgba(255, 48, 79, 0.8);
-  perspective: 220px;
-  overflow: hidden;
+  display: block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  font-size: 42px;
+  perspective: 4em;
 }
 
-.brand-mark-glow {
+/* A soft light under the top step. */
+.brand-glow {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  right: 4%;
+  top: 8%;
+  width: 60%;
+  height: 60%;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 0.5),
-    rgba(40, 123, 255, 0.18) 45%,
-    transparent 70%
-  );
-  filter: blur(5px);
-  animation: brand-glow 4s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(40, 123, 255, 0.45), transparent 65%);
+  animation: brand-glow 3.6s ease-in-out infinite;
 }
 
-.brand-3d {
-  position: relative;
-  width: var(--cube);
-  height: var(--cube);
+.brand-iso {
+  position: absolute;
+  left: 15%;
+  top: 15%;
+  width: 70%;
+  height: 70%;
+  transform: rotateX(56deg) rotateZ(-40deg);
   transform-style: preserve-3d;
-  animation: brand-float 4.5s ease-in-out infinite;
 }
 
-.brand-cube {
+.brand-step {
+  --h: 0.15em;
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  transform-style: preserve-3d;
+}
+
+.brand-step-1 {
+  --h: 0.11em;
+  left: 4%;
+  top: 60%;
+}
+
+.brand-step-2 {
+  --h: 0.2em;
+  left: 34%;
+  top: 40%;
+}
+
+.brand-step-3 {
+  --h: 0.3em;
+  left: 64%;
+  top: 20%;
+}
+
+.brand-step-top {
   position: absolute;
   inset: 0;
-  transform-style: preserve-3d;
-  animation: brand-cube-rock 7s ease-in-out infinite;
+  background: #fff;
+  transform: translateZ(var(--h));
 }
 
-.brand-face {
+.brand-step-front {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 2px;
-  backface-visibility: hidden;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: var(--h);
+  background: #c9ced9;
+  transform-origin: top;
+  transform: rotateX(90deg);
 }
 
-.brand-face svg {
-  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
+.brand-step-side {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: var(--h);
+  height: 100%;
+  background: #8f97a8;
+  transform-origin: left;
+  transform: rotateY(-90deg);
 }
 
-.brand-face-front {
-  transform: translateZ(var(--half));
-  background: linear-gradient(135deg, #ff5a73, #287bff);
+.brand-step-3 .brand-step-top {
+  background: linear-gradient(135deg, #287bff, #5aa0ff);
 }
 
-.brand-face-back {
-  transform: rotateY(180deg) translateZ(var(--half));
-  background: linear-gradient(135deg, #287bff, #ff5a73);
+.brand-step-3 .brand-step-front {
+  background: #1d5fc9;
 }
 
-.brand-face-right {
-  transform: rotateY(90deg) translateZ(var(--half));
-  background: linear-gradient(180deg, #3d8bff, #1a4fb0);
+.brand-step-3 .brand-step-side {
+  background: #154aa0;
 }
 
-.brand-face-left {
-  transform: rotateY(-90deg) translateZ(var(--half));
-  background: linear-gradient(180deg, #23345c, #0f1728);
+/* The dot faces the viewer (the last two rotations undo the floor's tilt)
+   and hops step to step, then fades and starts again at the bottom. */
+.brand-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13%;
+  height: 13%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff8a9b, #ff304f 60%);
+  box-shadow: 0 0 0.12em rgba(255, 48, 79, 0.9);
+  transform: translate(-50%, -50%) translate3d(0.21em, -0.098em, 0.39em) rotateZ(40deg) rotateX(-56deg);
+  animation: brand-climb 3.6s ease-in-out infinite;
 }
 
-.brand-face-top {
-  transform: rotateX(90deg) translateZ(var(--half));
-  background: linear-gradient(135deg, #ff8a9b, #ff304f);
-}
-
-.brand-face-bottom {
-  transform: rotateX(-90deg) translateZ(var(--half));
-  background: #0b0f19;
-}
-
-@keyframes brand-cube-rock {
+@keyframes brand-climb {
   0%,
+  14% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(-0.21em, 0.182em, 0.2em) rotateZ(40deg) rotateX(-56deg);
+  }
+  22% {
+    transform: translate(-50%, -50%) translate3d(-0.105em, 0.112em, 0.42em) rotateZ(40deg) rotateX(-56deg);
+  }
+  30%,
+  44% {
+    transform: translate(-50%, -50%) translate3d(0em, 0.042em, 0.29em) rotateZ(40deg) rotateX(-56deg);
+  }
+  52% {
+    transform: translate(-50%, -50%) translate3d(0.105em, -0.028em, 0.52em) rotateZ(40deg) rotateX(-56deg);
+  }
+  60%,
+  84% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(0.21em, -0.098em, 0.39em) rotateZ(40deg) rotateX(-56deg);
+  }
+  92% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(0.21em, -0.098em, 0.39em) rotateZ(40deg) rotateX(-56deg);
+  }
+  93% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate3d(-0.21em, 0.182em, 0.2em) rotateZ(40deg) rotateX(-56deg);
+  }
   100% {
-    transform: rotateX(-18deg) rotateY(-28deg);
-  }
-  50% {
-    transform: rotateX(-18deg) rotateY(28deg);
-  }
-}
-
-@keyframes brand-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-1.5px);
+    opacity: 1;
+    transform: translate(-50%, -50%) translate3d(-0.21em, 0.182em, 0.2em) rotateZ(40deg) rotateX(-56deg);
   }
 }
 
@@ -266,23 +300,17 @@ button:disabled {
   0%,
   100% {
     opacity: 0.55;
-    transform: scale(0.9);
   }
-  50% {
+  60%,
+  84% {
     opacity: 1;
-    transform: scale(1.15);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand-3d,
-  .brand-cube,
-  .brand-mark-glow {
+  .brand-glow,
+  .brand-dot {
     animation: none;
-  }
-
-  .brand-cube {
-    transform: rotateX(-18deg) rotateY(-24deg);
   }
 }
 
@@ -3574,10 +3602,7 @@ a.best-match:hover {
   }
 
   .brand-mark {
-    --cube: 16px;
-    --half: 8px;
-    width: 36px;
-    height: 36px;
+    font-size: 36px;
   }
 
   .skip-intro {
