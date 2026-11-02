@@ -266,7 +266,7 @@ The cinematic intro is progressive enhancement, never a gate:
 | Normal visit | Clean boot, then a four-second rigged 3D character close-up (`HI.`), camera pullback, path, turn, walk, role selection |
 | Returning visitor | The greeting still plays; **Skip intro** jumps straight to role selection |
 | **Skip intro** | Cancels timers and jumps straight to role selection |
-| `prefers-reduced-motion: reduce` | Static wide-scene selector: four-second `HI.` first, then the same four destinations; no canvas |
+| `prefers-reduced-motion: reduce` | Static wide-scene selector: four-second `HI.` first, then the same five destinations; no canvas |
 | WebGL unavailable, model fails, or a 12 s load timeout | The same static wide-scene fallback; the greeting is shown before the role cards |
 | Very small screen | Aspect- and height-aware camera, gate-fitting departure shot, scrollable compact bottom sheet; short landscape uses a three-column strip |
 | Browser back/forward | Standard App Router history between `/` and `/jobs/[role]` |

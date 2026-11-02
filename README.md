@@ -274,8 +274,8 @@ role's scrape keeps failing the agent re-runs all roles at most every 4 hours
 
 1. A clean boot screen loads the scene; no role cards are shown during this step.
 2. A four-second close-up of the guide says **“HI.”** against red/blue rim light. Role cards are still hidden.
-3. The camera pulls back to reveal an illuminated path and four gates.
-4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering, UI/UX and Business Analyst (a bottom sheet on phones).
+3. The camera pulls back to reveal an illuminated path and five gates.
+4. The guide turns and walks to the selector; a bottom dock offers GenAI, Data Engineering, UI/UX, Business Analyst and SDE (a bottom sheet on phones).
 5. In role selection, drag the guide left or right to inspect the front, side and back. **Auto-rotate** is off by default and can be turned on from the dock; dragging always works.
 6. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 

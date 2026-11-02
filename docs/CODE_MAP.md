@@ -113,12 +113,13 @@ jobhunt-hub/
 │  ├─ companies.json             # company career boards (Workday, Greenhouse, Lever, Ashby, SmartRecruiters)
 │  ├─ validate_companies.py      # check companies.json against the live feeds
 │  └─ requirements.txt           # portal scraper dependencies
-├─ tests/                        # pytest suite (export, scoring, publish, roles, run_source)
+├─ tests/                        # pytest suite (export, scoring, publish, roles, run_source, titles, experience, boards, workflow security)
 ├─ profiles/
-│  ├─ genai.json                 # role search config, NOT a resume, NOT a resume
+│  ├─ genai.json                 # role search config, NOT a resume
 │  ├─ data.json
 │  ├─ uiux.json
-│  └─ ba.json
+│  ├─ ba.json
+│  └─ sde.json
 ├─ web/
 │  ├─ app/
 │  │  ├─ layout.tsx              # fonts, metadata, favicon, GLB preload
@@ -131,10 +132,10 @@ jobhunt-hub/
 │  │  ├─ IntroBoot.tsx            # clean first paint / loading screen
 │  │  ├─ CinematicIntro.tsx       # Three.js scene, phases, camera, walk
 │  │  ├─ StaticIntro.tsx          # reduced-motion / WebGL fallback
-│  │  ├─ RoleDestinations.tsx     # four accessible role cards
+│  │  ├─ RoleDestinations.tsx     # five accessible role cards
 │  │  ├─ JobDashboard.tsx         # dashboard state, filters, refresh polling
 │  │  ├─ Filters.tsx              # search/city/source/score/experience/date/sort
-│  │  ├─ JobCard.tsx              # one job card: role light, then it turns over to its back
+│  │  ├─ JobCard.tsx              # one job card: company wordmark in its own colour; role light, then it turns over to its back; click to turn
 │  │  ├─ UpdatesTicker.tsx        # strip below the header, scrolls away: new since the last scrape
 │  │  ├─ HeroGate.tsx             # the destination gate beside the title, in CSS
 │  │  ├─ BestMatch.tsx            # the role's top job as a solid tile
@@ -156,8 +157,10 @@ jobhunt-hub/
 │  │  ├─ fallback.ts              # seed JSON fallback
 │  │  ├─ rank.ts                  # role order, top match, score axes, match bands
 │  │  ├─ estimate.ts              # browser copy of the scraper's score parts
-│  │  └─ utils.ts                 # score tiers, dates, filters, labels
+│  │  └─ utils.ts                 # score tiers, dates, filters, labels, company colour (companyHue)
+│  ├─ tests/                      # node:test suites: rank, companyHue, filters, refresh, refreshLockout, renderQuality
 │  ├─ data/                       # committed seed JSON
+│  ├─ public/                     # Next Step favicon set (favicon.svg + PNG/ICO renders), manifest.json
 │  ├─ public/models/student/      # GLB, scene/portrait posters, attribution
 │  ├─ next.config.mjs
 │  ├─ package.json
@@ -206,7 +209,7 @@ jobhunt-hub/
 | Dynamic intro loader | `web/components/IntroPage.tsx` | `CinematicIntro` dynamic import, `IntroBoot` loading | Keeps the first paint free of HI and role cards |
 | Boot screen | `web/components/IntroBoot.tsx` | `IntroBoot` | Brand, loader, no headline, no role cards |
 | Cinematic scene | `web/components/CinematicIntro.tsx` | `CinematicIntro`, `Phase`, `SceneController`, `createIdleClip`, `adductWalkClip`, `WALK_ADDUCTION`, `IDLE_ADDUCTION`, `HAND_TWIST`, `installCleanClothing`, `SKIN_BAND`, `TEE_V`, `TEE_FACING`, `cameraFovForAspect`, `narrowFactor`, `shortViewportFactor`, `updateSelectorShot`, `travelProfile`, `travelDuration`, `applyPhase`, `updateCharacter`, `updateTurntable`, `updateCamera`, `onPointerDown`, `onPointerMove` | Greeting, pullback, path, turn, walk, gates, clean clothing material split, fragment-masked white tee panel and skin collar band, split walk/idle adduction, palm-inward idle hands, aspect- and height-aware selector camera, gate-fitting departure tracking, selection, turntable drag/optional auto-rotate, transition |
-| Static fallback | `web/components/StaticIntro.tsx` | `StaticIntro`, `STATIC_GREETING_MS` | `HI.` for 4 s, then the four destinations; no canvas |
+| Static fallback | `web/components/StaticIntro.tsx` | `StaticIntro`, `STATIC_GREETING_MS` | `HI.` for 4 s, then the five destinations; no canvas |
 | Role cards | `web/components/RoleDestinations.tsx` | `RoleDestinations` | Accessible buttons for GenAI / Data / UI/UX / Business Analyst |
 | Dashboard controller | `web/components/JobDashboard.tsx` | `JobDashboard`, `PAGE_SIZE`, `triggerRefresh`, `switchRole`, `resetFilters`, `filtered`, `shownJobs` | Route data, filters, URL sync, pagination, role switch, refresh state |
 | Filters UI | `web/components/Filters.tsx` | `Filters` | Search, city, experience, source, match floor, posted range, sort, score visibility, reset |
@@ -296,13 +299,15 @@ Source: `web/components/StaticIntro.tsx` (`STATIC_GREETING_MS`).
 `web/components/JobDashboard.tsx` is the controller. The page, top to bottom:
 
 ```text
-header: brand · RoleSwitcher · Live · Journey
-  └─ UpdatesTicker        updated-when · jobs · companies · top match, then new since the last scrape (is_new), best first, each a link
+header (sticky): BrandMark (Next Step) · RoleSwitcher · Live · Journey
+UpdatesTicker           below the header, scrolls away: updated-when · jobs · companies · top match, then new since the last scrape (is_new), best first, each a link
 edge lights             two fixed 3px strips in the role colour down the page's edges (.edge-light)
 hero: h1 · lede · StatsBar (4 figures as type) · Explore / Change destination   |   HeroGate (role colour)
 overview: BestMatch (topMatch, solid role-colour tile)   |   MatchSignal (radar of matchAxes: file parts or estimate.ts + match bands)
 Filters (scroll with the page)
 job grid: 8 JobCards per page (4 columns ≥1200px, 2 below, 1 ≤640px) → Pagination
+          front: company wordmark (companyHue) · score · title · city · experience · Apply (fills with the company colour)
+          back (after 1.2 s under the pointer, or a click/tap/Enter): words · score-part bars · company · city · Apply
 info cards (pipeline, contact/credits)
 ```
 
