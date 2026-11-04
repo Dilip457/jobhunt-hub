@@ -125,6 +125,7 @@ ROLE_TITLE_EXCLUDE = {
              "administrator", "dba", "database administrator",
              "support engineer", "support lead", "support", "iam support"],
     "uiux": ["mechanical", "hardware", "electrical", "civil", "data center",
+             "interior", "fashion", "textile", "jewellery", "jewelry", "garment", "apparel",
              "instructional", "graphic designer", "graphic design", "illustrator",
              "motion graphics", "motion designer", "motion design",
              "brand designer", "brand design", "intern", "internship",

@@ -45,6 +45,7 @@ web/components/JobDashboard.tsx → UpdatesTicker.tsx, HeroGate.tsx, StatsBar.ts
 ```text
 automation/portal_scrapers.py
   ├─ Shine · Foundit · Naukri · Indeed · SimplyHired
+  ├─ PoliteClient: Instahyre · Cutshort · Wellfound · Internshala · Apna · Unstop · Workable
   └─ uses api_sources.build_job()
         ↓
 automation/api_sources.py
@@ -102,9 +103,9 @@ jobhunt-hub/
 ├─ automation/
 │  ├─ run_source.py              # vendor wrapper: config patches, pipeline, export
 │  ├─ export.py                  # vendor SQLite → public job JSON
-│  ├─ portal_scrapers.py         # direct Naukri/Foundit/Indeed/Shine/SimplyHired
+│  ├─ portal_scrapers.py         # direct scrapers for the Indian portals
 │  ├─ api_sources.py             # APIs, ATS boards, simple score, build_job
-│  ├─ enrich_experience.py       # reads experience from the posting page (LinkedIn, Foundit, others)
+│  ├─ enrich_experience.py       # reads experience from the posting page (LinkedIn, Foundit, Instahyre, others)
 │  ├─ publish.py                 # merge artifacts + force-push data branch
 │  ├─ matrix.py                  # role → vendor repo matrix
 │  ├─ roles.py                   # role list + vendor repos from profiles/
@@ -598,6 +599,15 @@ Vendor touchpoints used by the wrapper:
 | Naukri | `fetch_naukri()` | Playwright + real Chrome |
 | Indeed | `fetch_indeed()` → `_fetch_indeed_http()`, `_fetch_indeed_browser()` | HTTP first, browser fallback |
 | SimplyHired | `fetch_simplyhired()` | HTTP |
+| Instahyre | `fetch_instahyre()`, `parse_instahyre()` | `PoliteClient`, JSON |
+| Workable | `fetch_workable()`, `parse_workable()`, `_workable_link()` | `PoliteClient`, JSON |
+| Unstop | `fetch_unstop()`, `parse_unstop()` | `PoliteClient`, JSON |
+| Internshala | `fetch_internshala()`, `parse_internshala()` | `PoliteClient`, HTML |
+| Apna | `fetch_apna()`, `parse_apna()` | `PoliteClient`, HTML |
+| Cutshort | `fetch_cutshort()`, `parse_cutshort()`, `CUTSHORT_TAGS` | `PoliteClient`, embedded JSON |
+| Wellfound | `fetch_wellfound()`, `parse_wellfound()`, `WELLFOUND_PAGES` | `PoliteClient`, embedded JSON |
+
+`PoliteClient`, `robots_allow()`, `_next_data()`, `_min_years()` and `_year_range()` support these seven; `tests/test_more_portals.py` covers them. A site that does not answer `PoliteClient` is not added another way.
 
 Shared helpers: `_session()`, `_relative_date()`, `_absolute()`, `_open_browser()`, `_new_page()`, `_proxy_kwargs()`, `_warp_reconnect()`, `collect_portal_jobs()`, `merge_portal_jobs()`.
 
@@ -779,7 +789,7 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Resume profile / scoring keywords | External vendor `config.py` and `scoring_engine.py` (BA: `run_source.py` patches) | `automation/export.py`, `publish.py` |
 | Simple portal/API score | `automation/api_sources.py` `score_job()` | `score_parts()` and `web/lib/estimate.ts` (keep the three in step; `ROLE_TOOLS` ⊆ `ROLE_SKILLS`), `build_job()`, portal/API collectors |
 | Search keywords/cities/score floor | `profiles/<role>.json` | `run_source.py`, workflow |
-| Add a portal source | `automation/portal_scrapers.py` `fetch_*`, `SOURCES` | `collect_portal_jobs()` |
+| Add a portal source | `automation/portal_scrapers.py` `PoliteClient`, `parse_*`, `fetch_*`, `SOURCES` | `collect_portal_jobs()`; `web/lib/utils.ts` `SOURCE_COLORS`; `enrich_experience.py` `SKIP_SOURCES`; `tests/test_more_portals.py` |
 | Add an API/ATS source | `automation/api_sources.py` `fetch_*`, `SOURCES` | `collect_api_jobs()` |
 | Add a role track | `profiles/<role>.json`, `automation/matrix.py` `REPOS` | `web/lib/types.ts`, `roles.ts`, `publish.py` `ROLES`, `agent.py` `ROLES`, workflow choices; shared-vendor roles also need a patch in `run_source.py` |
 | Refresh cooldown | `web/lib/github.ts` `REFRESH_COOLDOWN_MINUTES` | refresh API + dialog copy |

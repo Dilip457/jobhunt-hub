@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-portal_scrapers.py — Direct scrapers for Naukri, Foundit, Indeed and Shine.
+portal_scrapers.py — Direct scrapers for the Indian job portals.
 
 These replace the vendor scrapers that stopped working. No API key, no signup,
-no account. Two techniques:
+no account. Three techniques:
 
   * Shine and Foundit  -> plain HTTP (their pages / JSON search endpoint)
   * Naukri and Indeed  -> a real Chrome via Playwright (their bot walls reject
                           the bundled headless shell, but accept Chrome)
+  * Instahyre, Cutshort, Wellfound, Internshala, Apna, Unstop and Workable ->
+    plain HTTP under this project's real name, checked against robots.txt
+    (see PoliteClient)
 
 Everything is filtered to India/Remote, de-duplicated and scored with the same
 helpers the rest of the portal uses.
@@ -27,13 +30,15 @@ import re
 import sys
 import time
 import urllib.parse
+import urllib.robotparser
 from datetime import datetime, timezone, timedelta
+from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
 
-from api_sources import ROLE_SEARCH_TERMS, build_job, to_date
+from api_sources import ROLE_SEARCH_TERMS, USER_AGENT as PROJECT_USER_AGENT, build_job, to_date
 from export import canonical_url, dedupe_jobs, normalize_location
 
 USER_AGENT = (
@@ -89,7 +94,7 @@ def _relative_date(text: str) -> Optional[str]:
     low = (text or "").lower()
     m = re.search(r"(\d+)\s*(minute|hour|day|week|month)", low)
     if not m:
-        if "just" in low or "today" in low:
+        if any(word in low for word in ("just", "today", "hour", "minute")):
             return datetime.now(timezone.utc).date().isoformat()
         return None
     n = int(m.group(1))
@@ -733,9 +738,413 @@ def fetch_iiba(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[s
     return jobs
 
 
-# ── Wellfound (BA-only, embedded Apollo state) ───────────────────────────────
+# ── Polite sources ────────────────────────────────────────────────────────────
+#
+# Everything below is plain HTTP under this project's real name. Every request
+# is checked against the site's robots.txt, and a refusal ends that source for
+# the run: no retries and no other route. A site that stops allowing this just
+# drops out, and its jobs age off the published data.
 
-WELLFOUND_ROLE_URL = "https://wellfound.com/role/r/business-analyst"
+ROBOTS_TOKEN = "jobhunt-hub"
+REFUSED_STATUS = {401, 403, 429, 503}
+POLITE_GAP = 2.0
+
+
+@lru_cache(maxsize=32)
+def _robots_rules(origin: str) -> Optional[urllib.robotparser.RobotFileParser]:
+    """A site's robots.txt rules, or None when they cannot be read or forbid us.
+
+    A missing file allows everything. Anything else that is not a clear answer
+    counts as a no for this run."""
+    try:
+        resp = requests.get(
+            f"{origin}/robots.txt", headers={"User-Agent": PROJECT_USER_AGENT}, timeout=15
+        )
+    except Exception as exc:
+        print(f"[portal] robots.txt unreadable at {origin}: {exc}", file=sys.stderr)
+        return None
+    rules = urllib.robotparser.RobotFileParser()
+    if resp.status_code == 200:
+        rules.parse(resp.text.splitlines())
+    elif resp.status_code in (401, 403) or resp.status_code >= 500:
+        return None
+    else:
+        rules.parse([])
+    return rules
+
+
+def robots_allow(url: str) -> bool:
+    parts = urllib.parse.urlsplit(url)
+    rules = _robots_rules(f"{parts.scheme}://{parts.netloc}")
+    return bool(rules and rules.can_fetch(ROBOTS_TOKEN, url))
+
+
+class PoliteClient:
+    """One source's HTTP client: named user agent, robots.txt, a pause between
+    requests, and stop at the first refusal."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.stopped = False
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": PROJECT_USER_AGENT,
+            "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-IN,en;q=0.9",
+        })
+
+    def _stop(self, reason: str) -> None:
+        self.stopped = True
+        print(f"[portal] {self.name}: {reason}; stopping this source", file=sys.stderr)
+
+    def get(self, url: str, **params: Any) -> Optional[requests.Response]:
+        if self.stopped:
+            return None
+        if params:
+            url = f"{url}?{urllib.parse.urlencode(params)}"
+        if not robots_allow(url):
+            self._stop(f"robots.txt does not allow {url}")
+            return None
+        try:
+            resp = self.session.get(url, timeout=TIMEOUT)
+        except Exception as exc:
+            print(f"[portal] {self.name} {url}: {exc}", file=sys.stderr)
+            return None
+        finally:
+            time.sleep(POLITE_GAP)
+        if resp.status_code in REFUSED_STATUS:
+            self._stop(f"refused with {resp.status_code}")
+            return None
+        if resp.status_code != 200:
+            print(f"[portal] {self.name} {resp.status_code} {url}", file=sys.stderr)
+            return None
+        return resp
+
+    def get_json(self, url: str, **params: Any) -> Dict[str, Any]:
+        resp = self.get(url, **params)
+        if resp is None:
+            return {}
+        try:
+            payload = resp.json()
+        except ValueError:
+            print(f"[portal] {self.name}: not JSON from {url}", file=sys.stderr)
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+
+def _next_data(page: str) -> Dict[str, Any]:
+    """The JSON a Next.js page embeds, or {}."""
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', page or "", re.S)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(1)) or {}
+    except ValueError:
+        return {}
+
+
+def _min_years(text: str) -> str:
+    """A board's minimum experience ("Min. 3 years", "1 year(s)") as "3+ years"."""
+    match = re.search(r"(\d+)\s*(?:\+\s*)?(?:years?|yrs?)", text or "", re.I)
+    return f"{match.group(1)}+ years" if match else ""
+
+
+def _year_range(low: Any, high: Any) -> str:
+    """A board's numeric experience range as text extract_experience understands."""
+    if isinstance(low, (int, float)) and isinstance(high, (int, float)):
+        return f"{int(low)}-{int(high)} years"
+    if isinstance(low, (int, float)):
+        return f"{int(low)}+ years"
+    return ""
+
+
+# ── Instahyre (its public job search JSON) ───────────────────────────────────
+
+INSTAHYRE_API = "https://www.instahyre.com/api/v1/job_search"
+
+
+def parse_instahyre(role: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    jobs: List[Dict[str, Any]] = []
+    for item in payload.get("objects") or []:
+        employer = item.get("employer") or {}
+        skills = ", ".join(str(k) for k in item.get("keywords") or [])
+        job = build_job(
+            role, "Instahyre",
+            _clean(item.get("title", "")),
+            _clean(employer.get("company_name", "")),
+            _clean(item.get("locations", "")),
+            _clean(item.get("public_url", "")),
+            f"{skills}. {_clean(employer.get('instahyre_note', ''))}",
+            None,
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_instahyre(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("instahyre")
+    jobs: List[Dict[str, Any]] = []
+    for query in _queries(role):
+        for offset in (0, 20):
+            payload = client.get_json(
+                INSTAHYRE_API,
+                company_size=0, job_type=0, search="true", skills=query, offset=offset,
+            )
+            jobs.extend(parse_instahyre(role, payload))
+    return jobs
+
+
+# ── Workable (its public jobs.workable.com search JSON) ──────────────────────
+
+WORKABLE_API = "https://jobs.workable.com/api/v1/jobs"
+
+
+def _workable_link(url: str) -> str:
+    """The listing's short link. The feed's own link breaks when a title holds a
+    "/" (it 404s); /view/<id> always redirects to the right page."""
+    return re.sub(r"(/view/[^/?#]+).*$", r"\1", url)
+
+
+def parse_workable(role: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    jobs: List[Dict[str, Any]] = []
+    for item in payload.get("jobs") or []:
+        place = item.get("location") or {}
+        if place.get("countryName") != "India" or item.get("state") != "published":
+            continue
+        location = "Remote" if item.get("workplace") == "remote" else (place.get("city") or "India")
+        job = build_job(
+            role, "Workable",
+            _clean(item.get("title", "")),
+            _clean((item.get("company") or {}).get("title", "")),
+            location,
+            _workable_link(_clean(item.get("url", ""))),
+            f"{item.get('description') or ''} {item.get('requirementsSection') or ''}",
+            to_date(item.get("created")),
+            item.get("id"),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_workable(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("workable")
+    jobs: List[Dict[str, Any]] = []
+    for query in _queries(role):
+        params: Dict[str, Any] = {"query": query, "location": "India"}
+        for _page in range(2):
+            payload = client.get_json(WORKABLE_API, **params)
+            jobs.extend(parse_workable(role, payload))
+            if not payload.get("nextPageToken"):
+                break
+            params["pageToken"] = payload["nextPageToken"]
+    return jobs
+
+
+# ── Unstop (its public opportunity search JSON) ──────────────────────────────
+
+UNSTOP_API = "https://unstop.com/api/public/opportunity/search-result"
+
+
+def parse_unstop(role: str, payload: Dict[str, Any], today: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Open, free-to-apply, full-time jobs only. Unstop also lists closed
+    registrations and paid opportunities."""
+    today = today or datetime.now(timezone.utc).date().isoformat()
+    rows = (payload.get("data") or {}).get("data") or []
+    jobs: List[Dict[str, Any]] = []
+    for item in rows:
+        detail = item.get("jobDetail") or {}
+        if item.get("status") != "LIVE" or not item.get("regn_open") or item.get("isPaid"):
+            continue
+        if detail.get("timing") == "part_time" or (to_date(item.get("end_date")) or today) < today:
+            continue
+        places = ", ".join(str(p) for p in detail.get("locations") or [])
+        job = build_job(
+            role, "Unstop",
+            _clean(item.get("title", "")),
+            _clean((item.get("organisation") or {}).get("name", "")),
+            "Remote" if detail.get("type") == "wfh" else places,
+            _clean(item.get("seo_url", "")),
+            item.get("details") or "",
+            to_date(item.get("approved_date")),
+            item.get("id"),
+            experience=_year_range(detail.get("min_experience"), detail.get("max_experience")),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_unstop(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("unstop")
+    jobs: List[Dict[str, Any]] = []
+    for query in _queries(role):
+        for page in (1, 2):
+            payload = client.get_json(
+                UNSTOP_API, opportunity="jobs", searchTerm=query, per_page=30, page=page
+            )
+            jobs.extend(parse_unstop(role, payload))
+    return jobs
+
+
+# ── Internshala (server-rendered job pages) ──────────────────────────────────
+
+INTERNSHALA_BASE = "https://internshala.com"
+
+
+def parse_internshala(role: str, page: str) -> List[Dict[str, Any]]:
+    """Jobs only: the same listing pages also carry internships."""
+    jobs: List[Dict[str, Any]] = []
+    for card in BeautifulSoup(page, "lxml").select(".individual_internship[internshipid]"):
+        link = card.select_one("a.job-title-href")
+        if card.get("employment_type") != "job" or not link:
+            continue
+        briefcase = card.select_one(".row-1-item .ic-16-briefcase")
+        posted = " ".join(_text(span) for span in card.select(".color-labels span"))
+        job = build_job(
+            role, "Internshala",
+            _text(link),
+            _text(card.select_one(".company-name")),
+            _text(card.select_one(".locations")),
+            _absolute(link.get("href", ""), INTERNSHALA_BASE),
+            " ".join(
+                [_text(card.select_one(".about_job .text"))]
+                + [_text(skill) for skill in card.select(".job_skill")]
+            ),
+            _relative_date(posted),
+            card.get("internshipid"),
+            experience=_min_years(_text(briefcase.parent)) if briefcase else "",
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_internshala(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("internshala")
+    jobs: List[Dict[str, Any]] = []
+    for query in _queries(role):
+        resp = client.get(f"{INTERNSHALA_BASE}/jobs/keywords-{_slug(query)}/")
+        if resp is not None:
+            jobs.extend(parse_internshala(role, resp.text))
+    return jobs
+
+
+# ── Apna (server-rendered job cards) ─────────────────────────────────────────
+
+APNA_BASE = "https://apna.co"
+
+
+def parse_apna(role: str, page: str) -> List[Dict[str, Any]]:
+    jobs: List[Dict[str, Any]] = []
+    for card in BeautifulSoup(page, "lxml").select("a[data-testid='job-card'][href]"):
+        title = _text(card.select_one("h2"))
+        # After the title a card lists company, place, pay, then its tags.
+        fields = [_text(node) for node in card.find_all(["span", "p"])]
+        fields = [field for field in fields if field]
+        if not title or len(fields) < 2 or "Part Time" in fields:
+            continue
+        job = build_job(
+            role, "Apna",
+            title,
+            fields[0],
+            "Remote" if "Work from Home" in fields else fields[1],
+            _absolute(card.get("href", ""), APNA_BASE),
+            " ".join([title] + fields),
+            None,
+            card.get("href"),
+            experience=next((_min_years(field) for field in fields if field.startswith("Min.")), ""),
+        )
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_apna(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("apna")
+    jobs: List[Dict[str, Any]] = []
+    for query in _queries(role):
+        for page in (1, 2):
+            resp = client.get(f"{APNA_BASE}/jobs/{_slug(query)}-jobs", page=page)
+            if resp is not None:
+                jobs.extend(parse_apna(role, resp.text))
+    return jobs
+
+
+# ── Cutshort (its pages embed the listing JSON) ──────────────────────────────
+
+# Cutshort's search pages are named after its skill tags, not free text.
+CUTSHORT_TAGS = {
+    "genai": ["machine-learning-ml", "deep-learning", "natural-language-processing-nlp",
+              "artificial-intelligence-ai"],
+    "data": ["data-engineering", "etl", "apache-spark", "pyspark"],
+    "uiux": ["user-experience-ux-design", "user-interface-ui-design", "product-design", "wireframing"],
+    "ba": ["business-analysis", "data-analytics", "tableau", "sql"],
+    "sde": ["backend-developer", "java", "python", "reactjs", "javascript"],
+}
+
+
+def _object_id_date(value: Any) -> Optional[str]:
+    """The creation date inside a MongoDB ObjectId; Cutshort shows no other date."""
+    try:
+        return to_date(int(str(value)[:8], 16))
+    except ValueError:
+        return None
+
+
+def parse_cutshort(role: str, page: str) -> List[Dict[str, Any]]:
+    state = (((_next_data(page).get("props") or {}).get("pageProps") or {}).get("dehydratedState") or {})
+    jobs: List[Dict[str, Any]] = []
+    for query in state.get("queries") or []:
+        data = ((query.get("state") or {}).get("data") or {}).get("data") or {}
+        rows = (data.get("pageData") or {}).get("jobs") if isinstance(data, dict) else None
+        for item in rows or []:
+            kinds = item.get("roleTypes") or []
+            if kinds and "full_time" not in kinds and "contract" not in kinds:
+                continue
+            exp = item.get("expRange") or {}
+            job = build_job(
+                role, "Cutshort",
+                _clean(item.get("headline", "")),
+                _clean((item.get("companyDetails") or {}).get("name", "")),
+                "Remote" if item.get("remoteType") == "remote_only" else _clean(item.get("locationsText", "")),
+                _clean(item.get("publicUrl", "")),
+                f"{item.get('sanitizedComment') or ''} {', '.join(item.get('allSkills') or [])}",
+                _object_id_date(item.get("_id")),
+                item.get("_id"),
+                experience=_year_range(exp.get("min"), exp.get("max")),
+            )
+            if job:
+                jobs.append(job)
+    return jobs
+
+
+def fetch_cutshort(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("cutshort")
+    jobs: List[Dict[str, Any]] = []
+    for tag in CUTSHORT_TAGS.get(role, []):
+        resp = client.get(f"https://cutshort.io/jobs/{tag}-jobs")
+        if resp is not None:
+            jobs.extend(parse_cutshort(role, resp.text))
+    return jobs
+
+
+# ── Wellfound (its pages embed the listing state) ────────────────────────────
+
+WELLFOUND_BASE = "https://wellfound.com"
+WELLFOUND_PAGES = {
+    "genai": ["/role/l/machine-learning-engineer/india", "/role/l/artificial-intelligence-engineer/india",
+              "/role/l/ai-engineer/india"],
+    "data": ["/role/l/data-engineer/india"],
+    "uiux": ["/role/l/ux-designer/india", "/role/l/ui-ux-designer/india", "/role/l/ui-designer/india",
+             "/role/l/product-designer/india"],
+    "ba": ["/role/l/business-analyst/india", "/role/l/data-analyst/india", "/role/r/business-analyst"],
+    "sde": ["/role/l/software-engineer/india", "/role/l/backend-engineer/india",
+            "/role/l/full-stack-engineer/india", "/role/l/frontend-engineer/india"],
+}
+WELLFOUND_JOB_TYPES = {"full-time", "contract"}
 
 
 def _wellfound_location(item: Dict[str, Any]) -> Optional[str]:
@@ -760,29 +1169,9 @@ def _wellfound_location(item: Dict[str, Any]) -> Optional[str]:
     return "India"
 
 
-def fetch_wellfound(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
-    if role != "ba":
-        return []
-    session = _session()
-    try:
-        response = session.get(WELLFOUND_ROLE_URL, timeout=TIMEOUT)
-        response.raise_for_status()
-    except Exception as exc:
-        print(f"[portal] wellfound: failed ({exc})", file=sys.stderr)
-        return []
-
-    match = re.search(
-        r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', response.text, re.S
-    )
-    if not match:
-        return []
-    try:
-        data = json.loads(match.group(1))
-    except ValueError:
-        return []
-
-    page = (data.get("props") or {}).get("pageProps") or {}
-    apollo = (page.get("apolloState") or {}).get("data") or {}
+def parse_wellfound(role: str, page: str) -> List[Dict[str, Any]]:
+    props = (_next_data(page).get("props") or {}).get("pageProps") or {}
+    apollo = (props.get("apolloState") or {}).get("data") or {}
 
     companies: Dict[str, str] = {}
     for key, value in apollo.items():
@@ -795,13 +1184,15 @@ def fetch_wellfound(role: str, profile: Dict[str, Any], max_days: int) -> List[D
     for key, item in apollo.items():
         if not key.startswith("JobListingSearchResult:") or not isinstance(item, dict):
             continue
+        if item.get("jobType") and item["jobType"] not in WELLFOUND_JOB_TYPES:
+            continue
         location = _wellfound_location(item)
         if not location:
             continue
 
         job_id = str(item.get("id") or key.split(":")[-1])
         slug = str(item.get("slug") or "").strip()
-        url = f"https://wellfound.com/jobs/{job_id}" + (f"-{slug}" if slug else "")
+        url = f"{WELLFOUND_BASE}/jobs/{job_id}" + (f"-{slug}" if slug else "")
         job = build_job(
             role, "Wellfound",
             item.get("title", ""),
@@ -823,7 +1214,16 @@ def fetch_wellfound(role: str, profile: Dict[str, Any], max_days: int) -> List[D
             job["experience_max"] = int(item["yearsExperienceMax"])
             job["experience_source"] = "board"
         jobs.append(job)
+    return jobs
 
+
+def fetch_wellfound(role: str, profile: Dict[str, Any], max_days: int) -> List[Dict[str, Any]]:
+    client = PoliteClient("wellfound")
+    jobs: List[Dict[str, Any]] = []
+    for path in WELLFOUND_PAGES.get(role, []):
+        resp = client.get(WELLFOUND_BASE + path)
+        if resp is not None:
+            jobs.extend(parse_wellfound(role, resp.text))
     print(f"[portal] wellfound: {len(jobs)} raw jobs", file=sys.stderr)
     return jobs
 
@@ -838,6 +1238,12 @@ SOURCES = (
     ("simplyhired", fetch_simplyhired),
     ("iiba", fetch_iiba),
     ("wellfound", fetch_wellfound),
+    ("instahyre", fetch_instahyre),
+    ("cutshort", fetch_cutshort),
+    ("internshala", fetch_internshala),
+    ("apna", fetch_apna),
+    ("unstop", fetch_unstop),
+    ("workable", fetch_workable),
 )
 
 
@@ -948,7 +1354,7 @@ def merge_portal_jobs(payload: Dict[str, Any], portal_jobs: List[Dict[str, Any]]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scrape Naukri/Foundit/Indeed/Shine directly")
+    parser = argparse.ArgumentParser(description="Scrape the Indian job portals directly")
     parser.add_argument("--role", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--profile", default=None)

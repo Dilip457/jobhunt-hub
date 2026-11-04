@@ -109,3 +109,10 @@ def test_secret_shaped_files_are_ignored():
         rules = handle.read().splitlines()
     for rule in (".env*", "!.env.example", "*.pem", "*.key"):
         assert rule in rules, rule
+
+
+def test_saying_there_is_no_fee_is_not_a_fee_demand():
+    for text in ("offers loans with no processing fee", "Zero joining fees", "without any training charges"):
+        assert not unsafe_listing({"title": "Business Analyst", "snippet": text, "url": "https://a.test/1"}), text
+    for text in ("Pay the registration fee of Rs 500", "a refundable deposit is required"):
+        assert unsafe_listing({"title": "Business Analyst", "snippet": text, "url": "https://a.test/1"}), text

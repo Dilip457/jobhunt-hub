@@ -64,7 +64,7 @@ export default function StaticIntro({ onSelect, reduced = false }: Props) {
           <p className="intro-footnote">
             <MailIcon width={13} height={13} />
             <span>
-              Real listings from Naukri, Foundit, Indeed, Shine &amp; LinkedIn. Need a new track or
+              Real listings from Naukri, LinkedIn, Indeed, Instahyre, Cutshort &amp; more. Need a new track or
               found an issue? <a href="mailto:heyjarvis.03@gmail.com">heyjarvis.03@gmail.com</a>
             </span>
           </p>

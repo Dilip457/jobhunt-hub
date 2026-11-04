@@ -8,7 +8,7 @@ A zero-cost, cloud-only job board for five role tracks:
 - **Business Analyst** (entry-level first: fresher and 1–3 year roles rank above senior roles)
 - **Software Development Engineer** (3–8 year roles rank first)
 
-It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn and company career pages, plus BA-specific sources (IIBA Career Center, Wellfound, Remote OK, We Work Remotely), publishes them as compact JSON, and serves them through a Next.js app on Vercel.
+It aggregates jobs from Naukri, Foundit, Indeed, Shine, LinkedIn, Instahyre, Cutshort, Wellfound, Internshala, Apna, Unstop, Workable and company career pages, plus BA-specific sources (IIBA Career Center, Remote OK, We Work Remotely), publishes them as compact JSON, and serves them through a Next.js app on Vercel.
 
 | Item | Value |
 |---|---|
@@ -83,7 +83,7 @@ flowchart LR
 
     subgraph Sources["Job sources"]
         VENDOR["Vendor scraper repos<br/>LinkedIn + company pages"]
-        PORTALS["Direct portals<br/>Naukri · Foundit · Shine"]
+        PORTALS["Direct portals<br/>Naukri · Foundit · Shine · Instahyre · Cutshort<br/>Wellfound · Internshala · Apna · Unstop · Workable"]
         WARP["WARP job<br/>Indeed · SimplyHired"]
     end
 
@@ -142,7 +142,7 @@ Two levels, and they multiply:
 
 1. **Across roles** — the matrix above. Five roles that each took ~14 minutes now overlap instead of queueing.
 2. **Across sources within a role** — the vendor's `_run_scrapers` walks its sources one at a time, so a role with ten portals paid the sum of their latencies. `run_source.py` replaces it (`_patch_parallel_scrapers`) with a bounded `ThreadPoolExecutor`, default 4, tunable with `--parallel-sources N` (`1` disables it and leaves the vendor loop untouched).
-3. **Portal scraping overlaps the vendor pipeline** — `run_source.py` starts `collect_portal_jobs` in a background thread *before* `pipeline.run()` and joins it after export. The direct portal scrapers (Naukri, Shine, Foundit, IIBA, Wellfound) and the vendor sources (LinkedIn, company pages) touch different domains and share no state, so the slowest phase sets the role's wall clock instead of the sum. `collect_portal_jobs(..., parallel=N)` / `--parallel-portals N` runs the portal sources themselves concurrently; CI passes `4`. Results are still merged in registry order, so output is stable between sequential and parallel runs.
+3. **Portal scraping overlaps the vendor pipeline** — `run_source.py` starts `collect_portal_jobs` in a background thread *before* `pipeline.run()` and joins it after export. The direct portal scrapers (Naukri, Shine, Foundit, IIBA, Wellfound, Instahyre, Cutshort, Internshala, Apna, Unstop, Workable) and the vendor sources (LinkedIn, company pages) touch different domains and share no state, so the slowest phase sets the role's wall clock instead of the sum. `collect_portal_jobs(..., parallel=N)` / `--parallel-portals N` runs the portal sources themselves concurrently; CI passes `4`. Results are still merged in registry order, so output is stable between sequential and parallel runs.
 4. **Indeed is left to the WARP job** — the `scrape` job sets `INDEED_HTTP_ONLY=1`, so the fast `curl_cffi` path runs but a headed browser fallback is skipped. The dedicated `warp` job retries Indeed and SimplyHired through a clean exit IP; a browser fallback in `scrape` would spend minutes for the same inventory.
 
 The scrapers are I/O bound and each source is a different domain, so threads are the right shape and no single host sees stacked requests. Each worker gets its own scraper instance and a *snapshot* of the existing-data sets, so nothing is shared mutably between threads; results are merged afterwards in registry order and de-duplicated by URL, which is what the sequential loop achieved by mutating the shared sets inline. A failing source is caught, logged and counted exactly as before.
@@ -164,7 +164,13 @@ URL validation is already skipped in CI (`--no-validate`), so the remaining cost
 | **Company career boards** | Workday/Greenhouse/Lever/Ashby/SmartRecruiters job feeds for ~240 companies (`companies.json`) | `scrape` job's extra-sources step, every role; `--no-apis` in the main scrape |
 | **Keyless remote feeds** | Remotive, Himalayas, Remote OK, We Work Remotely | `scrape` job's extra-sources step (BA, SDE) |
 | **IIBA Career Center** | Server-rendered search page (plain HTTP) | `scrape` job (BA only) |
-| **Wellfound** | Embedded Apollo state in the role page | `scrape` job (BA only) |
+| **Wellfound** | Embedded Apollo state in the India role pages | `scrape` job |
+| **Instahyre** | Public job search JSON; experience from the posting page | `scrape` job |
+| **Cutshort** | Listing JSON embedded in skill-tag pages | `scrape` job |
+| **Internshala** | Server-rendered job cards; internships skipped | `scrape` job |
+| **Apna** | Server-rendered job cards; part-time skipped | `scrape` job |
+| **Unstop** | Public opportunity search JSON; closed or paid listings skipped | `scrape` job |
+| **Workable** | Public `jobs.workable.com` search JSON, India only | `scrape` job |
 | **Remote OK** | Public remote jobs API | BA API step |
 | **We Work Remotely** | Public RSS feed | BA API step |
 
@@ -641,6 +647,7 @@ memory, so they are best effort; the cooldown and one-run-per-role concurrency s
 - No database, so no SQL injection or database credentials.
 - Response headers on every route (`web/securityHeaders.mjs`): a Content Security Policy, HSTS, `nosniff`, `X-Frame-Options: DENY`, a referrer policy, a permissions policy and same-origin opener and resource policies. The CSP allows no script, connection or frame from another origin and stops other sites framing the page. It keeps `script-src 'unsafe-inline'` because Next.js inlines bootstrap scripts into static pages and a nonce would make every page render per request; the site renders no third-party HTML, so nothing can inject into it today.
 - Job links are scraped, so they are treated as untrusted at three points: `publish.py` refuses to publish anything but a plain http(s) link with a host and no `user:password@`, `service.ts` filters the same way when reading the data branch, and the components link through `jobHref()`. They open in a new tab with `rel="noopener noreferrer"`. Text is only ever rendered by React as text; the app has no `dangerouslySetInnerHTML`.
+- The seven sources added in `portal_scrapers.py` under `PoliteClient` send the project's real user agent, obey `robots.txt`, pause between requests and stop at the first refusal. They use no browser, no impersonation and no proxy.
 - Fake listings are a social-engineering risk this site cannot fully remove. `publish.py` drops listings that demand a fee (registration, processing, training and similar) and links through URL shorteners or chat apps, and the dashboard tells visitors never to pay to apply. It cannot recognise a well-made fake posted on a real board.
 - `/api/status` is public, so upstream error text goes to the server log only, and visitors see a generic message.
 - CI and supply chain: workflow actions are pinned to commit SHAs and kept current by Dependabot; tokens are read-only except in the `publish` job, which runs no third-party code and treats artifacts as data; CI fails on high-severity advisories in production npm packages and on any known advisory in the Python packages. Python minimums in `automation/requirements.txt` also lift older versions pinned by vendor repos.

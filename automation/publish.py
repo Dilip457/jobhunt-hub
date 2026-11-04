@@ -193,6 +193,8 @@ def cap_posted_date(job: Dict[str, Any]) -> None:
 # only ever appear in a listing that asks the applicant to pay or to move off the
 # board; ordinary wording about pay or benefits does not match.
 FEE_DEMAND_RE = re.compile(
+    # "no processing fee" is a lender describing its product, not a demand.
+    r"(?<!\bno )(?<!\bzero )(?<!\bnil )(?<!without )(?<!without any )"
     r"\b(?:registration|processing|training|joining|application|interview)\s+(?:fees?|charges?)\b"
     r"|\brefundable\s+(?:fees?|deposit|amount)\b",
     re.I,

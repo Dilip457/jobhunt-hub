@@ -580,8 +580,8 @@ export default function JobDashboard({ role }: Props) {
           <div className="dashboard-hero-copy">
             <h1>{roleMeta.fullLabel}</h1>
             <p className="hero-lede">
-              {roleMeta.blurb} Curated from Naukri, Foundit, Indeed, Shine, LinkedIn, Wellfound,
-              IIBA and more, with deduplicated links and a transparent match signal.
+              {roleMeta.blurb} Curated from Naukri, LinkedIn, Indeed, Foundit, Shine, Instahyre, Cutshort,
+              Wellfound, Internshala and more, with deduplicated links and a transparent match signal.
             </p>
             {data ? <StatsBar data={data} status={status} /> : null}
             <div className="hero-actions">

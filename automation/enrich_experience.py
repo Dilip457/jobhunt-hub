@@ -84,6 +84,14 @@ REUSED_FIELDS = ("experience_min", "experience_max", "experience_source", "exper
 # Boards whose posting page cannot be read with plain HTTP from a runner.
 # Naukri's card already carries the years; Indeed blocks server fetches.
 SKIP_SOURCES = {"naukri", "indeed"}
+# These list experience (or their whole description) in the feed, so their pages
+# add little, and Apna's pages hold figures that read like a range ("0 to 31
+# years are eligible", "Age limit 18 - 35 years").
+SKIP_SOURCES |= {"apna", "internshala", "unstop", "workable", "cutshort", "wellfound"}
+# Instahyre's feed has no experience, but its posting page does. It is read under
+# the project's name, within robots.txt, and slowly: its site rate-limits.
+NAMED_LOOKUP_SOURCES = {"instahyre"}
+HOST_GAPS = {"www.instahyre.com": 2.0}
 
 LINKEDIN_ID_RE = re.compile(r"linkedin\.com/jobs/view/(?:[^/?#]*?-)?(\d{6,})")
 LINKEDIN_POSTING = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
@@ -193,8 +201,9 @@ class HostThrottle:
         with lock:
             with self._lock:
                 elapsed = time.monotonic() - self._last.get(host, 0.0)
-            if elapsed < self.gap:
-                time.sleep(self.gap - elapsed)
+            gap = HOST_GAPS.get(host, self.gap)
+            if elapsed < gap:
+                time.sleep(gap - elapsed)
             with self._lock:
                 self._last[host] = time.monotonic()
 
@@ -220,14 +229,19 @@ def is_public_url(url: str) -> bool:
         return True
 
 
-def fetch(url: str, session: requests.Session, throttle: HostThrottle) -> Optional[str]:
+def fetch(
+    url: str,
+    session: requests.Session,
+    throttle: HostThrottle,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
     if not is_public_url(url):
         print(f"[experience] skipped non-public link: {url[:80]}", file=sys.stderr)
         return None
     host = urlsplit(url).netloc.lower()
     throttle.wait(host)
     try:
-        response = session.get(url, timeout=TIMEOUT, allow_redirects=True)
+        response = session.get(url, timeout=TIMEOUT, allow_redirects=True, **({"headers": headers} if headers else {}))
     except Exception as exc:
         print(f"[experience] {url}: {exc}", file=sys.stderr)
         return None
@@ -361,9 +375,17 @@ def resolve_from_page(job: Dict[str, Any], html: str) -> Dict[str, Any]:
 
 def lookup_job(job: Dict[str, Any], session: requests.Session, throttle: HostThrottle) -> Dict[str, Any]:
     url = job.get("url") or ""
-    if (job.get("source") or "").strip().lower() == "linkedin":
+    source = (job.get("source") or "").strip().lower()
+    headers = None
+    if source == "linkedin":
         url = linkedin_posting_url(url) or url
-    html = fetch(url, session, throttle)
+    elif source in NAMED_LOOKUP_SOURCES:
+        from portal_scrapers import PROJECT_USER_AGENT, robots_allow
+
+        if not robots_allow(url):
+            return {}
+        headers = {"User-Agent": PROJECT_USER_AGENT}
+    html = fetch(url, session, throttle, headers)
     if html is None:
         return {}
     return resolve_from_page(job, html)

@@ -348,3 +348,17 @@ def test_ba_titles_tolerate_spacing_and_html(title):
 
 def test_unknown_role_is_never_relevant():
     assert not title_relevant("devops", "Software Engineer")
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Interior Designer", "Senior Interior Design Lead", "Fashion Designer", "Textile Designer",
+     "Jewellery Designer", "Apparel Designer", "Creative Product Designer - Fashion and Lifestyle Accessories"],
+)
+def test_physical_design_is_not_ui_ux(title):
+    assert not title_relevant("uiux", title)
+
+
+@pytest.mark.parametrize("title", ["UX Designer", "Senior Product Designer", "UI/UX Designer", "Interaction Designer"])
+def test_screen_design_stays_in_ui_ux(title):
+    assert title_relevant("uiux", title)

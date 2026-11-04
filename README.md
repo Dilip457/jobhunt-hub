@@ -5,8 +5,8 @@ A public, daily-updated job portal for five role tracks — **GenAI**, **Data En
 **Live:** <https://jobhunt-hub-web.vercel.app>
 
 - **UI:** Next.js on Vercel
-- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired) + LinkedIn, plus company career boards and keyless feeds (no PC required)
-- **Business Analyst:** the UI/UX vendor pipeline with BA config, scoring and title filters, plus IIBA Career Center, Wellfound, Remote OK and We Work Remotely. Fresher and 1–3 year roles rank first.
+- **Scraper:** GitHub Actions only — **direct portal scrapers** (Naukri, Foundit, Indeed, Shine, SimplyHired, Instahyre, Cutshort, Wellfound, Internshala, Apna, Unstop, Workable) + LinkedIn, plus company career boards and keyless feeds (no PC required)
+- **Business Analyst:** the UI/UX vendor pipeline with BA config, scoring and title filters, plus IIBA Career Center, Remote OK and We Work Remotely. Fresher and 1–3 year roles rank first.
 - **Data:** compact JSON on an orphan `data` branch
 - **Database:** none
 - **Cost:** ₹0/month
@@ -30,6 +30,8 @@ GitHub Actions (03:00 IST or manual — runs entirely in the cloud, no PC needed
   ├─ run pipeline → SQLite            (LinkedIn + company career pages)
   ├─ scrape Naukri / Foundit / Indeed / Shine directly
   │    (plain HTTP for Shine & Foundit, real Chrome via Playwright for Naukri)
+  ├─ scrape Instahyre / Cutshort / Wellfound / Internshala / Apna / Unstop / Workable
+  │    (plain HTTP under the project's name, within robots.txt)
   ├─ scrape Indeed SEO + SimplyHired through an isolated WARP job
   ├─ company career boards            (Workday/Greenhouse/Lever/Ashby/SmartRecruiters)
   └─ export compact JSON (no PII, no full descriptions)
@@ -61,7 +63,7 @@ jobhunt-hub/
 ├─ tests/                         # pytest: export, scoring, publish merge, roles
 ├─ automation/
 │  ├─ run_source.py               # run a vendor scraper with portal overrides
-│  ├─ portal_scrapers.py          # direct Naukri / Foundit / Indeed / Shine / SimplyHired scrapers
+│  ├─ portal_scrapers.py          # direct scrapers for the Indian portals (Naukri, Instahyre, Cutshort and others)
 │  ├─ api_sources.py              # company career boards + keyless feeds
 │  ├─ companies.json              # company career boards (edit freely, no key)
 │  ├─ validate_companies.py       # check companies.json against the live feeds
@@ -141,8 +143,9 @@ python automation/portal_scrapers.py --role uiux --profile profiles/uiux.json \
 A card shows the experience the posting states, never a guess from the title. The card
 and text are read first; jobs still unresolved get their posting page fetched once
 (`automation/enrich_experience.py`): LinkedIn's public posting endpoint gives the full
-description and its "Seniority level", Foundit's page gives min/max years, other boards are
-parsed as text. A posting that states a level but no years shows the level ("Mid-Senior
+description and its "Seniority level", Foundit's page gives min/max years, Instahyre's page
+gives its range, other boards are parsed as text. Apna, Internshala, Unstop, Workable, Cutshort
+and Wellfound are not looked up: their feeds already carry what they state. A posting that states a level but no years shows the level ("Mid-Senior
 level"); one that states nothing shows "Not stated in posting". Run the **Experience probe**
 workflow (Actions → Experience probe → role) to see what the cards will say for live
 postings on each board.
@@ -152,7 +155,7 @@ postings on each board.
 ## Direct portal scrapers (primary)
 
 The vendor repos' Naukri/Indeed/Foundit scrapers are out of date. `automation/portal_scrapers.py`
-replaces them with four portal-specific scrapers that run inside the same GitHub Actions job —
+replaces them with portal-specific scrapers that run inside the same GitHub Actions job —
 **no API key, no account, no signup**:
 
 | Portal | How it is read | Speed |
@@ -161,6 +164,17 @@ replaces them with four portal-specific scrapers that run inside the same GitHub
 | **Indeed** | real Chrome renders `in.indeed.com`; cards are parsed from the DOM | ~7s per query/city |
 | **Foundit** | its own public `/middleware/jobsearch` JSON endpoint | instant |
 | **Shine** | server-rendered HTML search pages | instant |
+| **Instahyre** | its public job search JSON | seconds |
+| **Cutshort** | listing JSON embedded in its skill-tag pages | seconds |
+| **Wellfound** | listing state embedded in its India role pages (every role) | seconds |
+| **Internshala** | server-rendered job cards; internships are skipped | seconds |
+| **Apna** | server-rendered job cards; part-time is skipped | seconds |
+| **Unstop** | its public opportunity search JSON; closed or paid listings are skipped | seconds |
+| **Workable** | its public `jobs.workable.com` search JSON, India only | seconds |
+
+The last seven run through `PoliteClient`: plain requests under the project's real user agent,
+checked against each site's `robots.txt`, a pause between requests, and no retry after a refusal
+(401, 403, 429, 503). A site that stops allowing this drops out on its own and costs only itself.
 
 Why a real Chrome? Naukri's bot wall returns `403 Access Denied` to Playwright's bundled
 headless shell, but accepts the system Chrome. The workflow installs Playwright and launches
@@ -173,6 +187,25 @@ still publish.
 
 Local end-to-end run (UI/UX, 14-day window): **633 jobs** — LinkedIn 215, Naukri 173,
 Shine 112, Indeed 88, Foundit 45 — exported to 385 KB of JSON.
+
+### Sites checked and not added
+
+Checked on 2026-11-04 with one ordinary request each. A site can be added later if this changes.
+
+| Site | Why not |
+|---|---|
+| Glassdoor, Behance | refuse plain requests (403) |
+| Jooble | security challenge, and `robots.txt` disallows search |
+| Careerjet | answers with a captcha page |
+| Hirist, iimjobs | the jobs load in the browser after the page; the page itself holds none |
+| TimesJobs | plain requests failed at the TLS handshake from the machine tested |
+| Adzuna, Freshersworld, Jobaaj, Uplers | `robots.txt` disallows the search pages |
+| Dribbble | its public RSS feed is stale and shows no India jobs |
+| Hasjob | very few listings |
+| Talent.com, PlacementIndia | open, but aggregator or consultancy reposts rather than employer listings |
+
+Adzuna, Jooble and Careerjet also offer official APIs that need a registered key. Those would be
+the proper route to their listings; none is wired in.
 
 ### Business Analyst sources
 
@@ -190,7 +223,7 @@ Two BA-only portal scrapers sit alongside the shared portals:
 | Source | How it is read | Notes |
 |---|---|---|
 | **IIBA Career Center** | server-rendered search page (plain HTTP) | the BA-specific board; parses both its legacy `job-tile` and newer `job-card` layouts |
-| **Wellfound** | embedded Apollo state in the role page | India roles + unrestricted remote only; US-only remote listings are dropped |
+| **Wellfound** | embedded Apollo state in the India role pages and the remote BA page | India roles + unrestricted remote only; US-only remote listings are dropped. Runs for every role |
 
 Two keyless feeds also run for BA:
 
@@ -470,10 +503,14 @@ Scrapers and keyless feeds fail in different ways, so the pipeline uses both:
 | **SimplyHired** (Indeed inventory) | ✅ via WARP (optional) | Indeed's sister site; same Indian listings |
 | Company career boards | ✅ works (every role) | Workday / Greenhouse / Lever / Ashby / SmartRecruiters, no key |
 | **IIBA Career Center** | ✅ works (BA only) | plain HTTP; the BA-specific board |
-| **Wellfound** | ✅ works (BA only) | India + unrestricted remote only |
+| **Wellfound** | ✅ every role (see note) | India + unrestricted remote only |
+| **Instahyre, Cutshort, Internshala, Apna, Unstop, Workable** | ✅ every role (see note) | plain HTTP within `robots.txt`; a refusal stops that source for the run |
 | **Remote OK / We Work Remotely** | ✅ works (BA only) | keyless remote feeds |
 
 Cloud runs use `--no-apis`, so only the direct scrapers + LinkedIn publish by default.
+
+Note: the sources added on 2026-11-04 were tested from a home connection. GitHub's runner IPs can
+be treated differently, so check `[portal] <name>: N jobs kept` in the first scrape's log.
 
 ### Why Indeed needs special handling
 
