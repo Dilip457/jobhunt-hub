@@ -285,6 +285,49 @@ export function initials(value: string): string {
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("");
 }
 
+/**
+ * The value when it is an absolute http(s) link, else null. Job links come from
+ * scraped pages, so a listing could carry javascript:, data: or a link that
+ * hides its real host behind user:password@.
+ */
+export function safeHttpUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || /[\u0000-\u0020\u007f]/.test(text)) return null;
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.username || url.password || !url.hostname) return null;
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+/** Where a job's Apply link goes: its apply link if safe, else its listing link. */
+export function jobHref(job: { url?: unknown; apply_url?: unknown }): string | undefined {
+  return safeHttpUrl(job.apply_url) ?? safeHttpUrl(job.url) ?? undefined;
+}
+
+/**
+ * Keep only jobs with a safe listing link, and drop an unsafe apply link. The
+ * publisher does this too; this covers a data branch written by anything else.
+ */
+export function withSafeLinks<T extends { url?: unknown; apply_url?: unknown }>(jobs: T[]): T[] {
+  const kept: T[] = [];
+  for (const job of jobs) {
+    if (!safeHttpUrl(job.url)) continue;
+    if (job.apply_url && !safeHttpUrl(job.apply_url)) {
+      const copy = { ...job };
+      delete copy.apply_url;
+      kept.push(copy);
+    } else {
+      kept.push(job);
+    }
+  }
+  return kept;
+}
+
 export interface CompanyHue {
   /** The company's colour: the wordmark, the corner bloom and Apply on hover. */
   color: string;

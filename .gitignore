@@ -10,11 +10,18 @@ build/
 dist/
 *.tsbuildinfo
 
-# env
-.env
-.env.local
-.env.*.local
+# env and key material: every .env variant except the example
+.env*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*credentials*.json
+cookies*.txt
+cookies*.json
 
 # python
 __pycache__/
@@ -23,6 +30,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.ruff_cache/
 
 # scraper output
 artifacts/

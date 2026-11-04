@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Job } from "@/lib/types";
-import { experienceLabel } from "@/lib/utils";
+import { experienceLabel, jobHref } from "@/lib/utils";
 import { ExternalIcon } from "./Icons";
 
 interface Props {
@@ -28,7 +28,7 @@ export default function BestMatch({ job, accent }: Props) {
     <a
       className="best-match"
       style={style}
-      href={job.apply_url || job.url}
+      href={jobHref(job)}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Best match right now: ${job.title} at ${job.company}, ${Math.round(job.score)} out of 100. Opens the posting.`}

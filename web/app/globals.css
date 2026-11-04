@@ -2264,6 +2264,19 @@ a.best-match:hover {
   }
 }
 
+.safety-note {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.safety-note strong {
+  color: var(--white);
+}
+
 .job-grid.is-loading {
   opacity: 0.6;
 }

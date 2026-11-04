@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { newJobs, topMatch } from "@/lib/rank";
 import type { Job, RoleSlug } from "@/lib/types";
-import { formatNumber, timeAgo, uniqueCompanies } from "@/lib/utils";
+import { formatNumber, jobHref, timeAgo, uniqueCompanies } from "@/lib/utils";
 
 interface Props {
   jobs: Job[];
@@ -60,7 +60,7 @@ export default function UpdatesTicker({ jobs, role, updatedAt }: Props) {
         <a
           key={`${job.source}-${job.id}`}
           className="ticker-item"
-          href={job.apply_url || job.url}
+          href={jobHref(job)}
           target="_blank"
           rel="noopener noreferrer"
           tabIndex={hidden ? -1 : undefined}

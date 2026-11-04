@@ -100,7 +100,7 @@ export default function JobDashboard({ role }: Props) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState("");
-  const [rememberKey, setRememberKey] = useState(true);
+  const [rememberKey, setRememberKey] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [keyChecking, setKeyChecking] = useState(false);
   const [refreshOpen, setRefreshOpen] = useState(false);
@@ -305,6 +305,7 @@ export default function JobDashboard({ role }: Props) {
       const stored = window.localStorage.getItem(REFRESH_KEY_STORAGE) ?? "";
       refreshKeyRef.current = stored;
       setRefreshKey(stored);
+      setRememberKey(Boolean(stored));
     } catch {
       /* storage can be unavailable (private mode) */
     }
@@ -707,6 +708,11 @@ export default function JobDashboard({ role }: Props) {
               <li>Results are published as JSON; this dashboard reads the published data.</li>
               <li>Filters and role changes never trigger a scrape or spend a workflow run.</li>
             </ol>
+            <p className="safety-note">
+              <strong>Stay safe.</strong> Listings come from public job boards and open on the employer&apos;s or
+              board&apos;s own site. Real employers never ask for a fee to apply, interview or join. Check the company
+              before you share ID or bank details. JobHunt never contacts applicants.
+            </p>
           </div>
 
           <div className="info-card info-card-accent">

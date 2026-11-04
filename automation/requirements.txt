@@ -1,6 +1,13 @@
 # Dependencies for the direct portal scrapers (automation/portal_scrapers.py)
-requests>=2.31
+#
+# The scrape job installs these after the vendor repo's requirements, so these
+# minimums also lift any older version a vendor repo pins. They are set at the
+# first releases free of the advisories known on 2026-11-04.
+requests>=2.33
+urllib3>=2.8
+certifi>=2026.10.18
+idna>=3.7
 beautifulsoup4>=4.12
-lxml>=5.0
+lxml>=6.1
 playwright>=1.45
 curl_cffi>=0.7

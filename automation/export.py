@@ -784,10 +784,17 @@ def clean_title(title: str, company: str = "") -> str:
 
 
 def valid_url(url: str) -> bool:
-    if not url:
+    """An absolute http(s) link with a host, and no user:password@ hiding the real host."""
+    if not url or not isinstance(url, str):
         return False
-    low = url.strip().lower()
-    return low.startswith("http://") or low.startswith("https://")
+    text = url.strip()
+    if any(ord(ch) <= 0x20 or ord(ch) == 0x7f for ch in text):
+        return False
+    try:
+        parts = urlsplit(text)
+        return parts.scheme.lower() in ("http", "https") and bool(parts.hostname) and not parts.username and parts.password is None
+    except ValueError:
+        return False
 
 
 # Company career pages list jobs worldwide (the vendor pipeline reads global
