@@ -23,6 +23,6 @@
     "@types/three": "^0.180.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.5",
-    "typescript": "^5.7.0"
+    "typescript": "^7.0.2"
   }
 }
