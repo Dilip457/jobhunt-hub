@@ -97,7 +97,8 @@ jobhunt-hub/
 ├─ .github/workflows/
 │  ├─ scrape.yml                 # daily scrape, WARP, publish
 │  ├─ experience-probe.yml       # manual: show what cards will say for live postings
-│  └─ ci.yml                     # pytest, lint, typecheck, web tests, build on PRs
+│  └─ ci.yml                     # pytest, pip-audit, lint, typecheck, npm audit, web tests, build on PRs
+├─ .github/dependabot.yml        # weekly updates for pinned actions and npm packages
 ├─ automation/
 │  ├─ run_source.py              # vendor wrapper: config patches, pipeline, export
 │  ├─ export.py                  # vendor SQLite → public job JSON
@@ -113,7 +114,7 @@ jobhunt-hub/
 │  ├─ companies.json             # company career boards (Workday, Greenhouse, Lever, Ashby, SmartRecruiters)
 │  ├─ validate_companies.py      # check companies.json against the live feeds
 │  └─ requirements.txt           # portal scraper dependencies
-├─ tests/                        # pytest suite (export, scoring, publish, roles, run_source, titles, experience, boards, workflow security)
+├─ tests/                        # pytest suite (export, scoring, publish, roles, run_source, titles, experience, boards, workflow security, security rules)
 ├─ profiles/
 │  ├─ genai.json                 # role search config, NOT a resume
 │  ├─ data.json
@@ -157,12 +158,13 @@ jobhunt-hub/
 │  │  ├─ fallback.ts              # seed JSON fallback
 │  │  ├─ rank.ts                  # role order, top match, score axes, match bands
 │  │  ├─ estimate.ts              # browser copy of the scraper's score parts
-│  │  └─ utils.ts                 # score tiers, dates, filters, labels, company colour (companyHue)
-│  ├─ tests/                      # node:test suites: rank, companyHue, filters, refresh, refreshLockout, renderQuality
+│  │  └─ utils.ts                 # score tiers, dates, filters, labels, company colour (companyHue), safe links (safeHttpUrl, jobHref)
+│  ├─ tests/                      # node:test suites: rank, companyHue, filters, refresh, refreshLockout, renderQuality, security
 │  ├─ data/                       # committed seed JSON
 │  ├─ public/                     # Next Step favicon set (favicon.svg + PNG/ICO renders), manifest.json
 │  ├─ public/models/student/      # GLB, scene/portrait posters, attribution
-│  ├─ next.config.mjs
+│  ├─ next.config.mjs             # applies securityHeaders to every route
+│  ├─ securityHeaders.mjs         # CSP and the other response headers
 │  ├─ package.json
 │  └─ .env.example
 ├─ docs/
@@ -170,6 +172,7 @@ jobhunt-hub/
 │  ├─ IMPLEMENTATION.md           # file-by-file implementation and operations
 │  └─ CODE_MAP.md                 # this lookup table
 ├─ README.md
+├─ SECURITY.md                    # reporting a problem; owner's account and hosting checklist
 └─ .gitignore
 ```
 
@@ -236,12 +239,12 @@ jobhunt-hub/
 | `web/lib/roles.ts` | `ROLES`, `DEFAULT_ROLE`, `getRole` | Labels, short labels, descriptions, accents and blurbs |
 | `web/lib/service.ts` | `getRoleData` | Reads the `data` branch, falls back to seed JSON |
 | `web/lib/github.ts` | `readJsonFromDataBranch` (raw media type, works above 1 MB), `getRunStatus`, `runRole`, `cooldownRemaining`, `dispatchWorkflow`, `REFRESH_COOLDOWN_MINUTES`, `isConfigured`, `isRefreshProtected` | All server-side GitHub access |
-| `web/lib/refreshAuth.ts` | `refreshMode`, `checkRefreshKey`, `checkRefreshAttempt`, `createAttemptLimiter`, `refreshLimiter`, `clientIp`, `wrongKeyDelay` | Refresh password check and the in-memory wrong-password lockout (5 per IP / over 30 overall in 15 min → 15 min lock) |
+| `web/lib/refreshAuth.ts` | `refreshMode`, `checkRefreshKey`, `checkRefreshAttempt`, `createAttemptLimiter`, `refreshLimiter`, `clientIp`, `wrongKeyDelay` | Refresh password check (constant-time over SHA-256 digests) and the in-memory wrong-password lockout (5 per IP or IPv6 /64, over 30 overall, in 15 min → 15 min lock) |
 | `web/lib/refreshPrompt.ts` | `passwordError`, `tooManyAttemptsMessage`, `TOO_MANY_ATTEMPTS_CODE`, `WRONG_PASSWORD_MESSAGE` | Password dialog copy shared by the dashboard and `/api/refresh` |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
 | `web/lib/renderQuality.ts` | `createQualityGovernor` | Steps the WebGL pixel ratio down when frames run long and back up when there is headroom (see ARCHITECTURE 4.5.1) |
 | `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
-| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `companyHue`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
+| `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `companyHue`, `safeHttpUrl`, `jobHref`, `withSafeLinks`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |
 
 ### 4.4 Static assets
 
@@ -355,7 +358,7 @@ Read with `parseFilterParams()` and written with `filterSearch()` (`web/lib/filt
 | Route | File | Request | Success | Failure / notes |
 |---|---|---|---|---|
 | `GET /api/jobs` | `web/app/api/jobs/route.ts` | `role=genai`, `data`, `uiux` or `ba`; optional `fresh` (honoured only with a valid `x-refresh-token`) | `RoleData` JSON | `400` unknown role; `502` load error; `s-maxage=60` unless `fresh` is present (`private, no-store`) |
-| `GET /api/status` | `web/app/api/status/route.ts` | optional `role`; optional `since` (ISO time) | `StatusResponse` | Always `no-store`; returns idle message if GitHub is unreachable; with `since`, reports `queued` + `awaitingRun` until a run created after it is listed |
+| `GET /api/status` | `web/app/api/status/route.ts` | optional `role`; optional `since` (ISO time) | `StatusResponse` | Always `no-store`; returns a generic idle message if GitHub is unreachable or rejects the token (details go to the server log only); with `since`, reports `queued` + `awaitingRun` until a run created after it is listed |
 | `POST /api/refresh` | `web/app/api/refresh/route.ts` | `{ "role": "<role>" }` | `202 { ok, role, state: "queued", dispatchedAt }` | `403` blocked origin; `401` missing/wrong password (wrong ones answered after ~750 ms); `429` `code: "too_many_attempts"` with `minutesLeft` while that IP (5 wrong in 15 min) or everyone (over 30 wrong in 15 min) is locked out; `503` refresh disabled (`code: "refresh_disabled"`, production without `REFRESH_TOKEN`) or unconfigured; `400` bad body/role; `409` already running or just dispatched; `429` cooldown; `502` dispatch failed |
 
 Origin check (CSRF): the `Origin` header is required and must be the request host, the `NEXT_PUBLIC_SITE_URL` host, or one of `VERCEL_URL` / `VERCEL_BRANCH_URL` / `VERCEL_PROJECT_PRODUCTION_URL` (localhost too in development). The `x-refresh-token` header must match `REFRESH_TOKEN` (`web/lib/refreshAuth.ts`), the password or PIN the owner chose and set only in Vercel (a change needs a redeploy); a production build without `REFRESH_TOKEN` refuses every refresh. The lockout is checked before the password, so a locked IP is refused even with the right one; wrong passwords sent to `/api/jobs?fresh` count towards it too. It never applies in local development without a token.
@@ -671,7 +674,7 @@ This is optional; GitHub Actions is the primary scheduler.
 
 ### 9.9 CI
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: `python -m pytest -q tests` with `automation/requirements.txt` installed (the packages the scrape job uses), then `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` in `web/`. (The one-off Indeed/WARP probe scripts and workflows were removed; they are in git history.)
+`.github/workflows/ci.yml` runs on every pull request and push to `main`: `python -m pytest -q tests` with `automation/requirements.txt` installed (the packages the scrape job uses) and `pip-audit` on that file, then `npm audit --omit=dev --audit-level=high`, `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` in `web/`. (The one-off Indeed/WARP probe scripts and workflows were removed; they are in git history.)
 
 ---
 
@@ -761,6 +764,8 @@ Seed fallback: `web/data/genai.json`, `web/data/data.json`, `web/data/uiux.json`
 | Palette / spacing | `web/app/globals.css` `:root` | component class names |
 | Dashboard filters | `web/components/Filters.tsx` + `JobDashboard.tsx` `filtered` | `web/lib/utils.ts` |
 | Job card fields | `web/components/JobCard.tsx` | `web/lib/types.ts`, `export.py` |
+| Response headers / CSP | `web/securityHeaders.mjs` | `web/next.config.mjs`; `web/tests/security.test.ts`. A new external script, API or font host must be added to the CSP |
+| Which jobs may be published | `automation/publish.py` `unsafe_listing()`, `FEE_DEMAND_RE`, `BLOCKED_LINK_HOSTS`, `redact_contacts()` | `export.valid_url()`; `web/lib/utils.ts` `withSafeLinks()`; `tests/test_security.py` |
 | Company colour on a card | `web/lib/utils.ts` `companyHue()` (saturation, lightness, 4.5:1 text contrast) | `--hue`/`--hue-ink`/`--hue-text` set in `JobCard.tsx`; `.job-wordmark`, `.job-bloom`, `.job-new`, `.apply-btn` in `globals.css`; `tests/companyHue.test.ts` |
 | Card light / turn-over | `JobCard.tsx` (`FLIP_MS`) | `.job-card` (perspective), `.job-card-inner`, `.job-face`, `.job-back`, `.job-parts`, `.job-card-light`, `.job-card:focus-visible` in `globals.css` |
 | Edge lights | `globals.css` `.edge-light` | the two spans in `JobDashboard.tsx` |

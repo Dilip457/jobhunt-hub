@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { Job, RoleSlug } from "@/lib/types";
 import { matchAxes } from "@/lib/rank";
-import { companyHue, dateAgo, experienceLabel, scoreTier, sourceColor } from "@/lib/utils";
+import { companyHue, dateAgo, experienceLabel, jobHref, scoreTier, sourceColor } from "@/lib/utils";
 import { ExternalIcon } from "./Icons";
 
 interface Props {
@@ -105,7 +105,7 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
     toggle();
   }
 
-  const applyHref = job.apply_url || job.url;
+  const applyHref = jobHref(job);
 
   return (
     <article

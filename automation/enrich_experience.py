@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
+import ipaddress
 import json
 import os
 import re
@@ -198,7 +199,31 @@ class HostThrottle:
                 self._last[host] = time.monotonic()
 
 
+def is_public_url(url: str) -> bool:
+    """False for anything but http(s), and for local or private addresses given literally.
+
+    The URLs come from scraped data, so one could point at the runner's own
+    network (a cloud metadata address, say).
+    """
+    try:
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    if parts.scheme.lower() not in ("http", "https") or not host:
+        return False
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return True
+
+
 def fetch(url: str, session: requests.Session, throttle: HostThrottle) -> Optional[str]:
+    if not is_public_url(url):
+        print(f"[experience] skipped non-public link: {url[:80]}", file=sys.stderr)
+        return None
     host = urlsplit(url).netloc.lower()
     throttle.wait(host)
     try:
@@ -208,6 +233,10 @@ def fetch(url: str, session: requests.Session, throttle: HostThrottle) -> Option
         return None
     if response.status_code != 200 or not response.text:
         print(f"[experience] {url}: HTTP {response.status_code}", file=sys.stderr)
+        return None
+    # A redirect may have ended somewhere private; do not read what came back.
+    if not is_public_url(getattr(response, "url", url) or url):
+        print(f"[experience] {url}: redirected to a non-public address", file=sys.stderr)
         return None
     return response.text
 

@@ -1,4 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { isIPv6 } from "node:net";
 
 type Env = Record<string, string | undefined>;
 type Clock = () => number;
@@ -25,9 +26,10 @@ export function checkRefreshKey(given: string | null | undefined, env: Env = pro
   const mode = refreshMode(env);
   if (mode === "open") return "ok";
   if (mode === "disabled") return "disabled";
-  const a = Buffer.from(given ?? "");
-  const b = Buffer.from(env.REFRESH_TOKEN ?? "");
-  return a.length === b.length && timingSafeEqual(a, b) ? "ok" : "invalid";
+  // Hash first: both sides are then the same length, so neither the comparison
+  // nor an early length check can reveal how long the password is.
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(given ?? ""), digest(env.REFRESH_TOKEN ?? "")) ? "ok" : "invalid";
 }
 
 // ── Wrong-password lockout ───────────────────────────────────────────────────
@@ -152,11 +154,31 @@ interface HeaderSource {
  * Off Vercel these headers are only as trustworthy as the proxy in front;
  * if a client can set them, the global cap still bounds guessing.
  */
+/**
+ * One bucket per IPv6 /64: a single connection is usually handed a whole /64,
+ * so counting each address would give one guesser billions of fresh buckets.
+ */
+function clientBucket(ip: string): string {
+  if (!isIPv6(ip)) return ip;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  const [head, tail = ""] = ip.split("%")[0].split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = ip.includes("::")
+    ? [...left, ...Array<string>(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right]
+    : left;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.toLowerCase().replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
+}
+
 export function clientIp(headers: HeaderSource): string {
   for (const name of ["x-vercel-forwarded-for", "x-real-ip", "x-forwarded-for"]) {
     const first = headers.get(name)?.split(",")[0]?.trim();
     // Cap the length so a junk header cannot bloat the tracking map.
-    if (first) return first.slice(0, 64);
+    if (first) return clientBucket(first.slice(0, 64));
   }
   return UNKNOWN_CLIENT;
 }

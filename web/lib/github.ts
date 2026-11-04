@@ -126,10 +126,9 @@ async function fetchRuns(perPage = 12): Promise<RunsResult> {
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    return {
-      runs: [],
-      error: `GitHub API ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`,
-    };
+    // Details stay in the server log: /api/status is public.
+    console.error(`[github] runs listing failed ${response.status}: ${detail.slice(0, 180)}`);
+    return { runs: [], error: `GitHub API ${response.status}` };
   }
   const payload = (await response.json()) as { workflow_runs?: ActionsRun[] };
   return { runs: payload.workflow_runs ?? [] };
@@ -226,7 +225,7 @@ export async function getRunStatus(
       role,
       ...guard,
       canRefresh: false,
-      message: `GitHub is not reachable with the configured token (${error}).`,
+      message: "Live status is unavailable right now.",
     };
   }
 

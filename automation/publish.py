@@ -16,14 +16,16 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlsplit
 
 from api_sources import score_parts, title_relevant
-from export import canonical_url, dedupe_jobs, states_experience
+from export import canonical_url, dedupe_jobs, states_experience, valid_url
 
 EXPERIENCE_FIELDS = ("experience_min", "experience_max", "experience_source", "experience_level")
 RESOLVED_EXPERIENCE = {"board", "text", "page", "level"}
@@ -187,6 +189,63 @@ def cap_posted_date(job: Dict[str, Any]) -> None:
         job["posted_date"] = first_seen
 
 
+# Listings are scraped text, so a scam posted on a board arrives here too. These
+# only ever appear in a listing that asks the applicant to pay or to move off the
+# board; ordinary wording about pay or benefits does not match.
+FEE_DEMAND_RE = re.compile(
+    r"\b(?:registration|processing|training|joining|application|interview)\s+(?:fees?|charges?)\b"
+    r"|\brefundable\s+(?:fees?|deposit|amount)\b",
+    re.I,
+)
+# Link shorteners hide the destination; chat links take the applicant off the board.
+BLOCKED_LINK_HOSTS = frozenset({
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "rb.gy", "cutt.ly", "is.gd", "shorturl.at",
+    "wa.me", "t.me", "telegram.me", "chat.whatsapp.com", "api.whatsapp.com",
+})
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+INDIAN_PHONE_RE = re.compile(r"(?<![\d-])(?:\+?91[ -]?)?[6-9]\d{4}[ -]?\d{5}(?!\d)")
+CONTACT_REMOVED = "[contact removed]"
+
+
+def _link_host(url: str) -> str:
+    host = (urlsplit(url).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def unsafe_listing(job: Dict[str, Any]) -> Optional[str]:
+    """Why a job must not be published, or None. Runs in the one job holding a write token."""
+    url = job.get("url") or ""
+    if not valid_url(url):
+        return "unsafe link"
+    apply_url = job.get("apply_url") or ""
+    for link in (url, apply_url):
+        if link and valid_url(link) and _link_host(link) in BLOCKED_LINK_HOSTS:
+            return "shortener or chat link"
+    if FEE_DEMAND_RE.search(f"{job.get('title') or ''} {job.get('snippet') or ''}"):
+        return "asks for a fee"
+    return None
+
+
+def drop_unsafe(payload: Dict[str, Any], role: str) -> int:
+    """Remove listings unsafe_listing rejects, including carried-over ones, and recount."""
+    jobs = payload.get("jobs") or []
+    kept = []
+    for job in jobs:
+        reason = unsafe_listing(job)
+        if reason:
+            print(f"[publish] {role}: dropped {job.get('company')!r} {job.get('title')!r}: {reason}")
+        else:
+            kept.append(job)
+    payload["jobs"] = kept
+    payload["count"] = len(kept)
+    return len(jobs) - len(kept)
+
+
+def redact_contacts(text: str) -> str:
+    """A recruiter's email or phone in a listing is personal data this site need not republish."""
+    return INDIAN_PHONE_RE.sub(CONTACT_REMOVED, EMAIL_RE.sub(CONTACT_REMOVED, text))
+
+
 def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS, role: Optional[str] = None) -> Dict[str, Any]:
     """Fields derived at publish time, plus trimming of unused fields."""
     first_seen = (job.get("first_seen") or "")[:10]
@@ -214,7 +273,9 @@ def finalize_job(job: Dict[str, Any], new_days: int = NEW_DAYS, role: Optional[s
         job["score_parts"] = parts
     else:
         job.pop("score_parts", None)
-    if job.get("apply_url") == job.get("url"):
+    if job.get("snippet"):
+        job["snippet"] = redact_contacts(job["snippet"])
+    if job.get("apply_url") == job.get("url") or not valid_url(job.get("apply_url") or ""):
         job.pop("apply_url", None)
     return job
 
@@ -469,6 +530,7 @@ def build_payloads(
             continue
 
         drop_offrole(payloads[role], role)
+        drop_unsafe(payloads[role], role)
         for job in payloads[role]["jobs"]:
             finalize_job(job, role=role)
 

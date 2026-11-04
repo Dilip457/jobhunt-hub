@@ -2,6 +2,7 @@ import { readJsonFromDataBranch } from "./github";
 import { fallbackRoleData } from "./fallback";
 import { createTtlCache } from "./ttlCache";
 import type { RoleData, RoleSlug } from "./types";
+import { withSafeLinks } from "./utils";
 
 /**
  * The GitHub read is cached in memory for about as long as the edge caches the
@@ -22,7 +23,8 @@ async function loadRoleData(role: RoleSlug): Promise<RoleData> {
   try {
     const live = await readJsonFromDataBranch<RoleData>(`${role}.json`, { noStore: true });
     if (live && live.role && Array.isArray(live.jobs)) {
-      return { ...live, demo: live.demo ?? false };
+      const jobs = withSafeLinks(live.jobs);
+      return { ...live, jobs, count: jobs.length, demo: live.demo ?? false };
     }
   } catch {
     // fall through to seed data

@@ -556,10 +556,10 @@ to open a confirmation dialog; only **Confirm refresh** dispatches the workflow.
 shortcut is ignored while focus is inside a form field, and `Escape` closes the dialog.
 
 The dialog asks for the refresh password: `REFRESH_TOKEN`, any password or PIN the owner
-chooses (8+ characters, or at least 6 digits), set only in Vercel's environment variables;
+chooses (a long random value is advised), set only in Vercel's environment variables;
 changing it needs a redeploy. The dialog is a real sign-in form, so the browser can save the
-password and sync it to the owner's other devices; "Remember on this device" also keeps it in
-`localStorage`. A wrong password keeps the dialog open with "Wrong password".
+password and sync it to the owner's other devices; "Remember on this device", off by default,
+also keeps it in `localStorage`. A wrong password keeps the dialog open with "Wrong password".
 
 ```mermaid
 sequenceDiagram
@@ -636,15 +636,21 @@ memory, so they are best effort; the cooldown and one-run-per-role concurrency s
 ### Security
 
 - GitHub PAT is server-side only.
-- Refresh endpoint checks the request origin and the owner's refresh password, with a wrong-password lockout.
-- No user accounts, passwords, or personal data.
+- Refresh endpoint checks the request origin and the owner's refresh password, with a wrong-password lockout. The password is compared through SHA-256 digests in constant time, so neither timing nor an early length check reveals it. IPv6 clients are counted per /64.
+- No user accounts, cookies, or personal data from visitors.
 - No database, so no SQL injection or database credentials.
-- Job URLs are opened in a new tab with `rel="noopener noreferrer"`.
+- Response headers on every route (`web/securityHeaders.mjs`): a Content Security Policy, HSTS, `nosniff`, `X-Frame-Options: DENY`, a referrer policy, a permissions policy and same-origin opener and resource policies. The CSP allows no script, connection or frame from another origin and stops other sites framing the page. It keeps `script-src 'unsafe-inline'` because Next.js inlines bootstrap scripts into static pages and a nonce would make every page render per request; the site renders no third-party HTML, so nothing can inject into it today.
+- Job links are scraped, so they are treated as untrusted at three points: `publish.py` refuses to publish anything but a plain http(s) link with a host and no `user:password@`, `service.ts` filters the same way when reading the data branch, and the components link through `jobHref()`. They open in a new tab with `rel="noopener noreferrer"`. Text is only ever rendered by React as text; the app has no `dangerouslySetInnerHTML`.
+- Fake listings are a social-engineering risk this site cannot fully remove. `publish.py` drops listings that demand a fee (registration, processing, training and similar) and links through URL shorteners or chat apps, and the dashboard tells visitors never to pay to apply. It cannot recognise a well-made fake posted on a real board.
+- `/api/status` is public, so upstream error text goes to the server log only, and visitors see a generic message.
+- CI and supply chain: workflow actions are pinned to commit SHAs and kept current by Dependabot; tokens are read-only except in the `publish` job, which runs no third-party code and treats artifacts as data; CI fails on high-severity advisories in production npm packages and on any known advisory in the Python packages. Python minimums in `automation/requirements.txt` also lift older versions pinned by vendor repos.
+- `enrich_experience.py` reads posting pages from scraped links, so it refuses local and private addresses, including after a redirect.
+- Account and hosting settings live outside the repo: see the owner's checklist in [SECURITY.md](../SECURITY.md).
 
 ### Privacy
 
 - Only public job listings are stored.
-- No candidate resumes, profiles, or contact details.
+- No candidate resumes, profiles, or contact details. Emails and Indian phone numbers in a listing's snippet are replaced at publish time.
 - Full descriptions are not stored; only a ~240-character snippet.
 - Foreign listings are filtered out; the board is India + Remote.
 

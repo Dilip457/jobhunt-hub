@@ -30,7 +30,7 @@ export default function ConfirmRefresh({
   roleLabel,
   needsKey = false,
   initialKey = "",
-  initialRemember = true,
+  initialRemember = false,
   error = null,
   busy = false,
   onCancel,
