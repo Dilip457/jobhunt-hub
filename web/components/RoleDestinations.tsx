@@ -26,6 +26,7 @@ export default function RoleDestinations({ onSelect, selected = null, disabled =
             disabled={disabled}
             aria-label={`Explore ${role.fullLabel} jobs`}
             aria-pressed={isSelected}
+            data-sound="select"
           >
             <span className="destination-index">0{index + 1}</span>
             <span className="destination-light" aria-hidden />

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import AnimatedFavicon from "../components/AnimatedFavicon";
+import SoundEffects from "../components/SoundEffects";
 import "./globals.css";
 
 const bodyFont = Inter({
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <AnimatedFavicon />
+        <SoundEffects />
         {children}
       </body>
     </html>

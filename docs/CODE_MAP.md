@@ -147,6 +147,8 @@ jobhunt-hub/
 │  │  ├─ RefreshPanel.tsx         # queued/running/success/failed progress
 │  │  ├─ BrandMark.tsx            # "Next Step" brand mark: CSS 3D steps, a red dot climbing
 │  │  ├─ AnimatedFavicon.tsx      # transparent canvas favicon, 8 fps, pauses while the scene or scrolling is busy
+│  │  ├─ SoundEffects.tsx         # one document listener: a tick for every button and link, data-sound for the exceptions
+│  │  ├─ SoundToggle.tsx          # Sound on/off in both headers, remembered on the device
 │  │  └─ Icons.tsx                # inline SVG icon set
 │  ├─ lib/
 │  │  ├─ types.ts                 # Job, RoleData, StatusResponse, RoleMeta
@@ -155,11 +157,13 @@ jobhunt-hub/
 │  │  ├─ github.ts                # Contents API, Actions status, dispatch
 │  │  ├─ prefetch.ts              # warm /api/jobs during the intro
 │  │  ├─ renderQuality.ts         # frame-time governor for the intro's pixel ratio
+│  │  ├─ sound.ts                 # the cues, synthesised with the Web Audio API; the on/off preference
+│  │  ├─ footsteps.ts             # footstep timing from the feet's own heights
 │  │  ├─ fallback.ts              # seed JSON fallback
 │  │  ├─ rank.ts                  # role order, top match, score axes, match bands
 │  │  ├─ estimate.ts              # browser copy of the scraper's score parts
 │  │  └─ utils.ts                 # score tiers, dates, filters, labels, company colour (companyHue), safe links (safeHttpUrl, jobHref)
-│  ├─ tests/                      # node:test suites: rank, companyHue, filters, refresh, refreshLockout, renderQuality, security
+│  ├─ tests/                      # node:test suites: rank, companyHue, filters, refresh, refreshLockout, renderQuality, security, sound
 │  ├─ data/                       # committed seed JSON
 │  ├─ public/                     # Next Step favicon set (favicon.svg + PNG/ICO renders), manifest.json
 │  ├─ public/models/student/      # GLB, scene/portrait posters, attribution
@@ -191,7 +195,7 @@ jobhunt-hub/
 | `/jobs/ba` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Business Analyst dashboard (entry-level first) |
 | `/jobs/sde` | `web/app/jobs/[role]/page.tsx` | `RolePage` | Software Development Engineer dashboard |
 | Invalid role | `web/app/jobs/[role]/page.tsx` | `redirect("/")` | Unknown slug returns home |
-| App shell | `web/app/layout.tsx` | `metadata`, `viewport`, `RootLayout`, `AnimatedFavicon` | Fonts, `noindex`, theme colour, versioned favicon/manifest links, GLB preload |
+| App shell | `web/app/layout.tsx` | `metadata`, `viewport`, `RootLayout`, `AnimatedFavicon`, `SoundEffects` | Fonts, `noindex`, theme colour, versioned favicon/manifest links, GLB preload |
 
 `web/app/globals.css` owns:
 
@@ -229,6 +233,8 @@ jobhunt-hub/
 | Refresh progress | `web/components/RefreshPanel.tsx` | `RefreshPanel`, `STEPS`, `activeStep` | Queued/running/success/failed progress, elapsed time, run log link |
 | Brand mark | `web/components/BrandMark.tsx` | `BrandMark` | "Next Step": three isometric CSS 3D steps (top one blue) and a red dot hopping up them every 3.6 s (`brand-climb` in `globals.css`); em-sized, 42px desktop / 36px phone; the dot rests on the top step under `prefers-reduced-motion` |
 | Animated favicon | `web/components/AnimatedFavicon.tsx` | `AnimatedFavicon`, `drawScene`, `dotPosition`, `project`, `paint` | Draws the Next Step mark (the geometry of `favicon.svg`) with the red dot hopping on the CSS mark's 3.6 s timing, on a 64×64 transparent canvas at 8 fps, updates every icon link, pauses when hidden, while `<html data-scene-busy>` is set and for 400 ms after scroll or pointer input, and defers to the static files under `prefers-reduced-motion` |
+| Sound cues on click | `web/components/SoundEffects.tsx` | `SoundEffects` | Starts the audio context from the first pointerdown/keydown/touchend; a tick for every `button` and `a[href]` click and every select/checkbox change; `data-sound="tab|select|flip|none"` and `data-sound-step` choose otherwise |
+| Sound switch | `web/components/SoundToggle.tsx` | `SoundToggle` | `aria-pressed` button in the intro and dashboard headers; turning on answers with a tick |
 | Icons | `web/components/Icons.tsx` | `SearchIcon`, `ChevronDownIcon`, `RefreshIcon`, `MapPinIcon`, `BuildingIcon`, `CalendarIcon`, `ExternalIcon`, `CheckIcon`, `CloseIcon`, `SparkIcon`, `MailIcon`, `BriefcaseIcon`, `LayersIcon`, `GlobeIcon`, `AlertIcon`, `GithubIcon`, `CodeIcon`, `FilterIcon`, `EyeIcon`, `ArrowRightIcon`, `ArrowLeftIcon`, `PlayIcon`, `RouteIcon` | Inline SVG icon set |
 
 ### 4.3 Data access and shared logic
@@ -242,6 +248,8 @@ jobhunt-hub/
 | `web/lib/refreshAuth.ts` | `refreshMode`, `checkRefreshKey`, `checkRefreshAttempt`, `createAttemptLimiter`, `refreshLimiter`, `clientIp`, `wrongKeyDelay` | Refresh password check (constant-time over SHA-256 digests) and the in-memory wrong-password lockout (5 per IP or IPv6 /64, over 30 overall, in 15 min → 15 min lock) |
 | `web/lib/refreshPrompt.ts` | `passwordError`, `tooManyAttemptsMessage`, `TOO_MANY_ATTEMPTS_CODE`, `WRONG_PASSWORD_MESSAGE` | Password dialog copy shared by the dashboard and `/api/refresh` |
 | `web/lib/prefetch.ts` | `prefetchRole`, `takePrefetchedRole` | Starts `/api/jobs` during the intro and consumes it once |
+| `web/lib/sound.ts` | `playSound`, `primeAudio`, `soundEnabled`, `setSoundEnabled`, `useSoundEnabled`, `parseSoundSetting`, `soundReady` | Tick, tab, select, flip and step cues as tones and noise bursts through one compressor; nothing downloaded. Preference in `localStorage` `jobhunt.sound`, on unless `"off"` |
+| `web/lib/footsteps.ts` | `stepThresholds`, `createStepDetector` | Lift and contact heights from a foot's sampled swing; a detector that reports the frame a foot lands |
 | `web/lib/renderQuality.ts` | `createQualityGovernor` | Steps the WebGL pixel ratio down when frames run long and back up when there is headroom (see ARCHITECTURE 4.5.1) |
 | `web/lib/fallback.ts` | `fallbackRoleData` | Seed data with `demo: true` |
 | `web/lib/utils.ts` | `scoreTier`, `dateAgo`, `timeAgo`, `formatNumber`, `formatDuration`, `uniqueCompanies`, `cityCounts`, `experienceLabel`, `matchesExperience`, `experiencePriority`, `experienceBandPriority`, `sourceColor`, `companyHue`, `safeHttpUrl`, `jobHref`, `withSafeLinks`, `initials` | Display and filter helpers; `experiencePriority` puts fresher/1–3 year BA roles first, `experienceBandPriority` puts 3–8 year SDE roles first |

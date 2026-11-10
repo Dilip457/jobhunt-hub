@@ -5,6 +5,7 @@ import type { RoleSlug } from "@/lib/types";
 import BrandMark from "./BrandMark";
 import { MailIcon, RouteIcon } from "./Icons";
 import RoleDestinations from "./RoleDestinations";
+import SoundToggle from "./SoundToggle";
 
 interface Props {
   onSelect: (role: RoleSlug) => void;
@@ -42,10 +43,13 @@ export default function StaticIntro({ onSelect, reduced = false }: Props) {
             <span>INDIA / 2026</span>
           </span>
         </span>
-        <span className="intro-status">
-          <span className="status-dot" />
-          Live job data
-        </span>
+        <div className="intro-top-actions">
+          <span className="intro-status">
+            <span className="status-dot" />
+            Live job data
+          </span>
+          <SoundToggle />
+        </div>
       </header>
 
       {showRoles ? (

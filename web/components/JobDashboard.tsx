@@ -36,6 +36,7 @@ import MatchSignal from "./MatchSignal";
 import Pagination from "./Pagination";
 import RefreshPanel from "./RefreshPanel";
 import RoleSwitcher from "./RoleSwitcher";
+import SoundToggle from "./SoundToggle";
 import StatsBar from "./StatsBar";
 import UpdatesTicker from "./UpdatesTicker";
 
@@ -565,6 +566,7 @@ export default function JobDashboard({ role }: Props) {
               <span className="status-dot" />
               Live
             </span>
+            <SoundToggle />
             <Link className="journey-link" href="/">
               <RouteIcon width={15} height={15} />
               Journey

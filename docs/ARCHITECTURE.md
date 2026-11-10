@@ -294,6 +294,25 @@ rather than a second WebGL context. Everything is sized in em from the mark's
 font-size, 42px on desktop and 36px on phones, and under reduced motion the dot
 rests on the top step.
 
+Sound is a few short cues synthesised with the Web Audio API (`web/lib/sound.ts`),
+so no audio file is served and the CSP's `media-src 'none'` stands. Each cue is a
+tone or a burst of filtered noise under a gain envelope, a few hundredths of a
+second long, peaking around -20 dBFS, through one compressor so overlapping cues
+never spike: a tick for buttons and links (`SoundEffects.tsx` listens once on the
+document and reads `data-sound` for the exceptions), the role tabs each a whole tone
+apart, a two-note confirmation for a destination, a brush of air for a card turning,
+and a footfall. Footfalls come from the skeleton, not the clip's clock: at load
+`footHeights()` samples each foot's height across the walk cycle, `stepThresholds()`
+turns that into lift and contact heights, and every frame a `StepDetector`
+(`web/lib/footsteps.ts`) reports the frame a foot lands after a swing. The level
+falls with the camera's distance and gains a faint ring on the dais. Browsers start
+audio only inside a user gesture, so the context is created from the first
+pointerdown, keydown or touchend on the page and a cue asked for before that is
+dropped; the approach walk before any interaction is therefore silent. One switch,
+`SoundToggle.tsx` in both headers, is remembered in `localStorage` (`jobhunt.sound`),
+on by default. Pressing any control also dips it by a pixel (`:active`), off under
+reduced motion.
+
 The tab icon is the same mark: the same three steps and red dot, outlined in ink so
 it reads on light and dark tab strips, in `web/public/favicon.svg` with PNG and ICO
 sizes rendered from it. The PWA and Apple icons put it on the site's dark ground

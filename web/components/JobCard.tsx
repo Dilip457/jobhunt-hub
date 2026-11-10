@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import type { Job, RoleSlug } from "@/lib/types";
 import { matchAxes } from "@/lib/rank";
+import { playSound } from "@/lib/sound";
 import { companyHue, dateAgo, experienceLabel, jobHref, scoreTier, sourceColor } from "@/lib/utils";
 import { ExternalIcon } from "./Icons";
 
@@ -89,6 +90,7 @@ export default function JobCard({ job, role, showScore, accent, index = 0 }: Pro
     stopTimer();
     setLit(false);
     setFlipped((value) => !value);
+    playSound("flip");
   }
 
   function click(event: MouseEvent<HTMLElement>) {

@@ -210,3 +210,23 @@ export function RouteIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function SoundOnIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 10v4h3l4 3V7L7 10H4z" />
+      <path d="M15 9.5a3.5 3.5 0 0 1 0 5" />
+      <path d="M17.5 7a7 7 0 0 1 0 10" />
+    </svg>
+  );
+}
+
+export function SoundOffIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 10v4h3l4 3V7L7 10H4z" />
+      <path d="m15 9.5 5 5" />
+      <path d="m20 9.5-5 5" />
+    </svg>
+  );
+}
