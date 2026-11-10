@@ -9,9 +9,12 @@ import { getRole } from "@/lib/roles";
 import type { RoleSlug } from "@/lib/types";
 import { prefetchRole } from "@/lib/prefetch";
 import { createQualityGovernor } from "@/lib/renderQuality";
+import { createStepDetector, stepThresholds, type StepDetector } from "@/lib/footsteps";
+import { playSound, useSoundEnabled } from "@/lib/sound";
 import BrandMark from "./BrandMark";
 import { ArrowRightIcon, PlayIcon, RefreshIcon } from "./Icons";
 import RoleDestinations from "./RoleDestinations";
+import SoundToggle from "./SoundToggle";
 import StaticIntro from "./StaticIntro";
 
 type Phase = "loading" | "greeting" | "reveal" | "approach" | "selecting" | "departing" | "transition";
@@ -176,6 +179,34 @@ function adductWalkClip(clip: THREE.AnimationClip, angle: number): void {
       quaternion.toArray(track.values, i);
     }
   }
+}
+
+// One foot's height above the character's root across the walk cycle. The
+// footstep detector learns this clip's swing from it instead of assuming
+// which frame is a heel strike.
+function footHeights(root: THREE.Object3D, clip: THREE.AnimationClip, foot: THREE.Object3D): number[] {
+  const sampleMixer = new THREE.AnimationMixer(root);
+  const action = sampleMixer.clipAction(clip);
+  action.play();
+  const point = new THREE.Vector3();
+  const heights: number[] = [];
+  const samples = 32;
+  for (let i = 0; i < samples; i += 1) {
+    sampleMixer.setTime((i / samples) * clip.duration);
+    root.updateMatrixWorld(true);
+    foot.getWorldPosition(point);
+    heights.push(point.y - root.position.y);
+  }
+  action.stop();
+  sampleMixer.uncacheClip(clip);
+  return heights;
+}
+
+interface Foot {
+  bone: THREE.Object3D;
+  /** 0 left, 1 right: the two feet sound slightly different. */
+  side: number;
+  detector: StepDetector;
 }
 
 function createIdleClip(root: THREE.Object3D, walkClip: THREE.AnimationClip): THREE.AnimationClip {
@@ -667,6 +698,7 @@ export default function CinematicIntro({ onComplete }: Props) {
   const [failed, setFailed] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const autoRotateRef = useRef(false);
+  const soundOn = useSoundEnabled();
 
   useEffect(() => {
     autoRotateRef.current = autoRotate;
@@ -1289,6 +1321,15 @@ export default function CinematicIntro({ onComplete }: Props) {
       adductWalkClip(walkClip, WALK_ADDUCTION);
 
       const idleClip = createIdleClip(character, idleSource);
+      // Footsteps are read from the feet themselves (see lib/footsteps.ts).
+      const feet: Foot[] = [];
+      ["LeftFoot", "RightFoot"].forEach((name, side) => {
+        const bone = character.getObjectByName(name);
+        if (!bone) return;
+        const thresholds = stepThresholds(footHeights(character, walkClip, bone));
+        if (thresholds) feet.push({ bone, side, detector: createStepDetector(thresholds) });
+      });
+      const footPoint = new THREE.Vector3();
       const mixer = new THREE.AnimationMixer(character);
       const walkAction = mixer.clipAction(walkClip);
       const idleAction = mixer.clipAction(idleClip);
@@ -1481,6 +1522,7 @@ export default function CinematicIntro({ onComplete }: Props) {
           stopDragging();
           turntableVelocity = 0;
         }
+        feet.forEach((foot) => foot.detector.reset());
         if (jump && next === "selecting") {
           desiredPosition.copy(selectorPosition);
           desiredLook.copy(selectorLook);
@@ -1544,6 +1586,25 @@ export default function CinematicIntro({ onComplete }: Props) {
         idleAction.setEffectiveWeight(1 - state.walkBlend);
         walkAction.timeScale = clamp(speed / WALK_CYCLE_DISTANCE, 0.04, 1.2);
         mixer.update(dt);
+
+        // A footfall sounds when a foot lands after a swing, quieter the
+        // farther the camera is, with a faint ring once he is up on the dais.
+        if (state.walkBlend > 0.5 && speed > 0.25) {
+          const distance = camera.position.distanceTo(character.position);
+          const level = clamp(2.4 / distance, 0.18, 1) * state.walkBlend;
+          feet.forEach((foot) => {
+            foot.bone.getWorldPosition(footPoint);
+            if (foot.detector.update(footPoint.y - character.position.y)) {
+              playSound("step", {
+                gain: level,
+                step: foot.side,
+                raised: character.position.y > GROUND_Y + 0.01,
+              });
+            }
+          });
+        } else {
+          feet.forEach((foot) => foot.detector.reset());
+        }
 
         shadow.position.x = character.position.x;
         shadow.position.z = character.position.z;
@@ -1843,6 +1904,7 @@ export default function CinematicIntro({ onComplete }: Props) {
             <span className="status-dot" />
             Live job data
           </span>
+          <SoundToggle />
           {phase === "departing" ? (
             <button type="button" className="skip-intro" onClick={skipJourney}>
               Skip journey
@@ -1936,7 +1998,7 @@ export default function CinematicIntro({ onComplete }: Props) {
       {phase === "greeting" || phase === "reveal" || phase === "approach" ? (
         <p className="intro-hint">
           <span className="status-dot" />
-          Sound off · Visual journey
+          {soundOn ? "Soft sound" : "Sound off"} · Visual journey
         </p>
       ) : null}
     </main>

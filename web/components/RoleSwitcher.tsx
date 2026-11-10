@@ -12,13 +12,15 @@ interface Props {
 export default function RoleSwitcher({ role, onChange }: Props) {
   return (
     <nav className="role-switch" aria-label="Choose a job role">
-      {ROLES.map((item) => (
+      {ROLES.map((item, index) => (
         <button
           key={item.slug}
           type="button"
           className={`role-switch-btn ${item.slug === role ? "is-active" : ""}`}
           onClick={() => onChange(item.slug)}
           aria-pressed={item.slug === role}
+          data-sound="tab"
+          data-sound-step={index}
           style={{ "--role-accent": item.accent } as CSSProperties}
         >
           <span className="role-switch-dot" aria-hidden />

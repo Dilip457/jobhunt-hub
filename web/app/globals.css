@@ -513,6 +513,70 @@ button:disabled {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* The one sound control, same family as Skip intro and Journey. */
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(8, 9, 13, 0.74);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.sound-toggle:hover {
+  color: var(--white);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sound-toggle[aria-pressed="false"] {
+  color: var(--dim);
+}
+
+.dashboard-header-actions .sound-toggle {
+  background: transparent;
+}
+
+/* Pressing a control dips it for the moment the button is held, the way the
+   floor rings sit when stepped on. The cue that goes with it is in lib/sound.ts. */
+.skip-intro:active,
+.journey-link:active,
+.sound-toggle:active,
+.role-switch-btn:active,
+.intro-rotate-toggle:active,
+.pager-btn:active:not(:disabled),
+.reset-btn:active,
+.score-toggle:active,
+.search-clear:active,
+.ghost-btn:active,
+.primary-btn:active,
+.destination-card:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  transition-duration: 0.06s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-intro:active,
+  .journey-link:active,
+  .sound-toggle:active,
+  .role-switch-btn:active,
+  .intro-rotate-toggle:active,
+  .pager-btn:active:not(:disabled),
+  .reset-btn:active,
+  .score-toggle:active,
+  .search-clear:active,
+  .ghost-btn:active,
+  .primary-btn:active,
+  .destination-card:active:not(:disabled) {
+    transform: none;
+  }
+}
+
 /* Scene copy */
 
 .intro-greeting {
@@ -3621,6 +3685,14 @@ a.best-match:hover {
   .skip-intro {
     padding: 7px 10px;
     font-size: 11px;
+  }
+
+  .sound-toggle {
+    padding: 7px 9px;
+  }
+
+  .sound-toggle-label {
+    display: none;
   }
 
   .intro-roles-cinematic .destination-card {

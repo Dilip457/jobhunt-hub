@@ -279,6 +279,15 @@ role's scrape keeps failing the agent re-runs all roles at most every 4 hours
 5. In role selection, drag the guide left or right to inspect the front, side and back. **Auto-rotate** is off by default and can be turned on from the dock; dragging always works.
 6. Choosing a destination animates the turn, walk and arrival before opening `/jobs/<role>`.
 
+The journey has sound, kept quiet: a soft footfall each time the guide's foot lands (read
+from the skeleton, so the steps stay in time at any speed), a two-note confirmation when a
+destination is chosen, a tick on every button and tab (each role tab a whole tone higher
+than the last), and a brush of air when a job card turns. Nothing is downloaded: every cue
+is synthesised with the Web Audio API. **Sound on/off** sits in the header of the intro and
+the dashboard and is remembered on the device. Browsers allow audio only after the first
+touch or key on the page, so the walk toward the selector is silent for a visitor who has
+not yet interacted; the walk to the gate, after the click, is heard.
+
 The dashboard is one click away in every degraded mode:
 
 - **Skip intro** jumps straight to role selection.
