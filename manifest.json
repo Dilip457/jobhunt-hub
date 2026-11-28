@@ -1,0 +1,90 @@
+{
+ "generated_at": "2026-11-28T03:35:56+00:00",
+ "roles": {
+  "genai": {
+   "role": "genai",
+   "count": 1097,
+   "generated_at": "2026-11-28T03:30:29+00:00",
+   "sources": {
+    "Company Career Pages": 236,
+    "Naukri": 223,
+    "LinkedIn": 216,
+    "SimplyHired": 210,
+    "Foundit": 166,
+    "Indeed": 46
+   },
+   "demo": false,
+   "status": "merged"
+  },
+  "data": {
+   "role": "data",
+   "count": 1133,
+   "generated_at": "2026-11-28T03:31:58+00:00",
+   "sources": {
+    "LinkedIn": 269,
+    "Naukri": 224,
+    "SimplyHired": 208,
+    "Foundit": 202,
+    "Company Career Pages": 184,
+    "Indeed": 45,
+    "Shine": 1
+   },
+   "demo": false,
+   "status": "merged"
+  },
+  "uiux": {
+   "role": "uiux",
+   "count": 680,
+   "generated_at": "2026-11-28T03:34:26+00:00",
+   "sources": {
+    "LinkedIn": 291,
+    "Naukri": 216,
+    "SimplyHired": 106,
+    "Foundit": 27,
+    "Company Career Pages": 22,
+    "Indeed": 16,
+    "Shine": 2
+   },
+   "demo": false,
+   "status": "merged"
+  },
+  "ba": {
+   "role": "ba",
+   "count": 1129,
+   "generated_at": "2026-11-28T03:35:45+00:00",
+   "sources": {
+    "LinkedIn": 279,
+    "Naukri": 268,
+    "Foundit": 233,
+    "SimplyHired": 210,
+    "Company Career Pages": 67,
+    "Indeed": 65,
+    "Wellfound": 5,
+    "Shine": 1,
+    "We Work Remotely": 1
+   },
+   "demo": false,
+   "status": "merged"
+  },
+  "sde": {
+   "role": "sde",
+   "count": 3022,
+   "generated_at": "2026-11-28T03:35:26+00:00",
+   "sources": {
+    "Company Career Pages": 881,
+    "LinkedIn": 615,
+    "Foundit": 547,
+    "SimplyHired": 498,
+    "Naukri": 312,
+    "Indeed": 91,
+    "We Work Remotely": 62,
+    "Remote OK": 8,
+    "Himalayas": 6,
+    "Shine": 1,
+    "Remotive": 1
+   },
+   "demo": false,
+   "status": "merged"
+  }
+ }
+}
